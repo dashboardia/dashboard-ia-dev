@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireProjectRole } from "../../../../../lib/access";
+import { AccessDeniedError, requireProjectRole } from "../../../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../../../lib/api";
 import { auditData } from "../../../../../lib/audit";
 import { db } from "../../../../../lib/db";
@@ -35,19 +35,23 @@ export async function POST(request, context) {
         : input.email
           ? { email: input.email.toLowerCase() }
           : { githubLogin: { equals: input.githubLogin, mode: "insensitive" } },
-      select: { id: true },
+      select: { id: true, status: true },
     });
 
     if (!target) return NextResponse.json({ error: "O usuário precisa entrar uma vez antes de ser adicionado" }, { status: 404 });
+    if (target.status !== "ACTIVE") return NextResponse.json({ error: "Usuários suspensos não podem ser adicionados" }, { status: 409 });
 
-    const member = await db.projectMember.upsert({
-      where: { projectId_userId: { projectId, userId: target.id } },
-      create: { projectId, userId: target.id, role: input.role },
-      update: { role: input.role },
-      include: { user: { select: { id: true, name: true, email: true, image: true, githubLogin: true } } },
-    });
-    await db.auditLog.create({
-      data: auditData({ actorId: user.id, projectId, action: "project.member.upsert", entityType: "ProjectMember", entityId: member.id, metadata: { targetUserId: target.id, role: input.role }, request }),
+    const member = await db.$transaction(async (transaction) => {
+      const existing = await transaction.projectMember.findUnique({ where: { projectId_userId: { projectId, userId: target.id } }, select: { id: true } });
+      if (existing) throw new AccessDeniedError("Este usuário já faz parte do projeto", 409);
+      const created = await transaction.projectMember.create({
+        data: { projectId, userId: target.id, role: input.role },
+        include: { user: { select: { id: true, name: true, email: true, image: true, githubLogin: true } } },
+      });
+      await transaction.auditLog.create({
+        data: auditData({ actorId: user.id, projectId, action: "project.member.add", entityType: "ProjectMember", entityId: created.id, metadata: { targetUserId: target.id, role: input.role }, request }),
+      });
+      return created;
     });
     return NextResponse.json({ member }, { status: 201 });
   } catch (error) {
