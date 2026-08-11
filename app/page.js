@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import Dashboard from "./dashboard-client";
 import { authOptions } from "../lib/auth";
+import { getDashboardData } from "../lib/dashboard";
 import { getConfigurationStatus } from "../lib/env";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ export default async function Home() {
 
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
+  const data = await getDashboardData(session.user);
 
-  return <Dashboard user={session.user} />;
+  return <Dashboard data={data} user={session.user} />;
 }
