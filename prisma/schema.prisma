@@ -165,6 +165,11 @@ model Project {
   railwayProjectId     String?
   railwayEnvironmentId String?
   railwayServiceId     String?
+  workingDirectory     String          @default(".")
+  installCommand       String?
+  lintCommand          String?
+  testCommand          String?
+  buildCommand         String?
   status               ProjectStatus   @default(ACTIVE)
   createdById          String
   createdBy            User            @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)

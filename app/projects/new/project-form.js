@@ -12,6 +12,11 @@ const initialForm = {
   railwayProjectId: "",
   railwayEnvironmentId: "",
   railwayServiceId: "",
+  workingDirectory: ".",
+  installCommand: "npm ci",
+  lintCommand: "npm run lint",
+  testCommand: "npm test",
+  buildCommand: "npm run build",
 };
 
 export default function ProjectForm() {
@@ -57,6 +62,14 @@ export default function ProjectForm() {
         <label><span>Project ID</span><input name="railwayProjectId" value={form.railwayProjectId} onChange={change} /></label>
         <label><span>Environment ID</span><input name="railwayEnvironmentId" value={form.railwayEnvironmentId} onChange={change} /></label>
         <label><span>Service ID</span><input name="railwayServiceId" value={form.railwayServiceId} onChange={change} /></label>
+      </div>
+      <div className="form-divider"><span>Execução e validação</span></div>
+      <div className="form-grid">
+        <label><span>Diretório de trabalho</span><input name="workingDirectory" value={form.workingDirectory} onChange={change} placeholder="." required /></label>
+        <label><span>Instalação</span><input name="installCommand" value={form.installCommand} onChange={change} placeholder="npm ci" /></label>
+        <label><span>Lint</span><input name="lintCommand" value={form.lintCommand} onChange={change} placeholder="npm run lint" /></label>
+        <label><span>Testes</span><input name="testCommand" value={form.testCommand} onChange={change} placeholder="npm test" /></label>
+        <label><span>Build</span><input name="buildCommand" value={form.buildCommand} onChange={change} placeholder="npm run build" /></label>
       </div>
       {error && <div className="form-error">{error}</div>}
       <div className="form-actions"><button className="primary" disabled={saving} type="submit">{saving ? <LoaderCircle className="spin" size={18} /> : <Save size={18} />}{saving ? "Salvando..." : "Conectar projeto"}</button></div>

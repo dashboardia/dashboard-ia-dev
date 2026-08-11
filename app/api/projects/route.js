@@ -4,6 +4,7 @@ import { requireAdmin, requireUser } from "../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../lib/api";
 import { auditData } from "../../../lib/audit";
 import { db } from "../../../lib/db";
+import { getGitHubAccessToken, verifyRepositoryAccess } from "../../../lib/github";
 import { createUniqueProjectSlug, projectAccessWhere } from "../../../lib/projects";
 import { projectInputSchema } from "../../../lib/validation";
 
@@ -32,6 +33,11 @@ export async function POST(request) {
     assertSameOrigin(request);
     const user = await requireAdmin();
     const input = projectInputSchema.parse(await request.json());
+    const token = await getGitHubAccessToken(user.id);
+    const githubRepository = await verifyRepositoryAccess(token, input.repositoryFullName.toLowerCase());
+    if (!githubRepository.permissions?.push) {
+      return NextResponse.json({ error: "Sua conta GitHub não possui permissão de escrita neste repositório" }, { status: 403 });
+    }
     const slug = await createUniqueProjectSlug(input.name);
 
     const project = await db.$transaction(async (transaction) => {
@@ -40,6 +46,7 @@ export async function POST(request) {
           ...input,
           slug,
           repositoryFullName: input.repositoryFullName.toLowerCase(),
+          repositoryId: String(githubRepository.id),
           createdById: user.id,
           members: { create: { userId: user.id, role: "MANAGER" } },
         },
