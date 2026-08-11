@@ -122,6 +122,6 @@ Crie um segundo serviço a partir do mesmo repositório:
 
 ## Estado atual
 
-Implementados: autenticação e RBAC, projetos, membros, demandas, aprovação, fila, worker com IA, branch isolada, validações, Pull Request, sincronização de merge por webhook, logs, saúde, usuários, migrações, CI e deploy Railway.
+Implementados: autenticação e RBAC, administração segura de usuários, projetos, membros, demandas, aprovação, fila, worker com IA, branch isolada, validações, Pull Request, sincronização de merge por webhook, logs, saúde, migrações, CI e deploy Railway.
 
 Planejado para evolução posterior: Azure DevOps e integração detalhada de logs do Railway.
