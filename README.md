@@ -11,6 +11,7 @@ Plataforma para centralizar projetos, demandas, execução assistida por IA, val
 - **Worker:** serviço separado que consome a fila PostgreSQL, cria uma cópia temporária do repositório, usa a Responses API com `apply_patch`, executa as validações configuradas e publica uma branch.
 - **Entrega:** o Pull Request só é aberto após aprovação explícita de um Gestor.
 - **Observabilidade:** logs estruturados por execução e verificação periódica das URLs de produção.
+- **Sincronização:** webhook GitHub assinado atualiza Pull Requests e conclui a demanda somente após o merge.
 
 ## Fluxo de uma demanda
 
@@ -66,6 +67,7 @@ npm run build
 | `DATABASE_URL` | Web e worker | Conexão PostgreSQL |
 | `GITHUB_ID` | Web | Client ID do GitHub OAuth App |
 | `GITHUB_SECRET` | Web | Client secret do GitHub OAuth App |
+| `GITHUB_WEBHOOK_SECRET` | Web | Segredo HMAC usado para assinar e validar webhooks |
 | `ADMIN_GITHUB_LOGIN` | Web | Login GitHub promovido a Administrador Global |
 | `NEXTAUTH_SECRET` | Web | Assinatura das sessões |
 | `NEXTAUTH_URL` | Web | URL pública da aplicação |
@@ -78,6 +80,12 @@ O callback do GitHub OAuth em produção é:
 
 ```text
 https://dashboard-ia-dev-production.up.railway.app/api/auth/callback/github
+```
+
+O endpoint de webhook GitHub é configurado automaticamente em cada projeto conectado:
+
+```text
+https://dashboard-ia-dev-production.up.railway.app/api/webhooks/github
 ```
 
 ## Railway
@@ -114,6 +122,6 @@ Crie um segundo serviço a partir do mesmo repositório:
 
 ## Estado atual
 
-Implementados: autenticação e RBAC, projetos, membros, demandas, aprovação, fila, worker com IA, branch isolada, validações, Pull Request, logs, saúde, usuários, migrações, CI e deploy Railway.
+Implementados: autenticação e RBAC, projetos, membros, demandas, aprovação, fila, worker com IA, branch isolada, validações, Pull Request, sincronização de merge por webhook, logs, saúde, usuários, migrações, CI e deploy Railway.
 
-Planejado para evolução posterior: Azure DevOps, webhooks para sincronização imediata de merge e integração detalhada de logs do Railway.
+Planejado para evolução posterior: Azure DevOps e integração detalhada de logs do Railway.

@@ -13,6 +13,7 @@ export default async function SettingsPage() {
   const items = [
     ["PostgreSQL", configuration.database, "DATABASE_URL"],
     ["GitHub OAuth", configuration.githubAuth, "GITHUB_ID, GITHUB_SECRET e NEXTAUTH_SECRET"],
+    ["Webhook GitHub", configuration.githubWebhook, "GITHUB_WEBHOOK_SECRET e NEXTAUTH_URL"],
     ["OpenAI", configuration.openai, "OPENAI_API_KEY"],
     ["Railway API", configuration.railway, "RAILWAY_API_TOKEN"],
     ["Worker", configuration.worker, "DATABASE_URL e OPENAI_API_KEY no serviço worker"],
