@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 import { AccessDeniedError, getProjectRole, isAtLeastProjectRole, requireUser } from "../../../../lib/access";
@@ -42,14 +43,21 @@ export async function PATCH(request, context) {
     const { demand, role } = await demandWithAccess(demandId, user);
     const canEdit = demand.createdById === user.id || isAtLeastProjectRole(role, "MANAGER");
     if (!canEdit) throw new AccessDeniedError();
-    if (!["DRAFT", "PENDING_APPROVAL"].includes(demand.status)) {
-      return NextResponse.json({ error: "Esta demanda não pode mais ser editada" }, { status: 409 });
-    }
     const input = demandUpdateSchema.parse(await request.json());
-    const updated = await db.demand.update({ where: { id: demandId }, data: input });
-    await db.auditLog.create({
-      data: auditData({ actorId: user.id, projectId: demand.projectId, action: "demand.update", entityType: "Demand", entityId: demandId, metadata: input, request }),
-    });
+    const updated = await db.$transaction(async (transaction) => {
+      const current = await transaction.demand.findUniqueOrThrow({ where: { id: demandId }, select: { status: true } });
+      if (!["DRAFT", "PENDING_APPROVAL"].includes(current.status)) {
+        throw new AccessDeniedError("Esta demanda não pode mais ser editada", 409);
+      }
+      const result = await transaction.demand.update({
+        where: { id: demandId },
+        data: { ...input, ...(Object.hasOwn(input, "acceptanceCriteria") ? { acceptanceCriteria: input.acceptanceCriteria || null } : {}) },
+      });
+      await transaction.auditLog.create({
+        data: auditData({ actorId: user.id, projectId: demand.projectId, action: "demand.update", entityType: "Demand", entityId: demandId, metadata: input, request }),
+      });
+      return result;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     return NextResponse.json({ demand: updated });
   } catch (error) {
     return apiError(error);
