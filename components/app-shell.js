@@ -8,6 +8,7 @@ import {
   GitBranch,
   Github,
   HeartPulse,
+  History,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -71,6 +72,7 @@ export default function AppShell({ children, user = null, setupMode = false }) {
         </nav>
         <div className="sidebar-bottom">
           {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/users"}><Users size={18} />Usuários</Link>}
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/audit"}><History size={18} />Auditoria</Link>}
           <Link href={setupMode ? "/login" : "/settings"}><Settings size={18} />Configurações</Link>
           <div className="user"><span className="user-avatar">{initials}</span><span><strong>{displayName}</strong><small>{displayEmail}</small></span>{user && <button className="signout" onClick={() => signOut({ callbackUrl: "/login" })} aria-label="Sair"><LogOut size={16} /></button>}</div>
         </div>
