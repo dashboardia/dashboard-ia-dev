@@ -4,7 +4,7 @@ Plataforma para centralizar projetos, demandas, execução assistida por IA, val
 
 ## Arquitetura
 
-- **Web:** Next.js 15, React 19 e NextAuth.
+- **Web:** Next.js 16, React 19 e NextAuth.
 - **Banco:** PostgreSQL com Prisma ORM e migrações versionadas.
 - **Autenticação:** GitHub OAuth; nenhuma senha própria.
 - **Autorização:** Administrador Global e papéis por projeto (`MANAGER`, `DEVELOPER`, `VIEWER`).

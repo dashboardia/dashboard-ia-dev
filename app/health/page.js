@@ -8,9 +8,13 @@ import { projectAccessWhere } from "../../lib/projects";
 
 export const dynamic = "force-dynamic";
 
+function healthWindowStart() {
+  return new Date(Date.now() - 24 * 60 * 60 * 1000);
+}
+
 export default async function HealthPage() {
   const user = await requirePageUser();
-  const lastDay = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const lastDay = healthWindowStart();
   const projects = await db.project.findMany({
     where: { ...projectAccessWhere(user), status: "ACTIVE" },
     include: { healthChecks: { where: { checkedAt: { gte: lastDay } }, orderBy: { checkedAt: "desc" }, take: 1500 } },
