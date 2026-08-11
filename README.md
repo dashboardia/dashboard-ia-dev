@@ -11,6 +11,7 @@ Plataforma para centralizar projetos, demandas, execução assistida por IA, val
 - **Worker:** serviço separado que consome a fila PostgreSQL, cria uma cópia temporária do repositório, usa a Responses API com `apply_patch`, executa as validações configuradas e publica uma branch.
 - **Entrega:** o Pull Request só é aberto após aprovação explícita de um Gestor.
 - **Observabilidade:** logs estruturados por execução e verificação periódica das URLs de produção.
+- **Revisão:** detalhe da execução com resumo, rastreabilidade Git, consumo, logs técnicos e diff antes da aprovação do PR.
 - **Sincronização:** webhook GitHub assinado atualiza Pull Requests e conclui a demanda somente após o merge.
 
 ## Fluxo de uma demanda
