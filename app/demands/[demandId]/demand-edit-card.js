@@ -1,0 +1,82 @@
+"use client";
+
+import { FileCode2, LoaderCircle, Pencil, Save, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+function initialForm(demand) {
+  return {
+    title: demand.title,
+    description: demand.description,
+    acceptanceCriteria: demand.acceptanceCriteria ?? "",
+    type: demand.type,
+    priority: demand.priority,
+  };
+}
+
+export default function DemandEditCard({ demand, canEdit }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState(() => initialForm(demand));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function change(event) {
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  }
+
+  function cancel() {
+    setForm(initialForm(demand));
+    setError("");
+    setEditing(false);
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/demands/${demand.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível atualizar a demanda");
+      setForm(initialForm(result.demand));
+      setEditing(false);
+      router.refresh();
+    } catch (submitError) {
+      setError(submitError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <section className="form-card detail-card demand-copy">
+        <div className="card-heading"><div><h2>Descrição</h2><p>Contexto enviado para a execução</p></div><span className="card-heading-actions">{canEdit && <button type="button" onClick={() => setEditing(true)}><Pencil size={14} />Editar</button>}<FileCode2 size={20} /></span></div>
+        <p>{demand.description}</p>
+        {demand.acceptanceCriteria && <><h3>Critérios de aceite</h3><p>{demand.acceptanceCriteria}</p></>}
+      </section>
+    );
+  }
+
+  return (
+    <section className="form-card detail-card demand-copy demand-edit-card">
+      <div className="card-heading"><div><h2>Editar demanda</h2><p>As alterações serão auditadas</p></div><button className="close-edit" type="button" onClick={cancel} aria-label="Cancelar edição"><X size={17} /></button></div>
+      <form onSubmit={submit}>
+        <div className="form-grid">
+          <label><span>Tipo</span><select name="type" value={form.type} onChange={change}><option value="BUG">Correção</option><option value="FEATURE">Nova funcionalidade</option><option value="REFACTOR">Refatoração</option><option value="TEST">Testes</option><option value="INVESTIGATION">Investigação</option></select></label>
+          <label><span>Prioridade</span><select name="priority" value={form.priority} onChange={change}><option value="LOW">Baixa</option><option value="NORMAL">Normal</option><option value="HIGH">Alta</option><option value="URGENT">Urgente</option></select></label>
+        </div>
+        <label className="full-field"><span>Título</span><input name="title" value={form.title} onChange={change} maxLength={140} required /></label>
+        <label className="full-field"><span>Contexto e resultado esperado</span><textarea name="description" value={form.description} onChange={change} rows={7} required /></label>
+        <label className="full-field"><span>Critérios de aceite</span><textarea name="acceptanceCriteria" value={form.acceptanceCriteria} onChange={change} rows={4} /></label>
+        {error && <div className="form-error">{error}</div>}
+        <div className="form-actions"><button className="secondary-button" type="button" onClick={cancel}>Cancelar</button><button className="primary" type="submit" disabled={saving}>{saving ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}{saving ? "Salvando..." : "Salvar demanda"}</button></div>
+      </form>
+    </section>
+  );
+}
