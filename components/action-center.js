@@ -48,12 +48,13 @@ export default function ActionCenter({ disabled = false }) {
   useEffect(() => {
     if (disabled) return;
     const controller = new AbortController();
-    load(controller.signal);
+    const initialLoad = window.setTimeout(() => load(controller.signal), 0);
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") load(controller.signal);
     }, 60000);
     return () => {
       controller.abort();
+      window.clearTimeout(initialLoad);
       window.clearInterval(interval);
     };
   }, [disabled, load]);

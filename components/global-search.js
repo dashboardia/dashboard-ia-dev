@@ -40,12 +40,7 @@ export default function GlobalSearch({ disabled = false }) {
 
   useEffect(() => {
     const normalizedQuery = query.trim();
-    if (!open || normalizedQuery.length < 2) {
-      setResult({ groups: [], total: 0 });
-      setLoading(false);
-      setError("");
-      return;
-    }
+    if (!open || normalizedQuery.length < 2) return;
 
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
@@ -80,6 +75,9 @@ export default function GlobalSearch({ disabled = false }) {
     setError("");
   }
 
+  const hasSearchTerm = query.trim().length >= 2;
+  const visibleResult = hasSearchTerm ? result : { groups: [], total: 0 };
+
   return (
     <>
       <button className="search search-trigger" type="button" onClick={() => setOpen(true)} disabled={disabled} aria-label="Abrir busca global">
@@ -105,10 +103,10 @@ export default function GlobalSearch({ disabled = false }) {
             </div>
 
             <div className="search-results" aria-live="polite">
-              {query.trim().length < 2 && <div className="search-empty"><Search size={26} /><strong>Encontre qualquer item</strong><span>Pesquise por nome, descrição, branch, status ou mensagem de log.</span></div>}
-              {error && <div className="search-empty search-error"><strong>Busca indisponível</strong><span>{error}</span></div>}
-              {!loading && !error && query.trim().length >= 2 && result.total === 0 && <div className="search-empty"><strong>Nenhum resultado</strong><span>Tente outro termo ou confira seu acesso ao projeto.</span></div>}
-              {!error && result.groups.map((group) => {
+              {!hasSearchTerm && <div className="search-empty"><Search size={26} /><strong>Encontre qualquer item</strong><span>Pesquise por nome, descrição, branch, status ou mensagem de log.</span></div>}
+              {hasSearchTerm && error && <div className="search-empty search-error"><strong>Busca indisponível</strong><span>{error}</span></div>}
+              {hasSearchTerm && !loading && !error && visibleResult.total === 0 && <div className="search-empty"><strong>Nenhum resultado</strong><span>Tente outro termo ou confira seu acesso ao projeto.</span></div>}
+              {hasSearchTerm && !error && visibleResult.groups.map((group) => {
                 const Icon = groupIcons[group.type] ?? Search;
                 return (
                   <div className="search-group" key={group.type}>
@@ -124,7 +122,7 @@ export default function GlobalSearch({ disabled = false }) {
                 );
               })}
             </div>
-            <footer className="search-footer"><span><kbd>ESC</kbd> fechar</span><strong>{result.total ? `${result.total} resultado${result.total === 1 ? "" : "s"}` : "Busca segura por projeto"}</strong></footer>
+            <footer className="search-footer"><span><kbd>ESC</kbd> fechar</span><strong>{visibleResult.total ? `${visibleResult.total} resultado${visibleResult.total === 1 ? "" : "s"}` : "Busca segura por projeto"}</strong></footer>
           </section>
         </div>
       )}
