@@ -161,6 +161,9 @@ model Project {
   repositoryId         String?
   defaultBranch        String          @default("main")
   githubInstallationId String?
+  githubWebhookId      String?
+  githubWebhookAt      DateTime?
+  githubWebhookError   String?         @db.Text
   productionUrl        String?
   railwayProjectId     String?
   railwayEnvironmentId String?
@@ -242,6 +245,7 @@ model Execution {
   inputTokens   Int?
   outputTokens  Int?
   attempts      Int                 @default(0)
+  cancelRequestedAt DateTime?
   lockedAt      DateTime?
   lockedBy      String?
   startedAt     DateTime?

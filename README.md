@@ -11,6 +11,8 @@ Plataforma para centralizar projetos, demandas, execução assistida por IA, val
 - **Worker:** serviço separado que consome a fila PostgreSQL, cria uma cópia temporária do repositório, usa a Responses API com `apply_patch`, executa as validações configuradas e publica uma branch.
 - **Entrega:** o Pull Request só é aberto após aprovação explícita de um Gestor.
 - **Observabilidade:** logs estruturados por execução e verificação periódica das URLs de produção.
+- **Revisão:** detalhe da execução com resumo, rastreabilidade Git, consumo, logs técnicos e diff antes da aprovação do PR.
+- **Sincronização:** webhook GitHub assinado atualiza Pull Requests e conclui a demanda somente após o merge.
 
 ## Fluxo de uma demanda
 
@@ -21,6 +23,8 @@ Plataforma para centralizar projetos, demandas, execução assistida por IA, val
 5. Worker executa instalação, lint, testes e build definidos no projeto.
 6. A branch é enviada ao GitHub e fica aguardando aprovação.
 7. Gestor aprova a abertura de um Pull Request em modo draft.
+
+Uma execução ativa pode ser cancelada por um Gestor. O worker encerra no próximo ponto seguro, remove o workspace e libera a demanda para uma nova tentativa com branch própria.
 
 ## Segurança do worker
 
@@ -66,18 +70,27 @@ npm run build
 | `DATABASE_URL` | Web e worker | Conexão PostgreSQL |
 | `GITHUB_ID` | Web | Client ID do GitHub OAuth App |
 | `GITHUB_SECRET` | Web | Client secret do GitHub OAuth App |
+| `GITHUB_WEBHOOK_SECRET` | Web | Segredo HMAC usado para assinar e validar webhooks |
 | `ADMIN_GITHUB_LOGIN` | Web | Login GitHub promovido a Administrador Global |
 | `NEXTAUTH_SECRET` | Web | Assinatura das sessões |
 | `NEXTAUTH_URL` | Web | URL pública da aplicação |
 | `OPENAI_API_KEY` | Web e worker | Autorizar e executar demandas |
 | `OPENAI_MODEL` | Worker | Modelo, padrão `gpt-5.6` |
 | `WORKER_POLL_INTERVAL_MS` | Worker | Intervalo da fila, padrão 5000 ms |
+| `HEALTH_CHECK_INTERVAL_MS` | Worker | Intervalo de monitoramento, padrão 5 minutos |
+| `HEALTH_CHECK_RETENTION_DAYS` | Worker | Retenção do histórico de saúde, padrão 30 dias |
 | `RAILWAY_API_TOKEN` | Web | Reservado para integração avançada com a API Railway |
 
 O callback do GitHub OAuth em produção é:
 
 ```text
 https://dashboard-ia-dev-production.up.railway.app/api/auth/callback/github
+```
+
+O endpoint de webhook GitHub é configurado automaticamente em cada projeto conectado:
+
+```text
+https://dashboard-ia-dev-production.up.railway.app/api/webhooks/github
 ```
 
 ## Railway
@@ -114,6 +127,6 @@ Crie um segundo serviço a partir do mesmo repositório:
 
 ## Estado atual
 
-Implementados: autenticação e RBAC, projetos, membros, demandas, aprovação, fila, worker com IA, branch isolada, validações, Pull Request, logs, saúde, usuários, migrações, CI e deploy Railway.
+Implementados: autenticação e RBAC, administração segura de usuários, projetos, membros, demandas, aprovação, fila, worker com IA, branch isolada, validações, Pull Request, sincronização de merge por webhook, logs, saúde, migrações, CI e deploy Railway.
 
-Planejado para evolução posterior: Azure DevOps, webhooks para sincronização imediata de merge e integração detalhada de logs do Railway.
+Planejado para evolução posterior: Azure DevOps e integração detalhada de logs do Railway.

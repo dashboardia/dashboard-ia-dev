@@ -8,6 +8,7 @@ import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
 import MemberForm from "./member-form";
+import WebhookStatus from "./webhook-status";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function ProjectPage({ params }) {
             <h2>Integrações</h2>
             <div className="detail-list">
               <span><Github size={17} /><strong>GitHub</strong><em>{project.repositoryFullName}</em></span>
+              <span><Github size={17} /><strong>Webhook</strong><em>{role === "MANAGER" ? <WebhookStatus projectId={project.id} configured={Boolean(project.githubWebhookId)} error={project.githubWebhookError} /> : project.githubWebhookId ? "Sincronizado" : "Pendente"}</em></span>
               <span><GitBranch size={17} /><strong>Branch</strong><em>{project.defaultBranch}</em></span>
               <span><ExternalLink size={17} /><strong>Produção</strong><em>{project.productionUrl ?? "Não configurada"}</em></span>
               <span><ShieldCheck size={17} /><strong>Seu papel</strong><em>{role}</em></span>

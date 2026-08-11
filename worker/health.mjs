@@ -36,3 +36,8 @@ export async function checkProjectHealth() {
     });
   }));
 }
+
+export async function pruneHealthChecks(retentionDays) {
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+  return db.healthCheck.deleteMany({ where: { checkedAt: { lt: cutoff } } });
+}

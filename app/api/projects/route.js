@@ -6,6 +6,7 @@ import { auditData } from "../../../lib/audit";
 import { db } from "../../../lib/db";
 import { getGitHubAccessToken, verifyRepositoryAccess } from "../../../lib/github";
 import { createUniqueProjectSlug, projectAccessWhere } from "../../../lib/projects";
+import { configureProjectGitHubWebhook } from "../../../lib/project-webhooks";
 import { projectInputSchema } from "../../../lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -67,7 +68,8 @@ export async function POST(request) {
       return created;
     });
 
-    return NextResponse.json({ project }, { status: 201 });
+    const webhook = await configureProjectGitHubWebhook({ project, userId: user.id });
+    return NextResponse.json({ project, webhook }, { status: 201 });
   } catch (error) {
     return apiError(error);
   }
