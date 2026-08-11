@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Bell,
   Boxes,
   CheckCircle2,
   ChevronDown,
@@ -23,6 +22,7 @@ import { signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import ActionCenter from "./action-center";
 import GlobalSearch from "./global-search";
 
 const navigation = [
@@ -80,7 +80,7 @@ export default function AppShell({ children, user = null, setupMode = false }) {
         <header className="topbar">
           <button className="menu" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu /></button>
           <GlobalSearch disabled={setupMode} />
-          <button className="icon-button" onClick={() => notify("Nenhuma notificação nova")} aria-label="Notificações"><Bell size={19} /><i /></button>
+          <ActionCenter disabled={setupMode} />
           <button className="github-status" onClick={() => notify(setupMode ? "GitHub OAuth aguardando configuração" : "GitHub conectado e operacional")}><Github size={18} /><span>{setupMode ? "Configurar GitHub" : "GitHub conectado"}</span><CheckCircle2 size={15} /></button>
         </header>
         {children}
