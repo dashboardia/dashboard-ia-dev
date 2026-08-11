@@ -18,7 +18,7 @@ function runMigrations() {
 
 runMigrations();
 
-const server = spawn("npx", ["next", "start"], {
+const server = spawn("npx", ["next", "start", "-H", "0.0.0.0"], {
   stdio: "inherit",
   shell: process.platform === "win32",
 });
