@@ -19,8 +19,20 @@ import {
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 
+class ExecutionCancelledError extends Error {
+  constructor() {
+    super("Execução cancelada pelo Gestor");
+    this.name = "ExecutionCancelledError";
+  }
+}
+
 async function log(executionId, scope, message, level = "info", metadata) {
   await db.executionLog.create({ data: { executionId, scope, message, level, metadata } });
+}
+
+async function assertExecutionActive(executionId) {
+  const current = await db.execution.findUnique({ where: { id: executionId }, select: { cancelRequestedAt: true } });
+  if (current?.cancelRequestedAt) throw new ExecutionCancelledError();
 }
 
 function agentPrompt(demand) {
@@ -56,6 +68,7 @@ async function runValidations(execution, projectDirectory) {
   }
 
   for (const [scope, command] of commands) {
+    await assertExecutionActive(execution.id);
     await log(execution.id, scope, `Executando: ${command}`);
     try {
       const result = await runConfiguredCommand(command, projectDirectory);
@@ -70,6 +83,7 @@ async function runValidations(execution, projectDirectory) {
       });
       throw new Error(`Validação ${scope} falhou`);
     }
+    await assertExecutionActive(execution.id);
   }
 }
 
@@ -85,6 +99,7 @@ export async function processExecution(executionId, workerId) {
     });
     await mkdir(workspaceRoot, { recursive: true });
     await cleanWorkspace(workspace);
+    await assertExecutionActive(executionId);
     await log(executionId, "workspace", "Preparando cópia isolada do repositório");
 
     const token = await getGitHubAccessToken(execution.requestedById);
@@ -101,7 +116,7 @@ export async function processExecution(executionId, workerId) {
       workspace,
     ], { cwd: workspaceRoot, timeout: 5 * 60_000 });
 
-    const branchName = `forgeboard/demand-${execution.demandId.slice(-10)}`;
+    const branchName = `forgeboard/demand-${execution.demandId.slice(-8)}-${execution.id.slice(-6)}`;
     await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
     const projectDirectory = resolveWorkspacePath(workspace, execution.demand.project.workingDirectory);
     const editor = new WorkspaceEditor(projectDirectory);
@@ -128,22 +143,25 @@ export async function processExecution(executionId, workerId) {
     const summary = String(result.finalOutput ?? "Implementação concluída sem resumo.").trim();
     const usage = result.runContext.usage;
     await log(executionId, "agent", "Agente de implementação concluído");
+    await assertExecutionActive(executionId);
 
     const statusResult = await runProcess("git", ["status", "--porcelain"], { cwd: workspace });
     if (!statusResult.stdout.trim()) {
       if (execution.demand.type !== "INVESTIGATION") throw new Error("A IA não produziu alterações no repositório");
-      await db.$transaction([
-        db.execution.update({
-          where: { id: executionId },
+      await db.$transaction(async (transaction) => {
+        const updated = await transaction.execution.updateMany({
+          where: { id: executionId, cancelRequestedAt: null },
           data: { status: "SUCCEEDED", stage: "ANALYSIS", summary, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, lockedAt: null, lockedBy: null, finishedAt: new Date() },
-        }),
-        db.demand.update({ where: { id: execution.demandId }, data: { status: "SUCCEEDED" } }),
-      ]);
+        });
+        if (updated.count !== 1) throw new ExecutionCancelledError();
+        await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "SUCCEEDED" } });
+      });
       return;
     }
 
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
     await runValidations(execution, projectDirectory);
+    await assertExecutionActive(executionId);
     const diffResult = await runProcess("git", ["diff", "--binary"], { cwd: workspace });
 
     await runProcess("git", ["add", "-A"], { cwd: workspace });
@@ -152,10 +170,9 @@ export async function processExecution(executionId, workerId) {
     const base = await runProcess("git", ["rev-parse", execution.demand.project.defaultBranch], { cwd: workspace });
     await runProcess("git", [...gitAuthenticationArgs(token), "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000 });
 
-    await db.$transaction([
-      db.executionArtifact.create({ data: { executionId, type: "diff", name: "changes.diff", content: diffResult.stdout.slice(0, 200_000) } }),
-      db.execution.update({
-        where: { id: executionId },
+    await db.$transaction(async (transaction) => {
+      const updated = await transaction.execution.updateMany({
+        where: { id: executionId, cancelRequestedAt: null },
         data: {
           status: "WAITING_APPROVAL",
           stage: "PUBLISH",
@@ -167,16 +184,19 @@ export async function processExecution(executionId, workerId) {
           lockedAt: null,
           lockedBy: null,
         },
-      }),
-      db.demand.update({ where: { id: execution.demandId }, data: { status: "REVIEW" } }),
-    ]);
+      });
+      if (updated.count !== 1) throw new ExecutionCancelledError();
+      await transaction.executionArtifact.create({ data: { executionId, type: "diff", name: "changes.diff", content: diffResult.stdout.slice(0, 200_000) } });
+      await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "REVIEW" } });
+    });
     await log(executionId, "publish", `Branch ${branchName} enviada; aguardando aprovação para abrir Pull Request`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha desconhecida na execução";
-    await db.execution.update({ where: { id: executionId }, data: { status: "FAILED", error: message, lockedAt: null, lockedBy: null, finishedAt: new Date() } }).catch(() => null);
-    if (execution?.demandId) await db.demand.update({ where: { id: execution.demandId }, data: { status: "FAILED" } }).catch(() => null);
-    await log(executionId, "worker", message, "error").catch(() => null);
-    throw error;
+    const cancelled = error instanceof ExecutionCancelledError;
+    await db.execution.update({ where: { id: executionId }, data: { status: cancelled ? "CANCELLED" : "FAILED", error: cancelled ? null : message, lockedAt: null, lockedBy: null, finishedAt: new Date() } }).catch(() => null);
+    if (execution?.demandId) await db.demand.update({ where: { id: execution.demandId }, data: { status: cancelled ? "APPROVED" : "FAILED" } }).catch(() => null);
+    await log(executionId, "worker", message, cancelled ? "warn" : "error").catch(() => null);
+    if (!cancelled) throw error;
   } finally {
     await cleanWorkspace(workspace).catch(() => null);
     console.log(`[worker:${workerId}] execução ${executionId} finalizada`);

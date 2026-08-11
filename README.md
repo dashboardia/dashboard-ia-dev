@@ -23,6 +23,8 @@ Plataforma para centralizar projetos, demandas, execução assistida por IA, val
 6. A branch é enviada ao GitHub e fica aguardando aprovação.
 7. Gestor aprova a abertura de um Pull Request em modo draft.
 
+Uma execução ativa pode ser cancelada por um Gestor. O worker encerra no próximo ponto seguro, remove o workspace e libera a demanda para uma nova tentativa com branch própria.
+
 ## Segurança do worker
 
 - workspace temporário exclusivo por execução;
