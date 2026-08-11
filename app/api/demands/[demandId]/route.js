@@ -1,0 +1,57 @@
+import { NextResponse } from "next/server";
+
+import { AccessDeniedError, getProjectRole, isAtLeastProjectRole, requireUser } from "../../../../lib/access";
+import { apiError, assertSameOrigin } from "../../../../lib/api";
+import { auditData } from "../../../../lib/audit";
+import { db } from "../../../../lib/db";
+import { demandUpdateSchema } from "../../../../lib/validation";
+
+export const dynamic = "force-dynamic";
+
+async function demandWithAccess(demandId, user) {
+  const demand = await db.demand.findUniqueOrThrow({
+    where: { id: demandId },
+    include: {
+      project: true,
+      createdBy: { select: { id: true, name: true, email: true, image: true } },
+      approvedBy: { select: { id: true, name: true, email: true, image: true } },
+      executions: { orderBy: { createdAt: "desc" }, include: { pullRequest: true, logs: { orderBy: { createdAt: "desc" }, take: 50 } } },
+    },
+  });
+  const role = await getProjectRole(user, demand.projectId);
+  if (!role) throw new AccessDeniedError();
+  return { demand, role };
+}
+
+export async function GET(_request, context) {
+  try {
+    const user = await requireUser();
+    const { demandId } = await context.params;
+    const { demand } = await demandWithAccess(demandId, user);
+    return NextResponse.json({ demand });
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+export async function PATCH(request, context) {
+  try {
+    assertSameOrigin(request);
+    const user = await requireUser();
+    const { demandId } = await context.params;
+    const { demand, role } = await demandWithAccess(demandId, user);
+    const canEdit = demand.createdById === user.id || isAtLeastProjectRole(role, "MANAGER");
+    if (!canEdit) throw new AccessDeniedError();
+    if (!["DRAFT", "PENDING_APPROVAL"].includes(demand.status)) {
+      return NextResponse.json({ error: "Esta demanda não pode mais ser editada" }, { status: 409 });
+    }
+    const input = demandUpdateSchema.parse(await request.json());
+    const updated = await db.demand.update({ where: { id: demandId }, data: input });
+    await db.auditLog.create({
+      data: auditData({ actorId: user.id, projectId: demand.projectId, action: "demand.update", entityType: "Demand", entityId: demandId, metadata: input, request }),
+    });
+    return NextResponse.json({ demand: updated });
+  } catch (error) {
+    return apiError(error);
+  }
+}
