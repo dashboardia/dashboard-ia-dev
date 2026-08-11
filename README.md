@@ -1,38 +1,119 @@
-# Dashboard IA Dev
+# Forgeboard — Dashboard IA Dev
 
-Dashboard web para centralizar desenvolvimento assistido por IA, integração com repositórios, execução de demandas, Pull Requests, logs e saúde das aplicações.
+Plataforma para centralizar projetos, demandas, execução assistida por IA, validações, Pull Requests, logs e saúde de aplicações.
 
-## Estado atual
+## Arquitetura
 
-A interface responsiva está publicada no Railway. A fundação de produção já utiliza Next.js nativo, Prisma e PostgreSQL, com migrações automáticas no startup e endpoint de saúde em `/api/health`. Enquanto o banco e o OAuth não forem configurados, os dados da tela continuam demonstrativos.
+- **Web:** Next.js 15, React 19 e NextAuth.
+- **Banco:** PostgreSQL com Prisma ORM e migrações versionadas.
+- **Autenticação:** GitHub OAuth; nenhuma senha própria.
+- **Autorização:** Administrador Global e papéis por projeto (`MANAGER`, `DEVELOPER`, `VIEWER`).
+- **Worker:** serviço separado que consome a fila PostgreSQL, cria uma cópia temporária do repositório, usa a Responses API com `apply_patch`, executa as validações configuradas e publica uma branch.
+- **Entrega:** o Pull Request só é aberto após aprovação explícita de um Gestor.
+- **Observabilidade:** logs estruturados por execução e verificação periódica das URLs de produção.
 
-## Tecnologias
+## Fluxo de uma demanda
 
-- Next.js
-- React
-- Prisma ORM
-- PostgreSQL
-- NextAuth
-- Lucide React
-- ESLint
+1. Gestor ou Desenvolvedor descreve a demanda e os critérios de aceite.
+2. Gestor aprova e autoriza a execução.
+3. Worker cria uma branch `forgeboard/demand-*` a partir da branch padrão.
+4. A IA inspeciona o repositório com shell somente leitura e altera arquivos apenas por `apply_patch`.
+5. Worker executa instalação, lint, testes e build definidos no projeto.
+6. A branch é enviada ao GitHub e fica aguardando aprovação.
+7. Gestor aprova a abertura de um Pull Request em modo draft.
 
-## Executar localmente
+## Segurança do worker
+
+- workspace temporário exclusivo por execução;
+- token GitHub não é incluído no ambiente acessível aos comandos da IA;
+- shell da IA aceita apenas comandos de leitura pré-aprovados;
+- paths absolutos, travessia de diretório, arquivos de segredo, `.git` e workflows do GitHub são bloqueados;
+- validações executam com ambiente reduzido, sem as credenciais do serviço;
+- workspace removido ao terminar, inclusive em caso de erro;
+- até três tentativas para trabalhos interrompidos.
+
+Conecte somente repositórios administrados e confiáveis. Scripts de instalação e teste pertencem ao próprio repositório e executam dentro do container do worker.
+
+## Desenvolvimento local
+
+Requisitos: Node.js 22 e PostgreSQL.
 
 ```bash
 npm install
-npm run db:generate
+cp .env.example .env
+npm run db:migrate
 npm run dev
 ```
 
-Validações disponíveis:
+Em outro terminal:
+
+```bash
+npm run worker
+```
+
+Validações:
 
 ```bash
 npm run lint
+npm test
 npm run build
 ```
 
-Copie `.env.example` para `.env` e preencha apenas as integrações que estiver utilizando. Em produção, o startup aplica as migrações automaticamente quando `DATABASE_URL` estiver definida.
+## Variáveis de ambiente
 
-## Segurança planejada
+| Variável | Serviço | Finalidade |
+|---|---|---|
+| `DATABASE_URL` | Web e worker | Conexão PostgreSQL |
+| `GITHUB_ID` | Web | Client ID do GitHub OAuth App |
+| `GITHUB_SECRET` | Web | Client secret do GitHub OAuth App |
+| `ADMIN_GITHUB_LOGIN` | Web | Login GitHub promovido a Administrador Global |
+| `NEXTAUTH_SECRET` | Web | Assinatura das sessões |
+| `NEXTAUTH_URL` | Web | URL pública da aplicação |
+| `OPENAI_API_KEY` | Web e worker | Autorizar e executar demandas |
+| `OPENAI_MODEL` | Worker | Modelo, padrão `gpt-5.6` |
+| `WORKER_POLL_INTERVAL_MS` | Worker | Intervalo da fila, padrão 5000 ms |
+| `RAILWAY_API_TOKEN` | Web | Reservado para integração avançada com a API Railway |
 
-As demandas serão executadas em branches isoladas e containers descartáveis. Alterações só poderão chegar à branch principal por Pull Request, após build, testes automatizados e lint.
+O callback do GitHub OAuth em produção é:
+
+```text
+https://dashboard-ia-dev-production.up.railway.app/api/auth/callback/github
+```
+
+## Railway
+
+### Serviço web
+
+- origem: repositório GitHub, branch `main`;
+- build: `npm run build`;
+- start: `npm start`;
+- health check: `/api/health`;
+- o startup aplica `prisma migrate deploy` quando `DATABASE_URL` está definida.
+
+### PostgreSQL
+
+Adicione PostgreSQL ao mesmo projeto e referencie a variável do banco no serviço web e no worker.
+
+### Serviço worker
+
+Crie um segundo serviço a partir do mesmo repositório:
+
+- Dockerfile: `Dockerfile.worker`;
+- start command: `npm run worker`;
+- sem domínio público;
+- variáveis obrigatórias: `DATABASE_URL`, `OPENAI_API_KEY` e `OPENAI_MODEL`.
+
+## Permissões
+
+| Papel | Consultar | Criar demanda | Executar | Aprovar / abrir PR | Gerenciar membros |
+|---|---:|---:|---:|---:|---:|
+| Visualizador | Sim | Não | Não | Não | Não |
+| Desenvolvedor | Sim | Sim | Não | Não | Não |
+| Gestor | Sim | Sim | Sim | Sim | Sim |
+| Administrador Global | Tudo | Tudo | Tudo | Tudo | Tudo |
+
+## Estado atual
+
+Implementados: autenticação e RBAC, projetos, membros, demandas, aprovação, fila, worker com IA, branch isolada, validações, Pull Request, logs, saúde, usuários, migrações, CI e deploy Railway.
+
+Planejado para evolução posterior: Azure DevOps, webhooks para sincronização imediata de merge e integração detalhada de logs do Railway.

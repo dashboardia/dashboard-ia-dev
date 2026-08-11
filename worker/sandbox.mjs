@@ -91,6 +91,7 @@ function isAllowedReadCommand(command) {
   const trimmed = command.trim();
   if (!trimmed || /[\n\r;&|><`$]/.test(trimmed)) return false;
   if (/(^|\s)(\.env|\.git\/config|node_modules)(\s|$|\/)/.test(trimmed)) return false;
+  if (/^sed(\s|$)/.test(trimmed) && /(^|\s)(-\S*i\S*|--in-place(?:=\S*)?)(\s|$)/.test(trimmed)) return false;
   if (/^pwd$/.test(trimmed)) return true;
   if (/^(ls|rg|grep|sed|head|tail|wc)(\s|$)/.test(trimmed)) return true;
   if (/^find(\s|$)/.test(trimmed) && !/-(exec|execdir|delete|ok|okdir)\b/.test(trimmed)) return true;

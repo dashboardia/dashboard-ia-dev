@@ -26,6 +26,14 @@ describe("worker sandbox", () => {
     expect(result.output[0].outcome.exitCode).toBe(126);
   });
 
+  it("bloqueia edição de arquivos pelo sed", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "forgeboard-test-"));
+    directories.push(workspace);
+    const shell = new ReadOnlyShell(workspace);
+    const result = await shell.run({ commands: ["sed -i s/antes/depois/ arquivo.txt"] });
+    expect(result.output[0].outcome.exitCode).toBe(126);
+  });
+
   it("recusa patches em arquivos protegidos", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "forgeboard-test-"));
     directories.push(workspace);
