@@ -13,6 +13,7 @@ Plataforma para centralizar projetos, demandas, execução assistida por IA, val
 - **Observabilidade:** logs estruturados por execução e verificação periódica das URLs de produção.
 - **Revisão:** detalhe da execução com resumo, rastreabilidade Git, consumo, logs técnicos e diff antes da aprovação do PR.
 - **Sincronização:** webhook GitHub assinado atualiza Pull Requests e conclui a demanda somente após o merge.
+- **Auditoria:** histórico administrativo filtrável para alterações de acesso, projetos, demandas, execuções e Pull Requests.
 
 ## Fluxo de uma demanda
 
@@ -127,6 +128,6 @@ Crie um segundo serviço a partir do mesmo repositório:
 
 ## Estado atual
 
-Implementados: autenticação e RBAC, administração segura de usuários, projetos, membros, demandas, aprovação, fila, worker com IA, branch isolada, validações, Pull Request, sincronização de merge por webhook, logs, saúde, migrações, CI e deploy Railway.
+Implementados: autenticação e RBAC, administração segura de usuários, projetos, membros, demandas, aprovação, fila, worker com IA, branch isolada, validações, Pull Request, sincronização de merge por webhook, logs, auditoria administrativa, saúde, migrações, CI e deploy Railway.
 
 Planejado para evolução posterior: Azure DevOps e integração detalhada de logs do Railway.
