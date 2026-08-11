@@ -8,6 +8,7 @@ import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
 import MemberForm from "./member-form";
+import MemberControls from "./member-controls";
 import ProjectSettingsForm from "./project-settings-form";
 import WebhookStatus from "./webhook-status";
 
@@ -45,7 +46,7 @@ export default async function ProjectPage({ params }) {
           </section>
           <section className="form-card detail-card">
             <div className="card-heading"><div><h2>Membros</h2><p>{project.members.length} pessoas com acesso</p></div><Users size={20} /></div>
-            <div className="member-list">{project.members.map((member) => <div className="member-row" key={member.id}><span className="mini-avatar">{(member.user.name ?? member.user.githubLogin ?? "U")[0].toUpperCase()}</span><span><strong>{member.user.name ?? member.user.githubLogin}</strong><small>{member.user.email}</small></span><em>{member.role}</em></div>)}</div>
+            <div className="member-list">{project.members.map((member) => { const memberName = member.user.name ?? member.user.githubLogin ?? member.user.email ?? "Usuário"; return <div className="member-row" key={member.id}><span className="mini-avatar">{memberName[0].toUpperCase()}</span><span><strong>{memberName}</strong><small>{member.user.email}</small></span>{role === "MANAGER" ? <MemberControls projectId={project.id} memberId={member.id} initialRole={member.role} memberName={memberName} /> : <em>{member.role}</em>}</div>; })}</div>
             {role === "MANAGER" && <MemberForm projectId={project.id} />}
           </section>
         </div>
