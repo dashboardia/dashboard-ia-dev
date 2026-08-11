@@ -14,7 +14,6 @@ import {
   LogOut,
   Logs,
   Menu,
-  Search,
   Settings,
   Users,
   X,
@@ -23,6 +22,8 @@ import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+
+import GlobalSearch from "./global-search";
 
 const navigation = [
   { href: "/", label: "Visão geral", icon: LayoutDashboard },
@@ -78,7 +79,7 @@ export default function AppShell({ children, user = null, setupMode = false }) {
       <section className="content">
         <header className="topbar">
           <button className="menu" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu /></button>
-          <div className="search"><Search size={17} /><input aria-label="Buscar" placeholder="Buscar projetos, demandas ou logs..." /><kbd>⌘ K</kbd></div>
+          <GlobalSearch disabled={setupMode} />
           <button className="icon-button" onClick={() => notify("Nenhuma notificação nova")} aria-label="Notificações"><Bell size={19} /><i /></button>
           <button className="github-status" onClick={() => notify(setupMode ? "GitHub OAuth aguardando configuração" : "GitHub conectado e operacional")}><Github size={18} /><span>{setupMode ? "Configurar GitHub" : "GitHub conectado"}</span><CheckCircle2 size={15} /></button>
         </header>
