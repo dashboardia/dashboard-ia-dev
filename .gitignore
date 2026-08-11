@@ -6,3 +6,7 @@ upload/
 .openai/
 .DS_Store
 *.log
+.env
+.env.*
+!.env.example
+coverage/

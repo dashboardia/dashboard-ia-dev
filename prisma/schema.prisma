@@ -1,0 +1,351 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GlobalRole {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ProjectProvider {
+  GITHUB
+  AZURE_DEVOPS
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+  DISCONNECTED
+}
+
+enum ProjectRole {
+  MANAGER
+  DEVELOPER
+  VIEWER
+}
+
+enum DemandType {
+  BUG
+  FEATURE
+  REFACTOR
+  TEST
+  INVESTIGATION
+}
+
+enum DemandPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum DemandStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  QUEUED
+  RUNNING
+  REVIEW
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum ExecutionStatus {
+  QUEUED
+  PREPARING
+  RUNNING
+  VALIDATING
+  WAITING_APPROVAL
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum ExecutionStage {
+  ANALYSIS
+  IMPLEMENTATION
+  VALIDATION
+  PUBLISH
+}
+
+enum PullRequestStatus {
+  DRAFT
+  OPEN
+  MERGED
+  CLOSED
+}
+
+enum HealthStatus {
+  HEALTHY
+  DEGRADED
+  DOWN
+  UNKNOWN
+}
+
+model User {
+  id                  String          @id @default(cuid())
+  name                String?
+  email               String?         @unique
+  emailVerified       DateTime?
+  image               String?
+  githubLogin         String?         @unique
+  globalRole          GlobalRole      @default(USER)
+  status              UserStatus      @default(ACTIVE)
+  accounts            Account[]
+  sessions            Session[]
+  projectMemberships  ProjectMember[]
+  projectsCreated     Project[]       @relation("ProjectCreator")
+  demandsCreated      Demand[]        @relation("DemandCreator")
+  demandsApproved     Demand[]        @relation("DemandApprover")
+  executionsRequested Execution[]     @relation("ExecutionRequester")
+  executionsApproved  Execution[]     @relation("ExecutionApprover")
+  auditLogs           AuditLog[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Project {
+  id                   String          @id @default(cuid())
+  name                 String
+  slug                 String          @unique
+  provider             ProjectProvider @default(GITHUB)
+  repositoryFullName   String
+  repositoryId         String?
+  defaultBranch        String          @default("main")
+  githubInstallationId String?
+  productionUrl        String?
+  railwayProjectId     String?
+  railwayEnvironmentId String?
+  railwayServiceId     String?
+  status               ProjectStatus   @default(ACTIVE)
+  createdById          String
+  createdBy            User            @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  members              ProjectMember[]
+  demands              Demand[]
+  pullRequests         PullRequest[]
+  healthChecks         HealthCheck[]
+  auditLogs            AuditLog[]
+  webhookEvents        WebhookEvent[]
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@unique([provider, repositoryFullName])
+  @@index([status])
+  @@index([createdById])
+}
+
+model ProjectMember {
+  id        String      @id @default(cuid())
+  projectId String
+  userId    String
+  role      ProjectRole @default(VIEWER)
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model Demand {
+  id                 String         @id @default(cuid())
+  projectId          String
+  createdById        String
+  approvedById       String?
+  title              String
+  description        String         @db.Text
+  acceptanceCriteria String?        @db.Text
+  type               DemandType
+  priority           DemandPriority @default(NORMAL)
+  status             DemandStatus   @default(DRAFT)
+  approvedAt         DateTime?
+  project            Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy          User           @relation("DemandCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy         User?          @relation("DemandApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  executions         Execution[]
+  pullRequests       PullRequest[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([projectId, status])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model Execution {
+  id            String              @id @default(cuid())
+  demandId      String
+  requestedById String
+  approvedById  String?
+  status        ExecutionStatus     @default(QUEUED)
+  stage         ExecutionStage      @default(ANALYSIS)
+  branchName    String?
+  baseSha       String?
+  headSha       String?
+  model         String?
+  summary       String?             @db.Text
+  error         String?             @db.Text
+  inputTokens   Int?
+  outputTokens  Int?
+  attempts      Int                 @default(0)
+  lockedAt      DateTime?
+  lockedBy      String?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  demand        Demand              @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  requestedBy   User                @relation("ExecutionRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy    User?               @relation("ExecutionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  logs          ExecutionLog[]
+  artifacts     ExecutionArtifact[]
+  pullRequest   PullRequest?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([status, createdAt])
+  @@index([demandId])
+}
+
+model ExecutionLog {
+  id          String    @id @default(cuid())
+  executionId String
+  level       String    @default("info")
+  scope       String
+  message     String    @db.Text
+  metadata    Json?
+  execution   Execution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@index([executionId, createdAt])
+}
+
+model ExecutionArtifact {
+  id          String    @id @default(cuid())
+  executionId String
+  type        String
+  name        String
+  content     String?   @db.Text
+  url         String?
+  metadata    Json?
+  execution   Execution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@index([executionId])
+}
+
+model PullRequest {
+  id             String            @id @default(cuid())
+  executionId    String            @unique
+  projectId      String
+  demandId       String
+  externalNumber Int
+  url            String
+  title          String
+  status         PullRequestStatus @default(DRAFT)
+  headBranch     String
+  baseBranch     String
+  mergedAt       DateTime?
+  execution      Execution         @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  demand         Demand            @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([projectId, externalNumber])
+  @@index([demandId])
+}
+
+model HealthCheck {
+  id             String       @id @default(cuid())
+  projectId      String
+  status         HealthStatus @default(UNKNOWN)
+  responseTimeMs Int?
+  statusCode     Int?
+  summary        String?
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  checkedAt      DateTime     @default(now())
+
+  @@index([projectId, checkedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  projectId  String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  userAgent  String?  @db.Text
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  projectId   String?
+  provider    String
+  deliveryId  String
+  eventType   String
+  payload     Json
+  processedAt DateTime?
+  error       String?   @db.Text
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+
+  @@unique([provider, deliveryId])
+  @@index([processedAt, createdAt])
+}
