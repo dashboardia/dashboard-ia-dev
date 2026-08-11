@@ -171,6 +171,9 @@ nav em { margin-left:auto; font-style:normal; background:#6d4aff; color:white; w
 .form-card input:focus,.form-card select:focus,.form-card textarea:focus { border-color:#8f78f3; box-shadow:0 0 0 3px #7456f412; }
 .form-divider { display:flex; align-items:center; gap:12px; margin:23px 0 15px; color:#8c909e; font-size:9px; font-weight:700; letter-spacing:.6px; }.form-divider:after { content:""; height:1px; background:#ececf1; flex:1; }
 .full-field { margin-top:16px; }.form-actions { display:flex; justify-content:flex-end; margin-top:22px; }.form-error { margin-top:15px; padding:10px 11px; color:#a73b3b; background:#fff3f3; border:1px solid #f2c7c7; border-radius:8px; font-size:10px; }
+.form-success { margin-right:auto; display:flex; align-items:center; gap:6px; color:#168b62; font-size:9px; font-weight:700; }
+.project-settings-card .card-heading { margin-bottom:20px; }
+.project-settings-form input:disabled { cursor:not-allowed; color:#7f8391; background:#f5f5f8; }
 .spin { animation:spin .8s linear infinite; } @keyframes spin { to { transform:rotate(360deg); } }
 .detail-grid { display:grid; grid-template-columns:1.25fr 1fr; gap:15px; }.detail-card h2 { margin:0; font:700 14px Manrope; }.detail-card h3 { margin:22px 0 7px; font:700 12px Manrope; }.detail-card>p { color:#5f6473; font-size:11px; line-height:1.7; white-space:pre-wrap; }
 .card-heading { display:flex; justify-content:space-between; color:#6d4aff; margin-bottom:16px; }.card-heading p { margin:4px 0 0; color:#9296a4; font-size:9px; }

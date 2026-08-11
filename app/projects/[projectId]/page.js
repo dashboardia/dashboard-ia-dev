@@ -1,4 +1,4 @@
-import { ExternalLink, GitBranch, Github, ShieldCheck, Users } from "lucide-react";
+import { ExternalLink, GitBranch, Github, Settings, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -8,6 +8,7 @@ import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
 import MemberForm from "./member-form";
+import ProjectSettingsForm from "./project-settings-form";
 import WebhookStatus from "./webhook-status";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,26 @@ export default async function ProjectPage({ params }) {
             {role === "MANAGER" && <MemberForm projectId={project.id} />}
           </section>
         </div>
+        {role === "MANAGER" && (
+          <section className="form-card detail-card full-card project-settings-card">
+            <div className="card-heading"><div><h2>Configurações do projeto</h2><p>Produção, branch e comandos usados pelo worker</p></div><Settings size={20} /></div>
+            <ProjectSettingsForm project={{
+              id: project.id,
+              name: project.name,
+              repositoryFullName: project.repositoryFullName,
+              defaultBranch: project.defaultBranch,
+              productionUrl: project.productionUrl,
+              railwayProjectId: project.railwayProjectId,
+              railwayEnvironmentId: project.railwayEnvironmentId,
+              railwayServiceId: project.railwayServiceId,
+              workingDirectory: project.workingDirectory,
+              installCommand: project.installCommand,
+              lintCommand: project.lintCommand,
+              testCommand: project.testCommand,
+              buildCommand: project.buildCommand,
+            }} />
+          </section>
+        )}
         <section className="form-card detail-card full-card">
           <div className="card-heading"><div><h2>Demandas recentes</h2><p>Atividades vinculadas ao projeto</p></div></div>
           <div className="simple-list">{project.demands.map((demand) => <Link href={`/demands/${demand.id}`} key={demand.id}><strong>{demand.title}</strong><span>{demand.type}</span><em>{demand.status}</em></Link>)}{!project.demands.length && <div className="list-empty">Nenhuma demanda criada.</div>}</div>

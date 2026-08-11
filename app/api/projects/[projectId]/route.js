@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { requireAdmin, requireProjectRole } from "../../../../lib/access";
+import { requireProjectRole } from "../../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../../lib/api";
 import { auditData } from "../../../../lib/audit";
 import { db } from "../../../../lib/db";
+import { getGitHubAccessToken, verifyRepositoryBranch } from "../../../../lib/github";
 import { projectUpdateSchema } from "../../../../lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -30,11 +31,24 @@ export async function PATCH(request, context) {
   try {
     assertSameOrigin(request);
     const { projectId } = await context.params;
-    const user = await requireAdmin();
+    const { user } = await requireProjectRole(projectId, "MANAGER");
     const input = projectUpdateSchema.parse(await request.json());
-    const project = await db.project.update({ where: { id: projectId }, data: input });
-    await db.auditLog.create({
-      data: auditData({ actorId: user.id, projectId, action: "project.update", entityType: "Project", entityId: projectId, metadata: input, request }),
+    const currentProject = await db.project.findUniqueOrThrow({
+      where: { id: projectId },
+      select: { repositoryFullName: true, defaultBranch: true },
+    });
+
+    if (input.defaultBranch && input.defaultBranch !== currentProject.defaultBranch) {
+      const token = await getGitHubAccessToken(user.id);
+      await verifyRepositoryBranch(token, currentProject.repositoryFullName, input.defaultBranch);
+    }
+
+    const project = await db.$transaction(async (transaction) => {
+      const updated = await transaction.project.update({ where: { id: projectId }, data: input });
+      await transaction.auditLog.create({
+        data: auditData({ actorId: user.id, projectId, action: "project.update", entityType: "Project", entityId: projectId, metadata: input, request }),
+      });
+      return updated;
     });
     return NextResponse.json({ project });
   } catch (error) {
