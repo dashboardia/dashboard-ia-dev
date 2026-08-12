@@ -78,7 +78,7 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
           </section>
 
           <section className="panel health-panel">
-            <PanelTitle title="Saúde das aplicações" subtitle="Monitoramento Railway em tempo real" action="Abrir monitor" href="/health" />
+            <PanelTitle title="Saúde das aplicações" subtitle="Monitoramento das aplicações publicadas" action="Abrir monitor" href="/health" />
             <div className="health-score"><div className="pulse"><HeartPulse size={25} /></div><div><strong>{dashboard.health.title}</strong><span>{dashboard.health.subtitle}</span></div><b>{dashboard.health.availability}</b></div>
             <HealthChart values={dashboard.health.chart} />
             <div className="health-legend"><span><i className="ok" />{dashboard.health.healthy} serviços saudáveis</span><span><i className="warn" />{dashboard.health.attention} requer atenção</span></div>

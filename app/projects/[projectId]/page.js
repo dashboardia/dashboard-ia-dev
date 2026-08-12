@@ -40,7 +40,7 @@ export default async function ProjectPage({ params }) {
               <span><Github size={17} /><strong>GitHub</strong><em>{project.repositoryFullName}</em></span>
               <span><Github size={17} /><strong>Webhook</strong><em>{role === "MANAGER" ? <WebhookStatus projectId={project.id} configured={Boolean(project.githubWebhookId)} error={project.githubWebhookError} /> : project.githubWebhookId ? "Sincronizado" : "Pendente"}</em></span>
               <span><GitBranch size={17} /><strong>Branch</strong><em>{project.defaultBranch}</em></span>
-              <span><ExternalLink size={17} /><strong>Produção</strong><em>{project.productionUrl ?? "Não configurada"}</em></span>
+              <span><ExternalLink size={17} /><strong>Deploy</strong><em>{project.productionUrl ?? "Somente GitHub"}</em></span>
               <span><ShieldCheck size={17} /><strong>Seu papel</strong><em>{role}</em></span>
             </div>
           </section>
@@ -59,9 +59,6 @@ export default async function ProjectPage({ params }) {
               repositoryFullName: project.repositoryFullName,
               defaultBranch: project.defaultBranch,
               productionUrl: project.productionUrl,
-              railwayProjectId: project.railwayProjectId,
-              railwayEnvironmentId: project.railwayEnvironmentId,
-              railwayServiceId: project.railwayServiceId,
               workingDirectory: project.workingDirectory,
               installCommand: project.installCommand,
               lintCommand: project.lintCommand,

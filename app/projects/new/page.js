@@ -11,7 +11,7 @@ export default async function NewProjectPage() {
   return (
     <AppShell user={user}>
       <div className="section-page narrow-page">
-        <SectionHeader backHref="/projects" eyebrow="NOVO PROJETO" title="Conectar repositório" description="Cadastre o repositório e os identificadores do Railway. A validação no GitHub ocorrerá antes da primeira execução." />
+        <SectionHeader backHref="/projects" eyebrow="NOVO PROJETO" title="Conectar repositório" description="Conecte o GitHub para gerar código e Pull Requests. O deploy é opcional e pode estar em qualquer plataforma." />
         <ProjectForm />
       </div>
     </AppShell>
