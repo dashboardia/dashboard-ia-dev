@@ -126,7 +126,7 @@ function Demand({ id, title, project, type, status, tone, time, setupMode }) {
 function HealthChart({ values }) {
   const maximum = Math.max(...values, 1);
   const normalized = values.length ? values : Array.from({ length: 24 }, () => 0);
-  return <div className={`chart ${values.length ? "" : "empty-chart"}`} aria-label="Disponibilidade das últimas verificações">{normalized.map((value, index) => <span key={index} style={{ height: values.length ? `${Math.max(8, (value / maximum) * 100)}%` : "8%" }} />)}</div>;
+  return <div className={`chart ${values.length ? "" : "empty-chart"}`} aria-label="Tempo de resposta das últimas verificações">{normalized.map((value, index) => <span key={index} style={{ height: values.length ? `${Math.max(8, (value / maximum) * 100)}%` : "8%" }} />)}</div>;
 }
 
 function EmptyState({ title, text }) {
