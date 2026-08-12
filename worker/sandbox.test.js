@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ReadOnlyShell, resolveWorkspacePath, WorkspaceEditor } from "./sandbox.mjs";
+import { ReadOnlyShell, redactSensitiveData, resolveWorkspacePath, runProcess, WorkspaceEditor } from "./sandbox.mjs";
 
 const directories = [];
 
@@ -41,5 +41,17 @@ describe("worker sandbox", () => {
     const result = await editor.deleteFile({ type: "delete_file", path: ".env" });
     expect(result.status).toBe("failed");
     expect(result.output).toContain("protegido");
+  });
+
+  it("remove credenciais de mensagens", () => {
+    expect(redactSensitiveData("Authorization: Basic abc123 token-secreto", ["token-secreto"]))
+      .toBe("Authorization: Basic [REDACTED] [REDACTED]");
+  });
+
+  it("não expõe segredos quando um processo falha", async () => {
+    await expect(runProcess(process.execPath, ["-e", "process.stderr.write(process.argv[1]); process.exit(1)", "token-secreto"], {
+      cwd: process.cwd(),
+      secrets: ["token-secreto"],
+    })).rejects.not.toThrow("token-secreto");
   });
 });

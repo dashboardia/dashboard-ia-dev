@@ -5,6 +5,10 @@ import { promisify } from "node:util";
 
 import { applyDiff } from "@openai/agents";
 
+import { redactSensitiveData } from "../lib/redaction.js";
+
+export { redactSensitiveData } from "../lib/redaction.js";
+
 const exec = promisify(execCallback);
 const execFile = promisify(execFileCallback);
 const MAX_OUTPUT = 24_000;
@@ -128,13 +132,23 @@ export class ReadOnlyShell {
 }
 
 export async function runProcess(command, args, options = {}) {
-  const result = await execFile(command, args, {
-    cwd: options.cwd,
-    env: options.env ?? safeChildEnvironment(options.cwd),
-    timeout: options.timeout ?? 120_000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
-  return { stdout: truncate(result.stdout, 200_000), stderr: truncate(result.stderr, 200_000) };
+  try {
+    const result = await execFile(command, args, {
+      cwd: options.cwd,
+      env: options.env ?? safeChildEnvironment(options.cwd),
+      timeout: options.timeout ?? 120_000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return { stdout: truncate(result.stdout, 200_000), stderr: truncate(result.stderr, 200_000) };
+  } catch (error) {
+    const secrets = options.secrets ?? [];
+    const sanitized = new Error(redactSensitiveData(error.message, secrets));
+    sanitized.code = error.code;
+    sanitized.killed = error.killed;
+    sanitized.stdout = redactSensitiveData(error.stdout, secrets);
+    sanitized.stderr = redactSensitiveData(error.stderr, secrets);
+    throw sanitized;
+  }
 }
 
 export async function runConfiguredCommand(command, workspace, timeout = 10 * 60_000) {

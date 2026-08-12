@@ -4,7 +4,7 @@ import { requireAdmin, requireUser } from "../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../lib/api";
 import { auditData } from "../../../lib/audit";
 import { db } from "../../../lib/db";
-import { getGitHubAccessToken, verifyRepositoryAccess } from "../../../lib/github";
+import { getGitHubAccessToken, verifyRepositoryAccess, verifyRepositoryBranch } from "../../../lib/github";
 import { createUniqueProjectSlug, projectAccessWhere } from "../../../lib/projects";
 import { configureProjectGitHubWebhook } from "../../../lib/project-webhooks";
 import { projectInputSchema } from "../../../lib/validation";
@@ -38,6 +38,13 @@ export async function POST(request) {
     const githubRepository = await verifyRepositoryAccess(token, input.repositoryFullName.toLowerCase());
     if (!githubRepository.permissions?.push) {
       return NextResponse.json({ error: "Sua conta GitHub não possui permissão de escrita neste repositório" }, { status: 403 });
+    }
+    if (githubRepository.size > 0) {
+      try {
+        await verifyRepositoryBranch(token, input.repositoryFullName.toLowerCase(), input.defaultBranch);
+      } catch {
+        return NextResponse.json({ error: `A branch ${input.defaultBranch} não existe neste repositório` }, { status: 422 });
+      }
     }
     const slug = await createUniqueProjectSlug(input.name);
 

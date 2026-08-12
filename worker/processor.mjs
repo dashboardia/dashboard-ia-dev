@@ -104,8 +104,9 @@ export async function processExecution(executionId, workerId) {
 
     const token = await getGitHubAccessToken(execution.requestedById);
     const repositoryUrl = `https://github.com/${execution.demand.project.repositoryFullName}.git`;
+    const authenticationArgs = gitAuthenticationArgs(token);
     await runProcess("git", [
-      ...gitAuthenticationArgs(token),
+      ...authenticationArgs,
       "clone",
       "--depth",
       "50",
@@ -114,7 +115,7 @@ export async function processExecution(executionId, workerId) {
       execution.demand.project.defaultBranch,
       repositoryUrl,
       workspace,
-    ], { cwd: workspaceRoot, timeout: 5 * 60_000 });
+    ], { cwd: workspaceRoot, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
 
     const branchName = `forgeboard/demand-${execution.demandId.slice(-8)}-${execution.id.slice(-6)}`;
     await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
@@ -168,7 +169,7 @@ export async function processExecution(executionId, workerId) {
     await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "-m", `forgeboard: ${execution.demand.title.slice(0, 120)}`], { cwd: workspace });
     const head = await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace });
     const base = await runProcess("git", ["rev-parse", execution.demand.project.defaultBranch], { cwd: workspace });
-    await runProcess("git", [...gitAuthenticationArgs(token), "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000 });
+    await runProcess("git", [...authenticationArgs, "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
 
     await db.$transaction(async (transaction) => {
       const updated = await transaction.execution.updateMany({

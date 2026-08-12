@@ -11,10 +11,10 @@ const initialForm = {
   deploymentMode: "GITHUB_ONLY",
   productionUrl: "",
   workingDirectory: ".",
-  installCommand: "npm ci",
-  lintCommand: "npm run lint",
-  testCommand: "npm test",
-  buildCommand: "npm run build",
+  installCommand: "",
+  lintCommand: "",
+  testCommand: "",
+  buildCommand: "",
 };
 
 export default function ProjectForm() {

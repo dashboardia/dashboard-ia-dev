@@ -7,6 +7,7 @@ import SectionHeader from "../../../components/section-header";
 import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
+import { redactSensitiveData } from "../../../lib/redaction";
 import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-button";
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
 
@@ -67,7 +68,7 @@ export default async function ExecutionPage({ params }) {
           <section className="form-card detail-card execution-summary-card">
             <div className="card-heading"><div><h2>Resultado</h2><p>Resumo produzido pelo agente</p></div><Code2 size={20} /></div>
             <p>{execution.summary ?? "O resumo ficará disponível quando o agente concluir a implementação."}</p>
-            {execution.error && <div className="execution-error-box">{execution.error}</div>}
+            {execution.error && <div className="execution-error-box">{redactSensitiveData(execution.error)}</div>}
             <div className="execution-links"><Link href={`/demands/${execution.demandId}`}>Ver demanda original</Link>{execution.pullRequest && <a href={execution.pullRequest.url} target="_blank" rel="noreferrer">Abrir PR #{execution.pullRequest.externalNumber}</a>}</div>
           </section>
 
@@ -79,7 +80,7 @@ export default async function ExecutionPage({ params }) {
 
         <section className="form-card detail-card full-card execution-log-card">
           <div className="card-heading"><div><h2>Logs da execução</h2><p>{execution.logs.length} eventos registrados em ordem cronológica</p></div><TerminalSquare size={20} /></div>
-          <div className="execution-timeline">{execution.logs.map((entry) => <div key={entry.id}><span className={`log-level ${entry.level}`}>{entry.level}</span><time>{entry.createdAt.toLocaleString("pt-BR")}</time><strong>{entry.scope}</strong><p>{entry.message}</p>{entry.metadata && <details><summary>Saída técnica</summary><pre>{JSON.stringify(entry.metadata, null, 2)}</pre></details>}</div>)}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div>
+          <div className="execution-timeline">{execution.logs.map((entry) => <div key={entry.id}><span className={`log-level ${entry.level}`}>{entry.level}</span><time>{entry.createdAt.toLocaleString("pt-BR")}</time><strong>{entry.scope}</strong><p>{redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Saída técnica</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>)}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div>
         </section>
 
         <section className="form-card detail-card full-card execution-diff-card">
