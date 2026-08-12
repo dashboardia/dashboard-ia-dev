@@ -28,7 +28,7 @@ export default async function ProjectsPage() {
           eyebrow="REPOSITÓRIOS"
           title="Projetos"
           description="Gerencie repositórios, participantes e integrações de produção."
-          action={user.globalRole === "ADMIN" ? <Link className="primary" href="/projects/new"><Plus size={18} />Conectar projeto</Link> : null}
+          action={<Link className="primary" href="/projects/new"><Plus size={18} />Conectar projeto</Link>}
         />
 
         <section className="resource-grid">
@@ -45,7 +45,7 @@ export default async function ProjectsPage() {
               </Link>
             );
           })}
-          {!projects.length && <div className="resource-empty"><Boxes size={28} /><strong>Nenhum projeto disponível</strong><span>O administrador global pode conectar o primeiro repositório.</span></div>}
+          {!projects.length && <div className="resource-empty"><Boxes size={28} /><strong>Nenhum projeto disponível</strong><span>Conecte um repositório GitHub ao qual você tenha acesso de escrita.</span><Link className="primary" href="/projects/new"><Plus size={17} />Conectar projeto</Link></div>}
         </section>
       </div>
     </AppShell>

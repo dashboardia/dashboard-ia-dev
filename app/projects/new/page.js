@@ -1,12 +1,12 @@
 import AppShell from "../../../components/app-shell";
 import SectionHeader from "../../../components/section-header";
-import { requirePageAdmin } from "../../../lib/page-access";
+import { requirePageUser } from "../../../lib/page-access";
 import ProjectForm from "./project-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewProjectPage() {
-  const user = await requirePageAdmin();
+  const user = await requirePageUser();
 
   return (
     <AppShell user={user}>

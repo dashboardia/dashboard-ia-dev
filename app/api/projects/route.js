@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireAdmin, requireUser } from "../../../lib/access";
+import { requireUser } from "../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../lib/api";
 import { auditData } from "../../../lib/audit";
 import { db } from "../../../lib/db";
@@ -32,7 +32,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     assertSameOrigin(request);
-    const user = await requireAdmin();
+    const user = await requireUser();
     const input = projectInputSchema.parse(await request.json());
     const token = await getGitHubAccessToken(user.id);
     const githubRepository = await verifyRepositoryAccess(token, input.repositoryFullName.toLowerCase());
@@ -45,6 +45,36 @@ export async function POST(request) {
       } catch {
         return NextResponse.json({ error: `A branch ${input.defaultBranch} não existe neste repositório` }, { status: 422 });
       }
+    }
+
+    const existingProject = await db.project.findUnique({
+      where: {
+        provider_repositoryFullName: {
+          provider: "GITHUB",
+          repositoryFullName: input.repositoryFullName.toLowerCase(),
+        },
+      },
+    });
+    if (existingProject) {
+      await db.$transaction(async (transaction) => {
+        await transaction.projectMember.upsert({
+          where: { projectId_userId: { projectId: existingProject.id, userId: user.id } },
+          update: { role: "MANAGER" },
+          create: { projectId: existingProject.id, userId: user.id, role: "MANAGER" },
+        });
+        await transaction.auditLog.create({
+          data: auditData({
+            actorId: user.id,
+            projectId: existingProject.id,
+            action: "project.connect",
+            entityType: "Project",
+            entityId: existingProject.id,
+            metadata: { repositoryFullName: existingProject.repositoryFullName },
+            request,
+          }),
+        });
+      });
+      return NextResponse.json({ project: existingProject, webhook: null });
     }
     const slug = await createUniqueProjectSlug(input.name);
 
