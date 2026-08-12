@@ -48,13 +48,8 @@ const statusIcon = {
   red: CircleDot,
 };
 
-export default function Dashboard({ user = null, setupMode = false, data = null }) {
+export default function Dashboard({ user = null, setupMode = false, data = null, dateLabel = "" }) {
   const dashboard = data ?? demoData;
-  const dateLabel = new Intl.DateTimeFormat("pt-BR", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-  }).format(new Date()).toUpperCase();
 
   return (
     <AppShell user={user} setupMode={setupMode}>
