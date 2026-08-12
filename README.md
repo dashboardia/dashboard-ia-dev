@@ -80,6 +80,7 @@ npm run build
 | `WORKER_POLL_INTERVAL_MS` | Worker | Intervalo da fila, padrão 5000 ms |
 | `HEALTH_CHECK_INTERVAL_MS` | Worker | Intervalo de monitoramento, padrão 5 minutos |
 | `HEALTH_CHECK_RETENTION_DAYS` | Worker | Retenção do histórico de saúde, padrão 30 dias |
+| `WORKER_HEARTBEAT_INTERVAL_MS` | Worker | Heartbeat do processo, padrão 30 segundos |
 | `RAILWAY_API_TOKEN` | Web | Reservado para integração avançada com a API Railway |
 
 O callback do GitHub OAuth em produção é:
