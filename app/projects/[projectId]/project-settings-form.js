@@ -8,10 +8,8 @@ function initialForm(project) {
   return {
     name: project.name,
     defaultBranch: project.defaultBranch,
+    deploymentMode: project.productionUrl ? "PUBLISHED" : "GITHUB_ONLY",
     productionUrl: project.productionUrl ?? "",
-    railwayProjectId: project.railwayProjectId ?? "",
-    railwayEnvironmentId: project.railwayEnvironmentId ?? "",
-    railwayServiceId: project.railwayServiceId ?? "",
     workingDirectory: project.workingDirectory,
     installCommand: project.installCommand ?? "",
     lintCommand: project.lintCommand ?? "",
@@ -38,13 +36,17 @@ export default function ProjectSettingsForm({ project }) {
     setError("");
     setSaved(false);
     try {
+      const { deploymentMode, ...settings } = form;
       const response = await fetch(`/api/projects/${project.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...settings,
+          productionUrl: deploymentMode === "PUBLISHED" ? settings.productionUrl : "",
+        }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Não foi possível salvar o projeto");
+      if (!response.ok) throw new Error(result.fields?.[0]?.message ?? result.error ?? "Não foi possível salvar o projeto");
       setForm(initialForm(result.project));
       setSaved(true);
       router.refresh();
@@ -61,14 +63,12 @@ export default function ProjectSettingsForm({ project }) {
         <label><span>Nome do projeto</span><input name="name" value={form.name} onChange={change} required /></label>
         <label><span>Repositório GitHub</span><input value={project.repositoryFullName} disabled aria-label="Repositório GitHub" /></label>
         <label><span>Branch padrão</span><input name="defaultBranch" value={form.defaultBranch} onChange={change} required /></label>
-        <label><span>URL de produção</span><input name="productionUrl" type="url" value={form.productionUrl} onChange={change} placeholder="https://app.up.railway.app" /></label>
       </div>
 
-      <div className="form-divider"><span>Integração Railway</span></div>
-      <div className="form-grid three-columns">
-        <label><span>Project ID</span><input name="railwayProjectId" value={form.railwayProjectId} onChange={change} /></label>
-        <label><span>Environment ID</span><input name="railwayEnvironmentId" value={form.railwayEnvironmentId} onChange={change} /></label>
-        <label><span>Service ID</span><input name="railwayServiceId" value={form.railwayServiceId} onChange={change} /></label>
+      <div className="form-divider"><span>Deploy e monitoramento (opcional)</span></div>
+      <div className="form-grid">
+        <label><span>Modo de entrega</span><select name="deploymentMode" value={form.deploymentMode} onChange={change}><option value="GITHUB_ONLY">Somente GitHub</option><option value="PUBLISHED">GitHub + aplicação publicada</option></select></label>
+        {form.deploymentMode === "PUBLISHED" && <label><span>URL da aplicação</span><input name="productionUrl" type="url" value={form.productionUrl} onChange={change} placeholder="https://app.exemplo.com" required /></label>}
       </div>
 
       <div className="form-divider"><span>Execução e validação</span></div>
