@@ -36,6 +36,13 @@ export async function POST(request) {
     ? await db.project.findUnique({ where: { provider_repositoryFullName: { provider: "GITHUB", repositoryFullName } } })
     : null;
 
+  if (project) {
+    await db.project.update({
+      where: { id: project.id },
+      data: { githubWebhookAt: new Date(), githubWebhookError: null },
+    });
+  }
+
   let event;
   try {
     event = await db.webhookEvent.create({
