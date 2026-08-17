@@ -142,7 +142,45 @@ export async function processExecution(executionId, workerId) {
       ],
     });
 
-    const result = await run(agent, agentPrompt(execution.demand), { maxTurns: 40 });
+    let result;
+    let abortReason = null;
+    const agentController = new AbortController();
+    const cancellationTimer = setInterval(async () => {
+      const current = await db.execution.findUnique({
+        where: { id: executionId },
+        select: { cancelRequestedAt: true },
+      }).catch(() => null);
+      if (current?.cancelRequestedAt && !agentController.signal.aborted) {
+        abortReason = "cancelled";
+        agentController.abort();
+      }
+    }, 2_000);
+    cancellationTimer.unref();
+
+    const agentTimeout = setTimeout(() => {
+      if (!agentController.signal.aborted) {
+        abortReason = "timeout";
+        agentController.abort();
+      }
+    }, 5 * 60_000);
+    agentTimeout.unref();
+
+    try {
+      result = await run(agent, agentPrompt(execution.demand), {
+        maxTurns: 24,
+        signal: agentController.signal,
+      });
+    } catch (error) {
+      if (abortReason === "cancelled") throw new ExecutionCancelledError();
+      if (abortReason === "timeout") {
+        throw new Error("A implementação excedeu o limite de 5 minutos. Revise o escopo da demanda ou tente novamente.");
+      }
+      throw error;
+    } finally {
+      clearInterval(cancellationTimer);
+      clearTimeout(agentTimeout);
+    }
+
     const summary = String(result.finalOutput ?? "Implementação concluída sem resumo.").trim();
     const usage = result.runContext.usage;
     await log(executionId, "agent", "Agente de implementação concluído");
