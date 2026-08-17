@@ -1,4 +1,4 @@
-import { exec as execCallback, execFile as execFileCallback } from "node:child_process";
+import { exec as execCallback, execFile as execFileCallback, spawn } from "node:child_process";
 import { mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -153,19 +153,87 @@ export async function runProcess(command, args, options = {}) {
   }
 }
 
-export async function runConfiguredCommand(command, workspace, timeout = 10 * 60_000) {
+function executeShellProcess(command, { cwd, env, timeout, signal }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("/bin/bash", ["-lc", command], {
+      cwd,
+      env,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let terminationError = null;
+    let forceKillTimer = null;
+
+    const append = (current, chunk) => (current + chunk).slice(-8 * 1024 * 1024);
+    child.stdout.on("data", (chunk) => { stdout = append(stdout, chunk.toString()); });
+    child.stderr.on("data", (chunk) => { stderr = append(stderr, chunk.toString()); });
+
+    function killProcessTree(error) {
+      if (terminationError) return;
+      terminationError = error;
+      terminationError.killed = true;
+      try { process.kill(-child.pid, "SIGTERM"); } catch {}
+      forceKillTimer = setTimeout(() => {
+        try { process.kill(-child.pid, "SIGKILL"); } catch {}
+      }, 2_000);
+      forceKillTimer.unref();
+    }
+
+    const timeoutTimer = setTimeout(() => {
+      const error = new Error(`Comando excedeu o limite de ${Math.round(timeout / 60_000)} minutos`);
+      error.code = "ETIMEDOUT";
+      killProcessTree(error);
+    }, timeout);
+    timeoutTimer.unref();
+
+    const abort = () => killProcessTree(new Error("Comando cancelado pelo Gestor"));
+    signal?.addEventListener("abort", abort, { once: true });
+
+    child.once("error", (error) => {
+      clearTimeout(timeoutTimer);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      signal?.removeEventListener("abort", abort);
+      error.stdout = stdout;
+      error.stderr = stderr;
+      reject(error);
+    });
+    child.once("close", (code, childSignal) => {
+      clearTimeout(timeoutTimer);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      signal?.removeEventListener("abort", abort);
+      if (terminationError) {
+        terminationError.stdout = stdout;
+        terminationError.stderr = stderr;
+        reject(terminationError);
+        return;
+      }
+      if (code !== 0) {
+        const error = new Error(`Comando encerrou com código ${code ?? childSignal ?? "desconhecido"}`);
+        error.code = code;
+        error.stdout = stdout;
+        error.stderr = stderr;
+        reject(error);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+export async function runConfiguredCommand(command, workspace, timeout = 10 * 60_000, signal) {
   if (!command?.trim()) return null;
   if (/(^|\s)(sudo|su|docker|kubectl|railway|ssh|scp|nc)(\s|$)/.test(command)) {
     throw new Error(`Comando de validação bloqueado: ${command}`);
   }
   const tempDirectory = path.join(workspace, ".tmp");
   await mkdir(tempDirectory, { recursive: true });
-  const result = await exec(command, {
+  const result = await executeShellProcess(command, {
     cwd: workspace,
     env: safeChildEnvironment(workspace),
     timeout,
-    maxBuffer: 8 * 1024 * 1024,
-    shell: "/bin/bash",
+    signal,
   });
   return { stdout: truncate(result.stdout, 80_000), stderr: truncate(result.stderr, 80_000) };
 }
