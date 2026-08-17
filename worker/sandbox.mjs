@@ -1,5 +1,5 @@
 import { exec as execCallback, execFile as execFileCallback, spawn } from "node:child_process";
-import { mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -222,6 +222,32 @@ function executeShellProcess(command, { cwd, env, timeout, signal }) {
   });
 }
 
+function usesPython(command) {
+  return /(^|\s)(python3?|pip3?|pytest|flask|uvicorn|gunicorn|django-admin|ruff|black|mypy|poetry)(\s|$)/.test(command);
+}
+
+async function pythonEnvironment(workspace, command) {
+  const virtualEnvironment = path.join(workspace, ".forgeboard-venv");
+  const python = path.join(virtualEnvironment, "bin", "python");
+  let exists = true;
+  try {
+    await access(python);
+  } catch {
+    exists = false;
+  }
+
+  if (!exists && usesPython(command)) {
+    await runProcess("python3", ["-m", "venv", virtualEnvironment], { cwd: workspace });
+    exists = true;
+  }
+
+  return exists ? {
+    PATH: `${path.join(virtualEnvironment, "bin")}:${process.env.PATH}`,
+    VIRTUAL_ENV: virtualEnvironment,
+    PIP_NO_CACHE_DIR: "1",
+  } : {};
+}
+
 export async function runConfiguredCommand(command, workspace, timeout = 10 * 60_000, signal, nodeMemoryMb) {
   if (!command?.trim()) return null;
   if (/(^|\s)(sudo|su|docker|kubectl|railway|ssh|scp|nc)(\s|$)/.test(command)) {
@@ -229,9 +255,10 @@ export async function runConfiguredCommand(command, workspace, timeout = 10 * 60
   }
   const tempDirectory = path.join(workspace, ".tmp");
   await mkdir(tempDirectory, { recursive: true });
+  const runtimeEnvironment = await pythonEnvironment(workspace, command);
   const result = await executeShellProcess(command, {
     cwd: workspace,
-    env: { ...safeChildEnvironment(workspace), ...(nodeMemoryMb ? { NODE_OPTIONS: `--max-old-space-size=${nodeMemoryMb}` } : {}) },
+    env: { ...safeChildEnvironment(workspace), ...runtimeEnvironment, ...(nodeMemoryMb ? { NODE_OPTIONS: `--max-old-space-size=${nodeMemoryMb}` } : {}) },
     timeout,
     signal,
   });

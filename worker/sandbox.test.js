@@ -65,6 +65,15 @@ describe("worker sandbox", () => {
     expect(Date.now() - startedAt).toBeLessThan(3_000);
   });
 
+  it("isola comandos Python em um ambiente virtual do workspace", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "forgeboard-python-"));
+    directories.push(workspace);
+
+    const result = await runConfiguredCommand("python -c 'import sys; print(sys.prefix)'", workspace);
+
+    expect(result.stdout.trim()).toBe(path.join(workspace, ".forgeboard-venv"));
+  });
+
   it("não expõe segredos quando um processo falha", async () => {
     await expect(runProcess(process.execPath, ["-e", "process.stderr.write(process.argv[1]); process.exit(1)", "token-secreto"], {
       cwd: process.cwd(),
