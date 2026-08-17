@@ -7,6 +7,7 @@ import { Agent, applyPatchTool, run, shellTool } from "@openai/agents";
 import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
 import { getProjectGitHubAccessToken } from "../lib/github.js";
+import { getGlobalSettings } from "../lib/global-settings.js";
 import {
   cleanWorkspace,
   gitAuthenticationArgs,
@@ -56,7 +57,7 @@ function agentPrompt(demand) {
   ].join("\n\n");
 }
 
-async function runValidations(execution, projectDirectory) {
+async function runValidations(execution, projectDirectory, settings) {
   const commands = [
     ["install", execution.demand.project.installCommand],
     ["lint", execution.demand.project.lintCommand],
@@ -85,7 +86,7 @@ async function runValidations(execution, projectDirectory) {
     cancellationTimer.unref();
 
     try {
-      const result = await runConfiguredCommand(command, projectDirectory, 10 * 60_000, commandController.signal);
+      const result = await runConfiguredCommand(command, projectDirectory, settings.commandTimeoutMinutes * 60_000, commandController.signal, settings.nodeMemoryMb);
       await log(execution.id, scope, `${scope} concluído`, "info", {
         stdout: result.stdout.slice(-12_000),
         stderr: result.stderr.slice(-6_000),
@@ -110,6 +111,7 @@ export async function processExecution(executionId, workerId) {
 
   try {
     if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada no worker");
+    const settings = await getGlobalSettings();
     execution = await db.execution.findUniqueOrThrow({
       where: { id: executionId },
       include: { demand: { include: { project: true } } },
@@ -177,7 +179,7 @@ export async function processExecution(executionId, workerId) {
         abortReason = "timeout";
         agentController.abort();
       }
-    }, 5 * 60_000);
+    }, settings.agentTimeoutMinutes * 60_000);
     agentTimeout.unref();
 
     try {
@@ -188,7 +190,7 @@ export async function processExecution(executionId, workerId) {
     } catch (error) {
       if (abortReason === "cancelled") throw new ExecutionCancelledError();
       if (abortReason === "timeout") {
-        throw new Error("A implementação excedeu o limite de 5 minutos. Revise o escopo da demanda ou tente novamente.");
+        throw new Error(`A implementação excedeu o limite de ${settings.agentTimeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
       }
       throw error;
     } finally {
@@ -221,7 +223,7 @@ export async function processExecution(executionId, workerId) {
     execution.demand.project = await db.project.findUniqueOrThrow({
       where: { id: execution.demand.projectId },
     });
-    await runValidations(execution, projectDirectory);
+    await runValidations(execution, projectDirectory, settings);
     await assertExecutionActive(executionId);
     let visualArtifacts = [];
     if (execution.demand.visualValidation) {

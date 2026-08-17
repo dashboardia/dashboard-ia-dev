@@ -10,6 +10,7 @@ import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
 import { redactSensitiveData } from "../../../lib/redaction";
 import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error-messages";
+import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings";
 import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-button";
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
 
@@ -32,6 +33,7 @@ export const dynamic = "force-dynamic";
 export default async function ExecutionPage({ params }) {
   const user = await requirePageUser();
   const { executionId } = await params;
+  const settings = await getGlobalSettings();
   const execution = await db.execution.findUnique({
     where: { id: executionId },
     include: {
@@ -88,7 +90,7 @@ export default async function ExecutionPage({ params }) {
 
         <section className="form-card detail-card full-card execution-log-card">
           <div className="card-heading"><div><h2>Logs da execução</h2><p>{execution.logs.length} eventos registrados em ordem cronológica</p></div><TerminalSquare size={20} /></div>
-          <div className="execution-timeline">{execution.logs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; return <div key={entry.id}><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span><time>{entry.createdAt.toLocaleString("pt-BR")}</time><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Ver detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>; })}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div>
+          <div className="execution-timeline">{execution.logs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; return <div key={entry.id}><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Ver detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>; })}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div>
         </section>
 
         {execution.demand.visualValidation && <section className="form-card detail-card full-card">

@@ -5,6 +5,7 @@ import AppShell from "../../components/app-shell";
 import SectionHeader from "../../components/section-header";
 import { auditActionLabel, auditEntityHref } from "../../lib/audit";
 import { db } from "../../lib/db";
+import { formatDateTime, getGlobalSettings } from "../../lib/global-settings";
 import { requirePageAdmin } from "../../lib/page-access";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ const categoryLabels = {
 
 export default async function AuditPage({ searchParams }) {
   const user = await requirePageAdmin();
+  const settings = await getGlobalSettings();
   const filters = await searchParams;
   const projectId = typeof filters?.projectId === "string" ? filters.projectId : "";
   const category = typeof filters?.category === "string" && Object.hasOwn(categoryLabels, filters.category) ? filters.category : "";
@@ -61,7 +63,7 @@ export default async function AuditPage({ searchParams }) {
                 <i><ShieldCheck size={16} /></i>
                 <span className="audit-main"><strong>{auditActionLabel(entry.action)}</strong><small>{actor} · {entry.project?.name ?? "Administração global"}</small></span>
                 <span className="audit-entity">{href ? <Link href={href}>{entry.entityType}</Link> : entry.entityType}<small>{entry.entityId ?? "—"}</small></span>
-                <time>{entry.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}<small>{entry.ip ?? "IP indisponível"}</small></time>
+                <time>{formatDateTime(entry.createdAt, settings.timeZone)}<small>{entry.ip ?? "IP indisponível"}</small></time>
                 {(entry.metadata || entry.userAgent) && <details><summary>Detalhes técnicos</summary><pre>{JSON.stringify({ metadata: entry.metadata, userAgent: entry.userAgent }, null, 2)}</pre></details>}
               </article>
             );

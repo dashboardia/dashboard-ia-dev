@@ -222,7 +222,7 @@ function executeShellProcess(command, { cwd, env, timeout, signal }) {
   });
 }
 
-export async function runConfiguredCommand(command, workspace, timeout = 10 * 60_000, signal) {
+export async function runConfiguredCommand(command, workspace, timeout = 10 * 60_000, signal, nodeMemoryMb) {
   if (!command?.trim()) return null;
   if (/(^|\s)(sudo|su|docker|kubectl|railway|ssh|scp|nc)(\s|$)/.test(command)) {
     throw new Error(`Comando de validação bloqueado: ${command}`);
@@ -231,7 +231,7 @@ export async function runConfiguredCommand(command, workspace, timeout = 10 * 60
   await mkdir(tempDirectory, { recursive: true });
   const result = await executeShellProcess(command, {
     cwd: workspace,
-    env: safeChildEnvironment(workspace),
+    env: { ...safeChildEnvironment(workspace), ...(nodeMemoryMb ? { NODE_OPTIONS: `--max-old-space-size=${nodeMemoryMb}` } : {}) },
     timeout,
     signal,
   });

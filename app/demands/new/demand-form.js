@@ -7,7 +7,7 @@ import { useState } from "react";
 export default function DemandForm({ projects, initialProjectId }) {
   const router = useRouter();
   const [form, setForm] = useState({
-    projectId: projects.some((project) => project.id === initialProjectId) ? initialProjectId : projects[0]?.id ?? "",
+    projectId: projects.some((project) => project.id === initialProjectId) ? initialProjectId : "",
     title: "",
     description: "",
     acceptanceCriteria: "",
@@ -44,8 +44,8 @@ export default function DemandForm({ projects, initialProjectId }) {
 
   return (
     <form className="form-card" onSubmit={submit}>
-      <div className="form-grid">
-        <label><span>Projeto</span><select name="projectId" value={form.projectId} onChange={change}>{projects.map((project) => <option value={project.id} key={project.id}>{project.name} — {project.repositoryFullName}</option>)}</select></label>
+      <div className="form-grid three-columns demand-basics">
+        <label><span>Projeto e repositório</span><select name="projectId" value={form.projectId} onChange={change} required><option value="" disabled>Selecione o destino da demanda</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name} — {project.repositoryFullName}</option>)}</select></label>
         <label><span>Tipo</span><select name="type" value={form.type} onChange={change}><option value="BUG">Correção</option><option value="FEATURE">Nova funcionalidade</option><option value="REFACTOR">Refatoração</option><option value="TEST">Testes</option><option value="INVESTIGATION">Investigação</option></select></label>
         <label><span>Prioridade</span><select name="priority" value={form.priority} onChange={change}><option value="LOW">Baixa</option><option value="NORMAL">Normal</option><option value="HIGH">Alta</option><option value="URGENT">Urgente</option></select></label>
       </div>

@@ -372,3 +372,12 @@ model WorkerHeartbeat {
 
   @@index([lastSeenAt])
 }
+
+model GlobalSettings {
+  id                    String   @id
+  timeZone              String   @default("America/Sao_Paulo")
+  nodeMemoryMb          Int      @default(384)
+  commandTimeoutMinutes Int      @default(10)
+  agentTimeoutMinutes   Int      @default(5)
+  updatedAt             DateTime @updatedAt
+}

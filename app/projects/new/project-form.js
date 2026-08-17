@@ -90,8 +90,10 @@ export default function ProjectForm({ installationId, installUrl }) {
         <label><span>Modo de entrega</span><select name="deploymentMode" value={form.deploymentMode} onChange={change}><option value="GITHUB_ONLY">Somente GitHub</option><option value="PUBLISHED">GitHub + aplicação publicada</option></select></label>
         {form.deploymentMode === "PUBLISHED" && <label><span>URL da aplicação</span><input name="productionUrl" type="url" value={form.productionUrl} onChange={change} placeholder="https://app.exemplo.com" required /></label>}
       </div>
-      <div className="form-divider"><span>Execução e validação</span></div>
-      <div className="form-grid">
+      <details className="advanced-settings">
+        <summary>Configurações avançadas de execução</summary>
+        <p>O Dashboard detecta a tecnologia automaticamente. Altere somente quando o projeto exigir comandos específicos.</p>
+        <div className="form-grid">
         <label><span>Diretório de trabalho</span><input name="workingDirectory" value={form.workingDirectory} onChange={change} placeholder="." required /></label>
         <label><span>Instalação</span><input name="installCommand" value={form.installCommand} onChange={change} placeholder="npm ci" /></label>
         <label><span>Lint</span><input name="lintCommand" value={form.lintCommand} onChange={change} placeholder="npm run lint" /></label>
@@ -99,7 +101,8 @@ export default function ProjectForm({ installationId, installUrl }) {
         <label><span>Build</span><input name="buildCommand" value={form.buildCommand} onChange={change} placeholder="npm run build" /></label>
         <label><span>Iniciar preview visual</span><input name="previewCommand" value={form.previewCommand} onChange={change} placeholder="npm run dev" /></label>
         <label><span>Porta do preview</span><input name="previewPort" type="number" min="1" max="65535" value={form.previewPort} onChange={change} /></label>
-      </div>
+        </div>
+      </details>
       {error && <div className="form-error">{error}</div>}
       <div className="form-actions"><button className="primary" disabled={saving} type="submit">{saving ? <LoaderCircle className="spin" size={18} /> : <Save size={18} />}{saving ? "Salvando..." : "Conectar projeto"}</button></div>
     </form>
