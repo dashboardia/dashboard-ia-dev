@@ -45,7 +45,7 @@ export async function POST(request) {
       ? await getGitHubInstallationToken(githubInstallationId)
       : await getGitHubAccessToken(user.id);
     const githubRepository = await verifyRepositoryAccess(token, repositoryFullName);
-    if (!githubRepository.permissions?.push) {
+    if (!githubInstallationId && !githubRepository.permissions?.push) {
       return NextResponse.json({ error: "Sua conta GitHub não possui permissão de escrita neste repositório" }, { status: 403 });
     }
     if (githubRepository.size > 0) {
