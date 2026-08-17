@@ -93,11 +93,17 @@ async function runValidations(execution, projectDirectory, settings) {
       });
     } catch (error) {
       await assertExecutionActive(execution.id);
+      const stdout = String(error?.stdout ?? "").slice(-12_000);
+      const stderr = String(error?.stderr ?? "").slice(-12_000);
+      const errorMessage = error instanceof Error ? error.message : String(error ?? "Falha desconhecida");
+      const technical = [stderr, stdout, errorMessage].filter((value, index, values) => value && values.indexOf(value) === index).join("\n").slice(-20_000);
       await log(execution.id, scope, `${scope} falhou`, "error", {
-        stdout: error.stdout?.slice(-12_000),
-        stderr: (error.stderr || error.message)?.slice(-12_000),
+        command,
+        exitCode: error?.code ?? null,
+        stdout: stdout || "(sem saída padrão)",
+        stderr: stderr || errorMessage || "(sem saída de erro)",
       });
-      throw new Error(`Validação ${scope} falhou`);
+      throw new Error(`Validação ${scope} falhou\n${technical || "O processo terminou sem fornecer detalhes técnicos"}`);
     } finally {
       clearInterval(cancellationTimer);
     }
