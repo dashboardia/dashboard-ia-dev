@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ReadOnlyShell, redactSensitiveData, resolveWorkspacePath, runProcess, WorkspaceEditor } from "./sandbox.mjs";
+import { ReadOnlyShell, redactSensitiveData, resolveWorkspacePath, runConfiguredCommand, runProcess, WorkspaceEditor } from "./sandbox.mjs";
 
 const directories = [];
 
@@ -54,6 +54,15 @@ describe("worker sandbox", () => {
   it("remove credenciais de mensagens", () => {
     expect(redactSensitiveData("Authorization: Basic abc123 token-secreto", ["token-secreto"]))
       .toBe("Authorization: Basic [REDACTED] [REDACTED]");
+  });
+
+  it("encerra comandos configurados quando o limite é atingido", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "forgeboard-test-"));
+    directories.push(workspace);
+    const startedAt = Date.now();
+
+    await expect(runConfiguredCommand("sleep 30", workspace, 50)).rejects.toThrow("excedeu o limite");
+    expect(Date.now() - startedAt).toBeLessThan(3_000);
   });
 
   it("não expõe segredos quando um processo falha", async () => {
