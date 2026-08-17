@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, Save } from "lucide-react";
+import { Github, LoaderCircle, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -17,7 +17,7 @@ const initialForm = {
   buildCommand: "",
 };
 
-export default function ProjectForm() {
+export default function ProjectForm({ installationId, installUrl }) {
   const router = useRouter();
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState("");
@@ -39,6 +39,7 @@ export default function ProjectForm() {
         body: JSON.stringify({
           ...project,
           productionUrl: deploymentMode === "PUBLISHED" ? project.productionUrl : "",
+          githubInstallationId: installationId || undefined,
         }),
       });
       const result = await response.json();
@@ -53,6 +54,11 @@ export default function ProjectForm() {
 
   return (
     <form className="form-card" onSubmit={submit}>
+      <div className={`github-app-authorization ${installationId ? "authorized" : ""}`}>
+        <div><Github size={19} /><span><strong>{installationId ? "GitHub App autorizado" : "Autorize o acesso ao repositório"}</strong><small>{installationId ? "A instalação será vinculada ao projeto." : "Isso permite publicar branches e Pull Requests sem adicionar usuários como colaboradores."}</small></span></div>
+        {!installationId && installUrl && <a className="secondary-button" href={installUrl}>Autorizar no GitHub</a>}
+        {!installationId && !installUrl && <em>Configure o GitHub App no Dashboard IA.</em>}
+      </div>
       <div className="form-grid">
         <label><span>Nome do projeto</span><input name="name" value={form.name} onChange={change} placeholder="Dashboard IA" required /></label>
         <label><span>Repositório GitHub</span><input name="repositoryFullName" value={form.repositoryFullName} onChange={change} placeholder="dono/repositório ou URL do GitHub" required /></label>

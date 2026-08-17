@@ -4,7 +4,7 @@ import { requireUser } from "../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../lib/api";
 import { auditData } from "../../../lib/audit";
 import { db } from "../../../lib/db";
-import { getGitHubAccessToken, verifyRepositoryAccess, verifyRepositoryBranch } from "../../../lib/github";
+import { getGitHubAccessToken, getGitHubInstallationToken, verifyRepositoryAccess, verifyRepositoryBranch } from "../../../lib/github";
 import { createUniqueProjectSlug, projectAccessWhere } from "../../../lib/projects";
 import { configureProjectGitHubWebhook } from "../../../lib/project-webhooks";
 import { projectInputSchema } from "../../../lib/validation";
@@ -34,7 +34,7 @@ export async function POST(request) {
     assertSameOrigin(request);
     const user = await requireUser();
     const input = projectInputSchema.parse(await request.json());
-    const token = await getGitHubAccessToken(user.id);
+    const token = input.githubInstallationId ? await getGitHubInstallationToken(input.githubInstallationId) : await getGitHubAccessToken(user.id);
     const githubRepository = await verifyRepositoryAccess(token, input.repositoryFullName.toLowerCase());
     if (!githubRepository.permissions?.push) {
       return NextResponse.json({ error: "Sua conta GitHub não possui permissão de escrita neste repositório" }, { status: 403 });
@@ -57,6 +57,10 @@ export async function POST(request) {
     });
     if (existingProject) {
       await db.$transaction(async (transaction) => {
+        await transaction.project.update({
+          where: { id: existingProject.id },
+          data: { status: "ACTIVE", githubInstallationId: input.githubInstallationId ?? existingProject.githubInstallationId },
+        });
         await transaction.projectMember.upsert({
           where: { projectId_userId: { projectId: existingProject.id, userId: user.id } },
           update: { role: "MANAGER" },
@@ -74,7 +78,9 @@ export async function POST(request) {
           }),
         });
       });
-      return NextResponse.json({ project: existingProject, webhook: null });
+      const connectedProject = { ...existingProject, status: "ACTIVE", githubInstallationId: input.githubInstallationId ?? existingProject.githubInstallationId };
+      const webhook = await configureProjectGitHubWebhook({ project: connectedProject, userId: user.id });
+      return NextResponse.json({ project: connectedProject, webhook });
     }
     const slug = await createUniqueProjectSlug(input.name);
 
@@ -85,6 +91,7 @@ export async function POST(request) {
           slug,
           repositoryFullName: input.repositoryFullName.toLowerCase(),
           repositoryId: String(githubRepository.id),
+          githubInstallationId: input.githubInstallationId,
           createdById: user.id,
           members: { create: { userId: user.id, role: "MANAGER" } },
         },

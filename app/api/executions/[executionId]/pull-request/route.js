@@ -6,7 +6,7 @@ import { requireProjectRole } from "../../../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../../../lib/api";
 import { auditData } from "../../../../../lib/audit";
 import { db } from "../../../../../lib/db";
-import { createGitHubPullRequest, findOpenGitHubPullRequest, getGitHubAccessToken } from "../../../../../lib/github";
+import { createGitHubPullRequest, findOpenGitHubPullRequest, getProjectGitHubAccessToken } from "../../../../../lib/github";
 
 export async function POST(request, context) {
   try {
@@ -41,7 +41,7 @@ export async function POST(request, context) {
 
     let completed = false;
     try {
-      const token = await getGitHubAccessToken(user.id);
+      const token = await getProjectGitHubAccessToken(execution.demand.project, user.id);
       const existingPullRequest = await findOpenGitHubPullRequest(
         token,
         execution.demand.project.repositoryFullName,

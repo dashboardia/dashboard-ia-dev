@@ -6,7 +6,7 @@ import { Agent, applyPatchTool, run, shellTool } from "@openai/agents";
 
 import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
-import { getGitHubAccessToken } from "../lib/github.js";
+import { getProjectGitHubAccessToken } from "../lib/github.js";
 import {
   cleanWorkspace,
   gitAuthenticationArgs,
@@ -102,7 +102,7 @@ export async function processExecution(executionId, workerId) {
     await assertExecutionActive(executionId);
     await log(executionId, "workspace", "Preparando cópia isolada do repositório");
 
-    const token = await getGitHubAccessToken(execution.requestedById);
+    const token = await getProjectGitHubAccessToken(execution.demand.project, execution.requestedById);
     const repositoryUrl = `https://github.com/${execution.demand.project.repositoryFullName}.git`;
     const authenticationArgs = gitAuthenticationArgs(token);
     await runProcess("git", [

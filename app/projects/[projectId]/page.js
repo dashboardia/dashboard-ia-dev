@@ -12,6 +12,7 @@ import MemberForm from "./member-form";
 import MemberControls from "./member-controls";
 import ProjectSettingsForm from "./project-settings-form";
 import WebhookStatus from "./webhook-status";
+import DeleteProject from "./delete-project";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +21,8 @@ export default async function ProjectPage({ params }) {
   const { projectId } = await params;
   const role = await getProjectRole(user, projectId);
   if (!role) redirect("/projects");
-  const project = await db.project.findUnique({
-    where: { id: projectId },
+  const project = await db.project.findFirst({
+    where: { id: projectId, status: { not: "ARCHIVED" } },
     include: {
       members: { include: { user: { select: { id: true, name: true, email: true, githubLogin: true, image: true } } }, orderBy: { createdAt: "asc" } },
       demands: { orderBy: { updatedAt: "desc" }, take: 8 },
@@ -69,6 +70,7 @@ export default async function ProjectPage({ params }) {
             }} />
           </section>
         )}
+        {role === "MANAGER" && <DeleteProject projectId={project.id} projectName={project.name} />}
         <section className="form-card detail-card full-card">
           <div className="card-heading"><div><h2>Demandas recentes</h2><p>Atividades vinculadas ao projeto</p></div></div>
           <div className="simple-list">{project.demands.map((demand) => <Link href={`/demands/${demand.id}`} key={demand.id}><strong>{demand.title}</strong><span>{demand.type}</span><em>{demand.status}</em></Link>)}{!project.demands.length && <div className="list-empty">Nenhuma demanda criada.</div>}</div>

@@ -6,7 +6,7 @@ import { auditData } from "../../../../../lib/audit";
 import { db } from "../../../../../lib/db";
 import { env } from "../../../../../lib/env";
 import { queueDemandExecution } from "../../../../../lib/executions";
-import { getGitHubAccessToken, verifyRepositoryBranch } from "../../../../../lib/github";
+import { getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../../../lib/github";
 
 export async function POST(request, context) {
   try {
@@ -18,14 +18,14 @@ export async function POST(request, context) {
     const { demandId } = await context.params;
     const demand = await db.demand.findUniqueOrThrow({
       where: { id: demandId },
-      include: { project: { select: { repositoryFullName: true, defaultBranch: true } } },
+      include: { project: { select: { repositoryFullName: true, defaultBranch: true, githubInstallationId: true } } },
     });
     const { user } = await requireProjectRole(demand.projectId, "MANAGER");
     if (!["APPROVED", "FAILED"].includes(demand.status)) {
       return NextResponse.json({ error: "A demanda precisa estar aprovada para entrar na fila" }, { status: 409 });
     }
 
-    const token = await getGitHubAccessToken(user.id);
+    const token = await getProjectGitHubAccessToken(demand.project, user.id);
     try {
       await verifyRepositoryBranch(token, demand.project.repositoryFullName, demand.project.defaultBranch);
     } catch {
