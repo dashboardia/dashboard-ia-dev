@@ -72,18 +72,33 @@ async function runValidations(execution, projectDirectory) {
   for (const [scope, command] of commands) {
     await assertExecutionActive(execution.id);
     await log(execution.id, scope, `Executando: ${command}`);
+    const commandController = new AbortController();
+    const cancellationTimer = setInterval(async () => {
+      const current = await db.execution.findUnique({
+        where: { id: execution.id },
+        select: { cancelRequestedAt: true },
+      }).catch(() => null);
+      if (current?.cancelRequestedAt && !commandController.signal.aborted) {
+        commandController.abort();
+      }
+    }, 2_000);
+    cancellationTimer.unref();
+
     try {
-      const result = await runConfiguredCommand(command, projectDirectory);
+      const result = await runConfiguredCommand(command, projectDirectory, 10 * 60_000, commandController.signal);
       await log(execution.id, scope, `${scope} concluído`, "info", {
         stdout: result.stdout.slice(-12_000),
         stderr: result.stderr.slice(-6_000),
       });
     } catch (error) {
+      await assertExecutionActive(execution.id);
       await log(execution.id, scope, `${scope} falhou`, "error", {
         stdout: error.stdout?.slice(-12_000),
         stderr: (error.stderr || error.message)?.slice(-12_000),
       });
       throw new Error(`Validação ${scope} falhou`);
+    } finally {
+      clearInterval(cancellationTimer);
     }
     await assertExecutionActive(execution.id);
   }
