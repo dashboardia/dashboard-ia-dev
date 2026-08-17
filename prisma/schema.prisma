@@ -173,6 +173,8 @@ model Project {
   lintCommand          String?
   testCommand          String?
   buildCommand         String?
+  previewCommand       String?
+  previewPort          Int?
   status               ProjectStatus   @default(ACTIVE)
   createdById          String
   createdBy            User            @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
@@ -212,6 +214,8 @@ model Demand {
   title              String
   description        String         @db.Text
   acceptanceCriteria String?        @db.Text
+  visualValidation   Boolean        @default(false)
+  visualPaths        Json?
   type               DemandType
   priority           DemandPriority @default(NORMAL)
   status             DemandStatus   @default(DRAFT)

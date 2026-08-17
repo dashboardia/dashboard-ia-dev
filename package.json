@@ -19,6 +19,7 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1111.0",
     "@next-auth/prisma-adapter": "^1.0.7",
     "@openai/agents": "^0.15.0",
     "@prisma/client": "^6.19.3",
@@ -26,6 +27,7 @@
     "next": "^16.3.0",
     "next-auth": "^4.24.15",
     "openai": "^7.4.0",
+    "playwright": "^1.62.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zod": "^4.4.3"

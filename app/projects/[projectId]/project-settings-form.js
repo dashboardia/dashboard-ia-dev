@@ -15,6 +15,8 @@ function initialForm(project) {
     lintCommand: project.lintCommand ?? "",
     testCommand: project.testCommand ?? "",
     buildCommand: project.buildCommand ?? "",
+    previewCommand: project.previewCommand ?? "",
+    previewPort: project.previewPort ? String(project.previewPort) : "3000",
   };
 }
 
@@ -78,6 +80,8 @@ export default function ProjectSettingsForm({ project }) {
         <label><span>Lint</span><input name="lintCommand" value={form.lintCommand} onChange={change} placeholder="npm run lint" /></label>
         <label><span>Testes</span><input name="testCommand" value={form.testCommand} onChange={change} placeholder="npm test" /></label>
         <label><span>Build</span><input name="buildCommand" value={form.buildCommand} onChange={change} placeholder="npm run build" /></label>
+        <label><span>Iniciar preview visual</span><input name="previewCommand" value={form.previewCommand} onChange={change} placeholder="npm run dev" /></label>
+        <label><span>Porta do preview</span><input name="previewPort" type="number" min="1" max="65535" value={form.previewPort} onChange={change} /></label>
       </div>
 
       {error && <div className="form-error">{error}</div>}

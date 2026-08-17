@@ -11,6 +11,8 @@ function initialForm(demand) {
     acceptanceCriteria: demand.acceptanceCriteria ?? "",
     type: demand.type,
     priority: demand.priority,
+    visualValidation: demand.visualValidation,
+    visualPaths: Array.isArray(demand.visualPaths) ? demand.visualPaths.join("\n") : "/",
   };
 }
 
@@ -22,7 +24,7 @@ export default function DemandEditCard({ demand, canEdit }) {
   const [error, setError] = useState("");
 
   function change(event) {
-    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+    setForm((current) => ({ ...current, [event.target.name]: event.target.type === "checkbox" ? event.target.checked : event.target.value }));
   }
 
   function cancel() {
@@ -39,7 +41,7 @@ export default function DemandEditCard({ demand, canEdit }) {
       const response = await fetch(`/api/demands/${demand.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, visualPaths: form.visualValidation ? form.visualPaths.split("\n").map((path) => path.trim()).filter(Boolean) : [] }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Não foi possível atualizar a demanda");
@@ -74,6 +76,8 @@ export default function DemandEditCard({ demand, canEdit }) {
         <label className="full-field"><span>Título</span><input name="title" value={form.title} onChange={change} maxLength={140} required /></label>
         <label className="full-field"><span>Contexto e resultado esperado</span><textarea name="description" value={form.description} onChange={change} rows={7} required /></label>
         <label className="full-field"><span>Critérios de aceite</span><textarea name="acceptanceCriteria" value={form.acceptanceCriteria} onChange={change} rows={4} /></label>
+        <label className="visual-validation-option"><input name="visualValidation" type="checkbox" checked={form.visualValidation} onChange={change} /><span><strong>Exigir validação visual</strong><small>Gera evidências em desktop e celular, sem substituir a aprovação do código.</small></span></label>
+        {form.visualValidation && <label className="full-field"><span>Rotas para validar (uma por linha)</span><textarea name="visualPaths" value={form.visualPaths} onChange={change} rows={3} required /></label>}
         {error && <div className="form-error">{error}</div>}
         <div className="form-actions"><button className="secondary-button" type="button" onClick={cancel}>Cancelar</button><button className="primary" type="submit" disabled={saving}>{saving ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}{saving ? "Salvando..." : "Salvar demanda"}</button></div>
       </form>

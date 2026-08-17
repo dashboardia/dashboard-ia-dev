@@ -13,12 +13,14 @@ export default function DemandForm({ projects, initialProjectId }) {
     acceptanceCriteria: "",
     type: "BUG",
     priority: "NORMAL",
+    visualValidation: false,
+    visualPaths: "/",
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   function change(event) {
-    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+    setForm((current) => ({ ...current, [event.target.name]: event.target.type === "checkbox" ? event.target.checked : event.target.value }));
   }
 
   async function submit(event) {
@@ -26,7 +28,8 @@ export default function DemandForm({ projects, initialProjectId }) {
     setSaving(true);
     setError("");
     try {
-      const response = await fetch("/api/demands", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const payload = { ...form, visualPaths: form.visualValidation ? form.visualPaths.split("\n").map((path) => path.trim()).filter(Boolean) : [] };
+      const response = await fetch("/api/demands", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Não foi possível criar a demanda");
       router.push(`/demands/${result.demand.id}`);
@@ -49,6 +52,8 @@ export default function DemandForm({ projects, initialProjectId }) {
       <label className="full-field"><span>Título</span><input name="title" value={form.title} onChange={change} maxLength={140} placeholder="Ex.: Corrigir retorno do botão voltar no fluxo de cadastro" required /></label>
       <label className="full-field"><span>Contexto e resultado esperado</span><textarea name="description" value={form.description} onChange={change} rows={7} placeholder="Descreva o comportamento atual, o problema e o resultado esperado..." required /></label>
       <label className="full-field"><span>Critérios de aceite</span><textarea name="acceptanceCriteria" value={form.acceptanceCriteria} onChange={change} rows={4} placeholder="Ex.: Ao voltar, o usuário retorna para a etapa anterior sem perder os dados." /></label>
+      <label className="visual-validation-option"><input name="visualValidation" type="checkbox" checked={form.visualValidation} onChange={change} /><span><strong>Exigir validação visual</strong><small>Gera evidências em desktop e celular, sem substituir a aprovação do código.</small></span></label>
+      {form.visualValidation && <label className="full-field"><span>Rotas para validar (uma por linha)</span><textarea name="visualPaths" value={form.visualPaths} onChange={change} rows={3} placeholder={'/\n/login\n/dashboard'} required /></label>}
       {error && <div className="form-error">{error}</div>}
       <div className="form-actions"><button className="primary" disabled={saving} type="submit">{saving ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}{saving ? "Criando..." : "Enviar para aprovação"}</button></div>
     </form>

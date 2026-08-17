@@ -16,6 +16,7 @@ import {
   runProcess,
   WorkspaceEditor,
 } from "./sandbox.mjs";
+import { runVisualValidation } from "./visual-validation.mjs";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 
@@ -51,6 +52,7 @@ function agentPrompt(demand) {
     `Título: ${demand.title}`,
     `Descrição:\n${demand.description}`,
     demand.acceptanceCriteria ? `Critérios de aceite:\n${demand.acceptanceCriteria}` : "Critérios de aceite: não informados",
+    demand.visualValidation ? `Validação visual obrigatória nas rotas: ${(Array.isArray(demand.visualPaths) ? demand.visualPaths : ["/"]).join(", ")}` : "Validação visual: não solicitada",
   ].join("\n\n");
 }
 
@@ -163,6 +165,17 @@ export async function processExecution(executionId, workerId) {
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
     await runValidations(execution, projectDirectory);
     await assertExecutionActive(executionId);
+    let visualArtifacts = [];
+    if (execution.demand.visualValidation) {
+      await log(executionId, "visual", "Validação visual iniciada");
+      visualArtifacts = await runVisualValidation({
+        execution,
+        projectDirectory,
+        log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
+      });
+      await log(executionId, "visual", `${visualArtifacts.length} evidências visuais geradas`);
+      await assertExecutionActive(executionId);
+    }
     const diffResult = await runProcess("git", ["diff", "--binary"], { cwd: workspace });
 
     await runProcess("git", ["add", "-A"], { cwd: workspace });
@@ -188,6 +201,7 @@ export async function processExecution(executionId, workerId) {
       });
       if (updated.count !== 1) throw new ExecutionCancelledError();
       await transaction.executionArtifact.create({ data: { executionId, type: "diff", name: "changes.diff", content: diffResult.stdout.slice(0, 200_000) } });
+      if (visualArtifacts.length) await transaction.executionArtifact.createMany({ data: visualArtifacts.map((artifact) => ({ executionId, ...artifact })) });
       await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "REVIEW" } });
     });
     await log(executionId, "publish", `Branch ${branchName} enviada; aguardando aprovação para abrir Pull Request`);
