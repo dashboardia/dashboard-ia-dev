@@ -6,6 +6,7 @@ import { auditData } from "../../../lib/audit";
 import { db } from "../../../lib/db";
 import { findGitHubRepositoryInstallation, getGitHubAccessToken, getGitHubInstallationToken, verifyRepositoryAccess, verifyRepositoryBranch } from "../../../lib/github";
 import { createUniqueProjectSlug, projectAccessWhere } from "../../../lib/projects";
+import { applyDetectedRuntime, detectGitHubProjectRuntime } from "../../../lib/project-runtime";
 import { configureProjectGitHubWebhook } from "../../../lib/project-webhooks";
 import { projectInputSchema } from "../../../lib/validation";
 
@@ -54,6 +55,11 @@ export async function POST(request) {
       }
     }
 
+    const detectedRuntime = githubRepository.size > 0
+      ? await detectGitHubProjectRuntime(token, repositoryFullName, input.defaultBranch)
+      : { runtime: "EMPTY", commands: {} };
+    const resolvedInput = applyDetectedRuntime(input, detectedRuntime);
+
     const existingProject = await db.project.findUnique({
       where: {
         provider_repositoryFullName: {
@@ -66,7 +72,7 @@ export async function POST(request) {
       await db.$transaction(async (transaction) => {
         await transaction.project.update({
           where: { id: existingProject.id },
-          data: { status: "ACTIVE", githubInstallationId: githubInstallationId ?? existingProject.githubInstallationId },
+          data: { ...resolvedInput, status: "ACTIVE", githubInstallationId: githubInstallationId ?? existingProject.githubInstallationId },
         });
         await transaction.projectMember.upsert({
           where: { projectId_userId: { projectId: existingProject.id, userId: user.id } },
@@ -85,16 +91,16 @@ export async function POST(request) {
           }),
         });
       });
-      const connectedProject = { ...existingProject, status: "ACTIVE", githubInstallationId: githubInstallationId ?? existingProject.githubInstallationId };
+      const connectedProject = { ...existingProject, ...resolvedInput, status: "ACTIVE", githubInstallationId: githubInstallationId ?? existingProject.githubInstallationId };
       const webhook = await configureProjectGitHubWebhook({ project: connectedProject, userId: user.id });
-      return NextResponse.json({ project: connectedProject, webhook });
+      return NextResponse.json({ project: connectedProject, webhook, detectedRuntime: detectedRuntime.runtime });
     }
     const slug = await createUniqueProjectSlug(input.name);
 
     const project = await db.$transaction(async (transaction) => {
       const created = await transaction.project.create({
         data: {
-          ...input,
+          ...resolvedInput,
           slug,
           repositoryFullName: input.repositoryFullName.toLowerCase(),
           repositoryId: String(githubRepository.id),
@@ -120,7 +126,7 @@ export async function POST(request) {
     });
 
     const webhook = await configureProjectGitHubWebhook({ project, userId: user.id });
-    return NextResponse.json({ project, webhook }, { status: 201 });
+    return NextResponse.json({ project, webhook, detectedRuntime: detectedRuntime.runtime }, { status: 201 });
   } catch (error) {
     return apiError(error);
   }
