@@ -69,9 +69,10 @@ describe("worker sandbox", () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "forgeboard-python-"));
     directories.push(workspace);
 
-    const result = await runConfiguredCommand("python -c 'import sys; print(sys.prefix)'", workspace);
+    const result = await runConfiguredCommand("python -c 'import sys; print(sys.prefix)' && pip --version", workspace);
 
-    expect(result.stdout.trim()).toBe(path.join(workspace, ".forgeboard-venv"));
+    expect(result.stdout).toContain(path.join(workspace, ".forgeboard-venv"));
+    expect(result.stdout).toContain(path.join(workspace, ".forgeboard-venv", "lib"));
   });
 
   it("não expõe segredos quando um processo falha", async () => {

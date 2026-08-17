@@ -155,7 +155,7 @@ export async function runProcess(command, args, options = {}) {
 
 function executeShellProcess(command, { cwd, env, timeout, signal }) {
   return new Promise((resolve, reject) => {
-    const child = spawn("/bin/bash", ["-lc", command], {
+    const child = spawn("/bin/bash", ["-c", command], {
       cwd,
       env,
       detached: true,
