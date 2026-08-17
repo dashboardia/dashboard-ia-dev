@@ -1,6 +1,6 @@
 "use client";
 
-import { Github, LoaderCircle, Save } from "lucide-react";
+import { Check, Copy, Github, LoaderCircle, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -23,13 +23,13 @@ export default function ProjectForm({ installationId, installUrl }) {
   const router = useRouter();
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false);\n  const [installLinkCopied, setInstallLinkCopied] = useState(false);
 
   function change(event) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   }
 
-  async function submit(event) {
+  async function copyClientInstallLink() {\n    if (!installUrl) return;\n    await navigator.clipboard.writeText(installUrl);\n    setInstallLinkCopied(true);\n    window.setTimeout(() => setInstallLinkCopied(false), 2_000);\n  }\n\n  async function submit(event) {
     event.preventDefault();
     setSaving(true);
     setError("");
@@ -61,7 +61,7 @@ export default function ProjectForm({ installationId, installUrl }) {
         {!installationId && installUrl && <a className="secondary-button" href={installUrl}>Autorizar no GitHub</a>}
         {!installationId && !installUrl && <em>Configure o GitHub App no Dashboard IA.</em>}
       </div>
-      <div className="form-grid">
+      {!installationId && installUrl && (\n        <div className="form-note">\n          <strong>O repositório pertence a um cliente?</strong>\n          <p>Envie este link ao proprietário. Na conta dele, ele deve escolher Only select repositories, selecionar o repositório e instalar o Dashboard IA Automação.</p>\n          <button className="secondary-button" type="button" onClick={copyClientInstallLink}>\n            {installLinkCopied ? <Check size={16} /> : <Copy size={16} />}\n            {installLinkCopied ? "Link copiado" : "Copiar link para o cliente"}\n          </button>\n          <small>Depois, volte a esta tela, informe a URL do repositório e conecte o projeto. A autorização será localizada automaticamente.</small>\n        </div>\n      )}\n      <div className="form-grid">
         <label><span>Nome do projeto</span><input name="name" value={form.name} onChange={change} placeholder="Dashboard IA" required /></label>
         <label><span>Repositório GitHub</span><input name="repositoryFullName" value={form.repositoryFullName} onChange={change} placeholder="dono/repositório ou URL do GitHub" required /></label>
         <label><span>Branch padrão</span><input name="defaultBranch" value={form.defaultBranch} onChange={change} required /></label>
