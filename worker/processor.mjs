@@ -163,6 +163,11 @@ export async function processExecution(executionId, workerId) {
     }
 
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
+
+    // Use sempre a configuração mais recente salva no cadastro do projeto.
+    execution.demand.project = await db.project.findUniqueOrThrow({
+      where: { id: execution.demand.projectId },
+    });
     await runValidations(execution, projectDirectory);
     await assertExecutionActive(executionId);
     let visualArtifacts = [];
