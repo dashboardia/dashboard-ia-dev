@@ -108,6 +108,8 @@ export class ReadOnlyShell {
   }
 
   async run(action) {
+    const maxOutputLength = action.maxOutputLength ?? MAX_OUTPUT;
+    const outputLimit = Math.min(maxOutputLength, MAX_OUTPUT);
     const output = [];
     for (const command of action.commands) {
       if (!isAllowedReadCommand(command)) {
@@ -122,12 +124,12 @@ export class ReadOnlyShell {
           maxBuffer: 2 * 1024 * 1024,
           shell: "/bin/bash",
         });
-        output.push({ stdout: truncate(result.stdout, action.maxOutputLength), stderr: truncate(result.stderr, action.maxOutputLength), outcome: { type: "exit", exitCode: 0 } });
+        output.push({ stdout: truncate(result.stdout, outputLimit), stderr: truncate(result.stderr, outputLimit), outcome: { type: "exit", exitCode: 0 } });
       } catch (error) {
-        output.push({ stdout: truncate(error.stdout, action.maxOutputLength), stderr: truncate(error.stderr || error.message, action.maxOutputLength), outcome: error.killed ? { type: "timeout" } : { type: "exit", exitCode: error.code ?? 1 } });
+        output.push({ stdout: truncate(error.stdout, outputLimit), stderr: truncate(error.stderr || error.message, outputLimit), outcome: error.killed ? { type: "timeout" } : { type: "exit", exitCode: error.code ?? 1 } });
       }
     }
-    return { output, maxOutputLength: Math.min(action.maxOutputLength ?? MAX_OUTPUT, MAX_OUTPUT) };
+    return { output, maxOutputLength };
   }
 }
 

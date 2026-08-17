@@ -34,6 +34,14 @@ describe("worker sandbox", () => {
     expect(result.output[0].outcome.exitCode).toBe(126);
   });
 
+  it("preserva o limite solicitado no resultado do shell", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "forgeboard-test-"));
+    directories.push(workspace);
+    const shell = new ReadOnlyShell(workspace);
+    const result = await shell.run({ commands: ["pwd"], maxOutputLength: 30_000 });
+    expect(result.maxOutputLength).toBe(30_000);
+  });
+
   it("recusa patches em arquivos protegidos", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "forgeboard-test-"));
     directories.push(workspace);
