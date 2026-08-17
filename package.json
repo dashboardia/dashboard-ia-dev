@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && node --max-old-space-size=640 ./node_modules/next/dist/bin/next build --webpack",
     "start": "node scripts/start.mjs",
     "worker": "node worker/index.mjs",
     "lint": "eslint .",
