@@ -6,6 +6,7 @@ import SectionHeader from "../../components/section-header";
 import { db } from "../../lib/db";
 import { requirePageUser } from "../../lib/page-access";
 import { projectAccessWhere } from "../../lib/projects";
+import ProjectDeleteButton from "./project-delete-button";
 
 export const dynamic = "force-dynamic";
 
@@ -36,13 +37,16 @@ export default async function ProjectsPage() {
             const health = project.healthChecks[0]?.status ?? "UNKNOWN";
             const role = user.globalRole === "ADMIN" ? "Administrador" : project.members[0]?.role ?? "Visualizador";
             return (
-              <Link className="resource-card" href={`/projects/${project.id}`} key={project.id}>
-                <span className="resource-icon"><Boxes size={21} /></span>
-                <div className="resource-title"><strong>{project.name}</strong><span className={`health-dot ${health.toLowerCase()}`} /> </div>
-                <p><Github size={14} />{project.repositoryFullName}</p>
-                <div className="resource-meta"><span><GitBranch size={13} />{project.defaultBranch}</span><span><Users size={13} />{project._count.members}</span><span>{project._count.demands} demandas</span></div>
+              <article className="resource-card project-resource-card" key={project.id}>
+                <Link href={`/projects/${project.id}`}>
+                  <span className="resource-icon"><Boxes size={21} /></span>
+                  <div className="resource-title"><strong>{project.name}</strong><span className={`health-dot ${health.toLowerCase()}`} /> </div>
+                  <p><Github size={14} />{project.repositoryFullName}</p>
+                  <div className="resource-meta"><span><GitBranch size={13} />{project.defaultBranch}</span><span><Users size={13} />{project._count.members}</span><span>{project._count.demands} demandas</span></div>
+                </Link>
                 <span className="role-pill">{role}</span>
-              </Link>
+                {(user.globalRole === "ADMIN" || project.members[0]?.role === "MANAGER") && <ProjectDeleteButton projectId={project.id} projectName={project.name} />}
+              </article>
             );
           })}
           {!projects.length && <div className="resource-empty"><Boxes size={28} /><strong>Nenhum projeto disponível</strong><span>Conecte um repositório GitHub ao qual você tenha acesso de escrita.</span><Link className="primary" href="/projects/new"><Plus size={17} />Conectar projeto</Link></div>}

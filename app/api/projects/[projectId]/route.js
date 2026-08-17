@@ -5,7 +5,7 @@ import { apiError, assertSameOrigin } from "../../../../lib/api";
 import { auditData } from "../../../../lib/audit";
 import { db } from "../../../../lib/db";
 import { getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../../lib/github";
-import { projectDeleteSchema, projectUpdateSchema } from "../../../../lib/validation";
+import { projectUpdateSchema } from "../../../../lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -61,14 +61,10 @@ export async function DELETE(request, context) {
     assertSameOrigin(request);
     const { projectId } = await context.params;
     const { user } = await requireProjectRole(projectId, "MANAGER");
-    const input = projectDeleteSchema.parse(await request.json());
     const project = await db.project.findUniqueOrThrow({
       where: { id: projectId },
       select: { id: true, name: true },
     });
-    if (input.confirmation !== project.name) {
-      return NextResponse.json({ error: "Digite o nome exato do projeto para confirmar" }, { status: 422 });
-    }
     const activeExecution = await db.execution.findFirst({
       where: { demand: { projectId }, status: { in: ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"] } },
       select: { id: true },
