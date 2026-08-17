@@ -23,6 +23,7 @@ export default function ProjectForm({ installationId, installUrl }) {
   const router = useRouter();
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState("");
+  const [errorDetails, setErrorDetails] = useState("");
   const [saving, setSaving] = useState(false);
   const [installLinkCopied, setInstallLinkCopied] = useState(false);
 
@@ -41,6 +42,7 @@ export default function ProjectForm({ installationId, installUrl }) {
     event.preventDefault();
     setSaving(true);
     setError("");
+    setErrorDetails("");
     try {
       const { deploymentMode, ...project } = form;
       const response = await fetch("/api/projects", {
@@ -53,7 +55,10 @@ export default function ProjectForm({ installationId, installUrl }) {
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.fields?.[0]?.message ?? result.error ?? "Não foi possível conectar o projeto");
+      if (!response.ok) {
+        setErrorDetails(result.details ?? "");
+        throw new Error(result.fields?.[0]?.message ?? result.error ?? "Não foi possível conectar o projeto");
+      }
       router.push(`/projects/${result.project.id}`);
       router.refresh();
     } catch (submitError) {
@@ -103,7 +108,7 @@ export default function ProjectForm({ installationId, installUrl }) {
         <label><span>Porta do preview</span><input name="previewPort" type="number" min="1" max="65535" value={form.previewPort} onChange={change} /></label>
         </div>
       </details>
-      {error && <div className="form-error">{error}</div>}
+      {error && <div className="form-error"><strong>{error}</strong>{errorDetails && <small>Detalhes técnicos: {errorDetails}</small>}</div>}
       <div className="form-actions"><button className="primary" disabled={saving} type="submit">{saving ? <LoaderCircle className="spin" size={18} /> : <Save size={18} />}{saving ? "Salvando..." : "Conectar projeto"}</button></div>
     </form>
   );

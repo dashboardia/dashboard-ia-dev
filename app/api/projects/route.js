@@ -4,6 +4,7 @@ import { requireUser } from "../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../lib/api";
 import { auditData } from "../../../lib/audit";
 import { db } from "../../../lib/db";
+import { explainError } from "../../../lib/error-messages";
 import { findGitHubRepositoryInstallation, getGitHubAccessToken, getGitHubInstallationToken, verifyRepositoryAccess, verifyRepositoryBranch } from "../../../lib/github";
 import { createUniqueProjectSlug, projectAccessWhere } from "../../../lib/projects";
 import { applyDetectedRuntime, detectGitHubProjectRuntime } from "../../../lib/project-runtime";
@@ -55,9 +56,16 @@ export async function POST(request) {
       }
     }
 
-    const detectedRuntime = githubRepository.size > 0
-      ? await detectGitHubProjectRuntime(token, repositoryFullName, input.defaultBranch)
-      : { runtime: "EMPTY", commands: {} };
+    let detectionWarning;
+    let detectedRuntime = { runtime: githubRepository.size > 0 ? "UNKNOWN" : "EMPTY", commands: {} };
+    if (githubRepository.size > 0) {
+      try {
+        detectedRuntime = await detectGitHubProjectRuntime(token, repositoryFullName, input.defaultBranch);
+      } catch (detectionError) {
+        detectionWarning = explainError(detectionError instanceof Error ? detectionError.message : detectionError).technical;
+        console.warn(`[projects] Não foi possível detectar a tecnologia de ${repositoryFullName}`, detectionError);
+      }
+    }
     const resolvedInput = applyDetectedRuntime(input, detectedRuntime);
 
     const existingProject = await db.project.findUnique({
@@ -93,7 +101,7 @@ export async function POST(request) {
       });
       const connectedProject = { ...existingProject, ...resolvedInput, status: "ACTIVE", githubInstallationId: githubInstallationId ?? existingProject.githubInstallationId };
       const webhook = await configureProjectGitHubWebhook({ project: connectedProject, userId: user.id });
-      return NextResponse.json({ project: connectedProject, webhook, detectedRuntime: detectedRuntime.runtime });
+      return NextResponse.json({ project: connectedProject, webhook, detectedRuntime: detectedRuntime.runtime, detectionWarning });
     }
     const slug = await createUniqueProjectSlug(input.name);
 
@@ -126,7 +134,7 @@ export async function POST(request) {
     });
 
     const webhook = await configureProjectGitHubWebhook({ project, userId: user.id });
-    return NextResponse.json({ project, webhook, detectedRuntime: detectedRuntime.runtime }, { status: 201 });
+    return NextResponse.json({ project, webhook, detectedRuntime: detectedRuntime.runtime, detectionWarning }, { status: 201 });
   } catch (error) {
     return apiError(error);
   }
