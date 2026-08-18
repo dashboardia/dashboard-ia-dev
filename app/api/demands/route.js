@@ -40,11 +40,14 @@ export async function POST(request) {
   try {
     assertSameOrigin(request);
     const input = demandInputSchema.parse(await request.json());
+    const normalizedInput = input.type === "DOCUMENTATION"
+      ? { ...input, visualValidation: false, visualPaths: [] }
+      : input;
     const { user } = await requireProjectRole(input.projectId, "DEVELOPER");
     const demand = await db.$transaction(async (transaction) => {
       const created = await transaction.demand.create({
         data: {
-          ...input,
+          ...normalizedInput,
           acceptanceCriteria: input.acceptanceCriteria || null,
           createdById: user.id,
           status: "PENDING_APPROVAL",

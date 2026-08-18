@@ -44,6 +44,9 @@ export async function PATCH(request, context) {
     const canEdit = demand.createdById === user.id || isAtLeastProjectRole(role, "MANAGER");
     if (!canEdit) throw new AccessDeniedError();
     const input = demandUpdateSchema.parse(await request.json());
+    const normalizedInput = input.type === "DOCUMENTATION"
+      ? { ...input, visualValidation: false, visualPaths: [] }
+      : input;
     const updated = await db.$transaction(async (transaction) => {
       const current = await transaction.demand.findUniqueOrThrow({ where: { id: demandId }, select: { status: true } });
       if (!["DRAFT", "PENDING_APPROVAL"].includes(current.status)) {
@@ -51,10 +54,10 @@ export async function PATCH(request, context) {
       }
       const result = await transaction.demand.update({
         where: { id: demandId },
-        data: { ...input, ...(Object.hasOwn(input, "acceptanceCriteria") ? { acceptanceCriteria: input.acceptanceCriteria || null } : {}) },
+        data: { ...normalizedInput, ...(Object.hasOwn(normalizedInput, "acceptanceCriteria") ? { acceptanceCriteria: normalizedInput.acceptanceCriteria || null } : {}) },
       });
       await transaction.auditLog.create({
-        data: auditData({ actorId: user.id, projectId: demand.projectId, action: "demand.update", entityType: "Demand", entityId: demandId, metadata: input, request }),
+        data: auditData({ actorId: user.id, projectId: demand.projectId, action: "demand.update", entityType: "Demand", entityId: demandId, metadata: normalizedInput, request }),
       });
       return result;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

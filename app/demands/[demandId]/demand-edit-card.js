@@ -27,7 +27,10 @@ export default function DemandEditCard({ demand, canEdit }) {
   const [error, setError] = useState("");
 
   function change(event) {
-    setForm((current) => ({ ...current, [event.target.name]: event.target.type === "checkbox" ? event.target.checked : event.target.value }));
+    const { name, type, checked, value } = event.target;
+    setForm((current) => name === "type" && value === "DOCUMENTATION"
+      ? { ...current, type: value, aiModel: "gpt-5.6-luna", visualValidation: false, visualPaths: "/" }
+      : { ...current, [name]: type === "checkbox" ? checked : value });
   }
 
   function cancel() {
@@ -74,7 +77,7 @@ export default function DemandEditCard({ demand, canEdit }) {
       <div className="card-heading"><div><h2>Editar demanda</h2><p>As alterações serão auditadas</p></div><button className="close-edit" type="button" onClick={cancel} aria-label="Cancelar edição"><X size={17} /></button></div>
       <form onSubmit={submit}>
         <div className="form-grid">
-          <label><span>Tipo</span><select name="type" value={form.type} onChange={change}><option value="BUG">Correção</option><option value="FEATURE">Nova funcionalidade</option><option value="REFACTOR">Refatoração</option><option value="TEST">Testes</option><option value="INVESTIGATION">Investigação</option></select></label>
+          <label><span>Tipo</span><select name="type" value={form.type} onChange={change}><option value="BUG">Correção</option><option value="FEATURE">Nova funcionalidade</option><option value="REFACTOR">Refatoração</option><option value="TEST">Testes</option><option value="INVESTIGATION">Investigação</option><option value="DOCUMENTATION">Documentação de negócio</option></select></label>
           <label><span>Prioridade</span><select name="priority" value={form.priority} onChange={change}><option value="LOW">Baixa</option><option value="NORMAL">Normal</option><option value="HIGH">Alta</option><option value="URGENT">Urgente</option></select></label>
         </div>
         <label className="full-field"><span>Título</span><input name="title" value={form.title} onChange={change} maxLength={140} required /></label>
@@ -82,13 +85,13 @@ export default function DemandEditCard({ demand, canEdit }) {
         <label className="full-field"><span>Critérios de aceite</span><textarea name="acceptanceCriteria" value={form.acceptanceCriteria} onChange={change} rows={4} /></label>
         <fieldset className="model-selector full-field">
           <legend>Modelo de IA</legend>
-          <p>Valores por 1 milhão de tokens.</p>
+          <p>Escolha o nível de capacidade adequado para esta demanda.</p>
           <div className="model-options">
-            {AI_MODELS.map((option) => <label className={form.aiModel === option.value ? "selected" : ""} key={option.value}><input type="radio" name="aiModel" value={option.value} checked={form.aiModel === option.value} onChange={change} /><span><strong>{option.label}</strong><em>{option.model}</em><small>{option.description}</small><b>Entrada {option.inputPrice} · Saída {option.outputPrice}</b></span></label>)}
+            {AI_MODELS.map((option) => <label className={form.aiModel === option.value ? "selected" : ""} key={option.value}><input type="radio" name="aiModel" value={option.value} checked={form.aiModel === option.value} onChange={change} /><span><strong>{option.label}</strong><em>{option.model}</em><small>{option.description}</small></span></label>)}
           </div>
         </fieldset>
-        <label className="visual-validation-option"><input name="visualValidation" type="checkbox" checked={form.visualValidation} onChange={change} /><span><strong>Exigir validação visual</strong><small>Gera evidências em desktop e celular, sem substituir a aprovação do código.</small></span></label>
-        {form.visualValidation && <label className="full-field"><span>Rotas para validar (uma por linha)</span><textarea name="visualPaths" value={form.visualPaths} onChange={change} rows={3} required /></label>}
+        {form.type !== "DOCUMENTATION" && <label className="visual-validation-option"><input name="visualValidation" type="checkbox" checked={form.visualValidation} onChange={change} /><span><strong>Exigir validação visual</strong><small>Gera evidências em desktop e celular, sem substituir a aprovação do código.</small></span></label>}
+        {form.type !== "DOCUMENTATION" && form.visualValidation && <label className="full-field"><span>Rotas para validar (uma por linha)</span><textarea name="visualPaths" value={form.visualPaths} onChange={change} rows={3} required /></label>}
         {error && <div className="form-error">{error}</div>}
         <div className="form-actions"><button className="secondary-button" type="button" onClick={cancel}>Cancelar</button><button className="primary" type="submit" disabled={saving}>{saving ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}{saving ? "Salvando..." : "Salvar demanda"}</button></div>
       </form>

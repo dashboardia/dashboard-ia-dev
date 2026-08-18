@@ -39,6 +39,23 @@ async function assertExecutionActive(executionId) {
 }
 
 function agentPrompt(demand) {
+  if (demand.type === "DOCUMENTATION") {
+    return [
+      "Analise o repositório disponível e produza uma documentação de negócio completa em Markdown.",
+      "Não crie, altere ou exclua arquivos. Use somente o shell de leitura para inspecionar a estrutura e os arquivos relevantes.",
+      "Escreva para pessoas de produto, negócio e operação; use termos técnicos apenas quando necessários e explique-os.",
+      "Inclua: visão geral, problema resolvido, públicos e perfis, funcionalidades, jornadas principais, regras de negócio, dados relevantes, integrações, restrições, riscos ou lacunas e glossário.",
+      "Diferencie explicitamente informações confirmadas pelo código de inferências. Não exponha segredos, credenciais ou dados pessoais encontrados no repositório.",
+      "Retorne somente a documentação final em Markdown, sem relatar etapas internas da análise.",
+      `Projeto: ${demand.project.name}`,
+      `Repositório: ${demand.project.repositoryFullName}`,
+      `Branch base: ${demand.project.defaultBranch}`,
+      `Título solicitado: ${demand.title}`,
+      `Objetivo e contexto:\n${demand.description}`,
+      demand.acceptanceCriteria ? `Pontos que precisam constar:\n${demand.acceptanceCriteria}` : "Pontos obrigatórios adicionais: não informados",
+    ].join("\n\n");
+  }
+
   return [
     "Implemente a demanda aprovada abaixo no repositório disponível.",
     "Antes de editar, inspecione a estrutura e os arquivos relevantes com o shell somente leitura.",
@@ -188,13 +205,15 @@ export async function processExecution(executionId, workerId) {
     ], { cwd: workspaceRoot, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
 
     const branchName = `forgeboard/demand-${execution.demandId.slice(-8)}-${execution.id.slice(-6)}`;
+    const documentationOnly = execution.demand.type === "DOCUMENTATION";
+    const agentLabel = documentationOnly ? "Agente de documentação" : "Agente de implementação";
     await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
     const projectDirectory = resolveWorkspacePath(workspace, execution.demand.project.workingDirectory);
     await db.execution.update({
       where: { id: executionId },
-      data: { status: "RUNNING", stage: "IMPLEMENTATION", branchName, model: execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL },
+      data: { status: "RUNNING", stage: documentationOnly ? "ANALYSIS" : "IMPLEMENTATION", branchName, model: execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL },
     });
-    await log(executionId, "agent", "Agente de implementação iniciado");
+    await log(executionId, "agent", `${agentLabel} iniciado`);
 
     let abortReason = null;
     const implementationAgent = startImplementationAgent({
@@ -233,7 +252,7 @@ export async function processExecution(executionId, workerId) {
     } catch (error) {
       if (abortReason === "cancelled") throw new ExecutionCancelledError();
       if (abortReason === "timeout") {
-        throw new Error(`A implementação excedeu o limite de ${settings.agentTimeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
+        throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${settings.agentTimeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
       }
       throw error;
     } finally {
@@ -241,12 +260,12 @@ export async function processExecution(executionId, workerId) {
       clearTimeout(agentTimeout);
     }
 
-    await log(executionId, "agent", "Agente de implementação concluído");
+    await log(executionId, "agent", `${agentLabel} concluído`);
     await assertExecutionActive(executionId);
 
     const statusResult = await runProcess("git", ["status", "--porcelain"], { cwd: workspace });
     if (!statusResult.stdout.trim()) {
-      if (execution.demand.type !== "INVESTIGATION") throw new Error("A IA não produziu alterações no repositório");
+      if (!["INVESTIGATION", "DOCUMENTATION"].includes(execution.demand.type)) throw new Error("A IA não produziu alterações no repositório");
       await db.$transaction(async (transaction) => {
         const updated = await transaction.execution.updateMany({
           where: { id: executionId, cancelRequestedAt: null },

@@ -15,7 +15,7 @@ import DemandEditCard from "./demand-edit-card";
 import OpenPullRequestButton from "./open-pull-request-button";
 import StartAnalysisButton from "./start-analysis-button";
 
-const typeLabels = { BUG: "Correção", FEATURE: "Nova funcionalidade", REFACTOR: "Refatoração", TEST: "Testes", INVESTIGATION: "Investigação" };
+const typeLabels = { BUG: "Correção", FEATURE: "Nova funcionalidade", REFACTOR: "Refatoração", TEST: "Testes", INVESTIGATION: "Investigação", DOCUMENTATION: "Documentação de negócio" };
 const statusLabels = { DRAFT: "Rascunho", PENDING_APPROVAL: "Aguardando aprovação", APPROVED: "Aprovada", QUEUED: "Na fila", RUNNING: "Em execução", REVIEW: "Em revisão", SUCCEEDED: "Concluída", FAILED: "Falhou", CANCELLED: "Cancelada" };
 
 export const dynamic = "force-dynamic";

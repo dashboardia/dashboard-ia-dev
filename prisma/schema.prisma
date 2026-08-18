@@ -40,6 +40,7 @@ enum DemandType {
   REFACTOR
   TEST
   INVESTIGATION
+  DOCUMENTATION
 }
 
 enum DemandPriority {
