@@ -1,9 +1,9 @@
-import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { cleanValidationArtifacts, ReadOnlyShell, redactSensitiveData, resolveWorkspacePath, runConfiguredCommand, runProcess, WorkspaceEditor } from "./sandbox.mjs";
+import { cleanValidationArtifacts, ReadOnlyShell, redactSensitiveData, resolveWorkspacePath, restoreImplementationSnapshot, runConfiguredCommand, runProcess, WorkspaceEditor } from "./sandbox.mjs";
 
 const directories = [];
 
@@ -85,6 +85,33 @@ describe("worker sandbox", () => {
 
     await expect(access(path.join(workspace, ".forgeboard-venv"))).rejects.toThrow();
     await expect(access(path.join(workspace, ".tmp"))).rejects.toThrow();
+  });
+
+  it("descarta alterações produzidas pelas validações sem perder a implementação", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "forgeboard-snapshot-"));
+    directories.push(workspace);
+    await runProcess("git", ["init"], { cwd: workspace });
+    await runProcess("git", ["config", "user.name", "Forgeboard Test"], { cwd: workspace });
+    await runProcess("git", ["config", "user.email", "forgeboard-test@example.com"], { cwd: workspace });
+    await writeFile(path.join(workspace, "app.js"), "console.log('base');\n");
+    await runProcess("git", ["add", "app.js"], { cwd: workspace });
+    await runProcess("git", ["commit", "-m", "base"], { cwd: workspace });
+
+    await writeFile(path.join(workspace, "app.js"), "console.log('hello world');\n");
+    await writeFile(path.join(workspace, "hello.txt"), "implementação\n");
+    await runProcess("git", ["add", "-A"], { cwd: workspace });
+    await runProcess("git", ["commit", "-m", "implementação"], { cwd: workspace });
+    const implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+
+    await writeFile(path.join(workspace, "app.js"), "arquivo alterado pelo build\n");
+    await mkdir(path.join(workspace, "dist"), { recursive: true });
+    await writeFile(path.join(workspace, "dist", "bundle.js"), "artefato do build\n");
+    await restoreImplementationSnapshot(workspace, implementationHead);
+
+    await expect(readFile(path.join(workspace, "app.js"), "utf8")).resolves.toBe("console.log('hello world');\n");
+    await expect(readFile(path.join(workspace, "hello.txt"), "utf8")).resolves.toBe("implementação\n");
+    await expect(access(path.join(workspace, "dist"))).rejects.toThrow();
+    expect((await runProcess("git", ["status", "--porcelain"], { cwd: workspace })).stdout).toBe("");
   });
 
   it("não expõe segredos quando um processo falha", async () => {

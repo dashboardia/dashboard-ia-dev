@@ -14,6 +14,7 @@ import {
   gitAuthenticationArgs,
   ReadOnlyShell,
   resolveWorkspacePath,
+  restoreImplementationSnapshot,
   runConfiguredCommand,
   runProcess,
   WorkspaceEditor,
@@ -229,6 +230,13 @@ export async function processExecution(executionId, workerId) {
       return;
     }
 
+    // Congele somente o trabalho do agente antes que install/test/build/preview
+    // possam alterar arquivos versionados ou criar artefatos no repositório.
+    await runProcess("git", ["add", "-A"], { cwd: workspace });
+    await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "-m", `forgeboard: ${execution.demand.title.slice(0, 120)}`], { cwd: workspace });
+    const implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+    const base = (await runProcess("git", ["rev-parse", execution.demand.project.defaultBranch], { cwd: workspace })).stdout.trim();
+
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
 
     // Use sempre a configuração mais recente salva no cadastro do projeto.
@@ -254,12 +262,8 @@ export async function processExecution(executionId, workerId) {
       await assertExecutionActive(executionId);
     }
     await cleanValidationArtifacts(projectDirectory);
-    const diffResult = await runProcess("git", ["diff", "--binary"], { cwd: workspace });
-
-    await runProcess("git", ["add", "-A"], { cwd: workspace });
-    await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "-m", `forgeboard: ${execution.demand.title.slice(0, 120)}`], { cwd: workspace });
-    const head = await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace });
-    const base = await runProcess("git", ["rev-parse", execution.demand.project.defaultBranch], { cwd: workspace });
+    await restoreImplementationSnapshot(workspace, implementationHead);
+    const diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
     await runProcess("git", [...authenticationArgs, "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
 
     await db.$transaction(async (transaction) => {
@@ -269,8 +273,8 @@ export async function processExecution(executionId, workerId) {
           status: "WAITING_APPROVAL",
           stage: "PUBLISH",
           summary,
-          baseSha: base.stdout.trim(),
-          headSha: head.stdout.trim(),
+          baseSha: base,
+          headSha: implementationHead,
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
           lockedAt: null,

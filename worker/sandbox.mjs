@@ -276,6 +276,12 @@ export async function cleanValidationArtifacts(projectDirectory) {
   ]);
 }
 
+export async function restoreImplementationSnapshot(workspace, commitSha) {
+  if (!/^[0-9a-f]{40}$/i.test(commitSha)) throw new Error("Commit de implementação inválido");
+  await runProcess("git", ["reset", "--hard", commitSha], { cwd: workspace });
+  await runProcess("git", ["clean", "-fdx"], { cwd: workspace });
+}
+
 export function gitAuthenticationArgs(token) {
   const authorization = Buffer.from(`x-access-token:${token}`).toString("base64");
   return ["-c", `http.extraHeader=Authorization: Basic ${authorization}`];
