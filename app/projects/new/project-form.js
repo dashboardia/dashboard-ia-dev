@@ -16,7 +16,7 @@ const initialForm = {
   testCommand: "",
   buildCommand: "",
   previewCommand: "",
-  previewPort: "3000",
+  previewPort: "",
 };
 
 export default function ProjectForm({ installationId, installUrl }) {
