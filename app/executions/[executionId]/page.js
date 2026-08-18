@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, Clock3, Code2, GitBranch, Images, TerminalSquare, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Clock3, Code2, Download, FileText, GitBranch, Images, TerminalSquare, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -89,6 +89,14 @@ export default async function ExecutionPage({ params }) {
             <div className="commit-list"><span><small>Base</small><code>{execution.baseSha ?? "—"}</code></span><span><small>Resultado</small><code>{execution.headSha ?? "—"}</code></span><span><small>Modelo</small><code>{execution.model ?? "—"}</code></span></div>
           </section>
         </div>
+
+        {execution.demand.type === "DOCUMENTATION" && execution.summary && <section className="form-card detail-card full-card documentation-download-card">
+          <div className="card-heading"><div><h2>Documentação de negócio</h2><p>Arquivos formatados para compartilhar, apresentar ou arquivar.</p></div><FileText size={20} /></div>
+          <div className="documentation-download-actions">
+            <a href={`/api/executions/${execution.id}/documentation/docx`}><Download size={16} /><span><strong>Baixar DOCX</strong><small>Editável no Word e aplicativos compatíveis</small></span></a>
+            <a href={`/api/executions/${execution.id}/documentation/pdf`}><Download size={16} /><span><strong>Baixar PDF</strong><small>Pronto para apresentação e compartilhamento</small></span></a>
+          </div>
+        </section>}
 
         <section className="form-card detail-card full-card execution-log-card">
           <div className="card-heading"><div><h2>Logs da execução</h2><p>{execution.logs.length} eventos registrados em ordem cronológica</p></div><TerminalSquare size={20} /></div>
