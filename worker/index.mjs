@@ -4,6 +4,7 @@ import process from "node:process";
 import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
 import { claimNextExecution, recoverStaleExecutions } from "../lib/executions.js";
+import { getGlobalSettings } from "../lib/global-settings.js";
 import { pruneWorkerHeartbeats, recordWorkerHeartbeat, removeWorkerHeartbeat } from "../lib/worker-heartbeat.js";
 import { checkProjectHealth, pruneHealthChecks } from "./health.mjs";
 import { processExecution } from "./processor.mjs";
@@ -15,6 +16,9 @@ let lastHealthPrune = 0;
 const workerStartedAt = new Date();
 let heartbeatTimer = null;
 let heartbeatPromise = null;
+let concurrencyLimit = 2;
+let lastConcurrencyRefresh = 0;
+const activeExecutions = new Set();
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -37,6 +41,24 @@ async function stopHeartbeat() {
   await removeWorkerHeartbeat(workerId).catch(() => null);
 }
 
+async function refreshConcurrencyLimit() {
+  if (Date.now() - lastConcurrencyRefresh < 5_000) return;
+  const settings = await getGlobalSettings();
+  const nextLimit = Math.max(1, Math.min(4, settings.parallelExecutions));
+  if (nextLimit !== concurrencyLimit) {
+    concurrencyLimit = nextLimit;
+    console.log(`[worker:${workerId}] limite atualizado para ${concurrencyLimit} execuções paralelas`);
+  }
+  lastConcurrencyRefresh = Date.now();
+}
+
+function startExecution(executionId) {
+  const task = processExecution(executionId, workerId)
+    .catch((error) => console.error(`[worker:${workerId}] execução falhou`, error))
+    .finally(() => activeExecutions.delete(task));
+  activeExecutions.add(task);
+}
+
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
     stopping = true;
@@ -53,8 +75,10 @@ async function main() {
   await pruneWorkerHeartbeats();
   startHeartbeat();
   await recoverStaleExecutions();
+  await refreshConcurrencyLimit();
 
   while (!stopping) {
+    await refreshConcurrencyLimit().catch((error) => console.error(`[worker:${workerId}] configuração de concorrência falhou`, error));
     if (Date.now() - lastHealthCheck >= env.HEALTH_CHECK_INTERVAL_MS) {
       await checkProjectHealth().catch((error) => console.error(`[worker:${workerId}] monitoramento falhou`, error));
       lastHealthCheck = Date.now();
@@ -65,15 +89,18 @@ async function main() {
       lastHealthPrune = Date.now();
     }
 
-    const executionId = await claimNextExecution(workerId);
-    if (!executionId) {
-      await delay(env.WORKER_POLL_INTERVAL_MS);
-      continue;
+    while (!stopping && activeExecutions.size < concurrencyLimit) {
+      const executionId = await claimNextExecution(workerId);
+      if (!executionId) break;
+      startExecution(executionId);
     }
-
-    await processExecution(executionId, workerId).catch((error) => console.error(`[worker:${workerId}] execução falhou`, error));
+    await delay(env.WORKER_POLL_INTERVAL_MS);
   }
 
+  if (activeExecutions.size) {
+    console.log(`[worker:${workerId}] aguardando ${activeExecutions.size} execução(ões) ativa(s)`);
+    await Promise.allSettled(activeExecutions);
+  }
   await stopHeartbeat();
   await db.$disconnect();
   console.log(`[worker:${workerId}] encerrado`);

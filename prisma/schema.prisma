@@ -381,5 +381,6 @@ model GlobalSettings {
   nodeMemoryMb          Int      @default(384)
   commandTimeoutMinutes Int      @default(10)
   agentTimeoutMinutes   Int      @default(5)
+  parallelExecutions    Int      @default(2)
   updatedAt             DateTime @updatedAt
 }
