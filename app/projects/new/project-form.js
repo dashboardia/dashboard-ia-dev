@@ -2,7 +2,7 @@
 
 import { Check, Copy, Github, LoaderCircle, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 const initialForm = {
   name: "",
@@ -21,14 +21,22 @@ const initialForm = {
 
 export default function ProjectForm({ installationId, installUrl }) {
   const router = useRouter();
+  const advancedSettingsRef = useRef(null);
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState("");
   const [errorDetails, setErrorDetails] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [installLinkCopied, setInstallLinkCopied] = useState(false);
 
   function change(event) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+    setFieldErrors((current) => {
+      if (!current[event.target.name]) return current;
+      const next = { ...current };
+      delete next[event.target.name];
+      return next;
+    });
   }
 
   async function copyClientInstallLink() {
@@ -43,6 +51,7 @@ export default function ProjectForm({ installationId, installUrl }) {
     setSaving(true);
     setError("");
     setErrorDetails("");
+    setFieldErrors({});
     try {
       const { deploymentMode, ...project } = form;
       const response = await fetch("/api/projects", {
@@ -57,7 +66,17 @@ export default function ProjectForm({ installationId, installUrl }) {
       const result = await response.json();
       if (!response.ok) {
         setErrorDetails(result.details ?? "");
-        throw new Error(result.fields?.[0]?.message ?? result.error ?? "Não foi possível conectar o projeto");
+        if (result.fields?.length) {
+          const nextFieldErrors = Object.fromEntries(result.fields.map((field) => [field.path, field.message]));
+          setFieldErrors(nextFieldErrors);
+          setError("Revise os campos destacados antes de conectar o projeto");
+          const advancedFields = ["workingDirectory", "installCommand", "lintCommand", "testCommand", "buildCommand", "previewCommand", "previewPort"];
+          if (result.fields.some((field) => advancedFields.includes(field.path))) advancedSettingsRef.current.open = true;
+        } else {
+          setError(result.error ?? "Não foi possível conectar o projeto");
+        }
+        setSaving(false);
+        return;
       }
       router.push(`/projects/${result.project.id}`);
       router.refresh();
@@ -95,7 +114,7 @@ export default function ProjectForm({ installationId, installUrl }) {
         <label><span>Modo de entrega</span><select name="deploymentMode" value={form.deploymentMode} onChange={change}><option value="GITHUB_ONLY">Somente GitHub</option><option value="PUBLISHED">GitHub + aplicação publicada</option></select></label>
         {form.deploymentMode === "PUBLISHED" && <label><span>URL da aplicação</span><input name="productionUrl" type="url" value={form.productionUrl} onChange={change} placeholder="https://app.exemplo.com" required /></label>}
       </div>
-      <details className="advanced-settings">
+      <details className="advanced-settings" ref={advancedSettingsRef}>
         <summary>Configurações avançadas de execução</summary>
         <p>O Dashboard detecta a tecnologia automaticamente. Altere somente quando o projeto exigir comandos específicos.</p>
         <div className="form-grid">
@@ -105,7 +124,7 @@ export default function ProjectForm({ installationId, installUrl }) {
         <label><span>Testes</span><input name="testCommand" value={form.testCommand} onChange={change} placeholder="npm test" /></label>
         <label><span>Build</span><input name="buildCommand" value={form.buildCommand} onChange={change} placeholder="npm run build" /></label>
         <label><span>Iniciar preview visual</span><input name="previewCommand" value={form.previewCommand} onChange={change} placeholder="npm run dev" /></label>
-        <label><span>Porta do preview</span><input name="previewPort" type="number" min="1" max="65535" value={form.previewPort} onChange={change} /></label>
+        <label className={fieldErrors.previewPort ? "has-error" : ""}><span>Porta do preview</span><input aria-invalid={Boolean(fieldErrors.previewPort)} name="previewPort" type="number" min="1" max="65535" value={form.previewPort} onChange={change} />{fieldErrors.previewPort && <small className="field-error">{fieldErrors.previewPort}</small>}</label>
         </div>
       </details>
       {error && <div className="form-error"><strong>{error}</strong>{errorDetails && <small>Detalhes técnicos: {errorDetails}</small>}</div>}
