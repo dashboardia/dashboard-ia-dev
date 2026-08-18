@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { cleanValidationArtifacts, ReadOnlyShell, redactSensitiveData, resolveWorkspacePath, restoreImplementationSnapshot, runConfiguredCommand, runProcess, WorkspaceEditor } from "./sandbox.mjs";
+import { cleanValidationArtifacts, ReadOnlyShell, redactSensitiveData, resolveWorkspacePath, restoreImplementationSnapshot, runConfiguredCommand, runProcess, safeChildEnvironment, WorkspaceEditor } from "./sandbox.mjs";
 
 const directories = [];
 
@@ -54,6 +54,23 @@ describe("worker sandbox", () => {
   it("remove credenciais de mensagens", () => {
     expect(redactSensitiveData("Authorization: Basic abc123 token-secreto", ["token-secreto"]))
       .toBe("Authorization: Basic [REDACTED] [REDACTED]");
+  });
+
+  it("não repassa credenciais internas do worker aos projetos executados", () => {
+    const previousOpenAiKey = process.env.OPENAI_API_KEY;
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    process.env.OPENAI_API_KEY = "segredo-do-worker";
+    process.env.DATABASE_URL = "postgresql://interno";
+    try {
+      const environment = safeChildEnvironment("/tmp/projeto");
+      expect(environment.OPENAI_API_KEY).toBeUndefined();
+      expect(environment.DATABASE_URL).toBeUndefined();
+    } finally {
+      if (previousOpenAiKey == null) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previousOpenAiKey;
+      if (previousDatabaseUrl == null) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previousDatabaseUrl;
+    }
   });
 
   it("encerra comandos configurados quando o limite é atingido", async () => {

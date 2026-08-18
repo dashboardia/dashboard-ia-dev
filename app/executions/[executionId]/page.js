@@ -13,6 +13,7 @@ import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error
 import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings";
 import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-button";
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
+import PreviewCard from "./preview-card";
 
 /* eslint-disable @next/next/no-img-element -- imagens privadas e de altura variável servidas por rota autenticada */
 
@@ -98,6 +99,8 @@ export default async function ExecutionPage({ params }) {
           <div className="card-heading"><div><h2>Validação visual</h2><p>Evidências opcionais da interface; a aprovação do código permanece separada.</p></div><Images size={20} /></div>
           {visualArtifacts.length ? <div className="visual-evidence-grid">{visualArtifacts.map((artifact) => <figure className="visual-evidence" key={artifact.id}><img src={`/api/artifacts/${artifact.id}`} alt={`${artifact.metadata?.source === "before" ? "Antes" : "Depois"} — ${artifact.metadata?.route ?? "/"} — ${artifact.metadata?.viewport ?? "tela"}`} loading="lazy" /><figcaption><strong>{artifact.metadata?.source === "before" ? "Antes" : "Depois"}</strong><span>{artifact.metadata?.route ?? "/"} · {artifact.metadata?.viewport === "mobile" ? "Celular" : "Desktop"}</span></figcaption></figure>)}</div> : <div className="list-empty">As evidências aparecerão após a etapa de validação.</div>}
         </section>}
+
+        {execution.demand.type !== "DOCUMENTATION" && <PreviewCard executionId={execution.id} />}
 
         <section className="form-card detail-card full-card execution-diff-card">
           <div className="card-heading"><div><h2>Diff para revisão</h2><p>Alterações exatas geradas antes da abertura do Pull Request</p></div><Code2 size={20} /></div>

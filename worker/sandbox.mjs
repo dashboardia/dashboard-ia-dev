@@ -77,7 +77,7 @@ export class WorkspaceEditor {
   }
 }
 
-function safeChildEnvironment(workspace) {
+export function safeChildEnvironment(workspace) {
   return {
     PATH: process.env.PATH,
     HOME: workspace,

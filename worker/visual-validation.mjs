@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
-import { access } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { chromium } from "playwright";
 
 import { putVisualEvidence } from "../lib/visual-storage.js";
+import { safeChildEnvironment } from "./sandbox.mjs";
 
 const viewports = [
   { name: "desktop", width: 1440, height: 1000 },
@@ -78,12 +79,13 @@ export async function runVisualValidation({ execution, projectDirectory, log }) 
   const output = { stdout: "", stderr: "" };
   let virtualEnvironmentExists = true;
   try { await access(path.join(virtualEnvironment, "bin", "python")); } catch { virtualEnvironmentExists = false; }
+  await mkdir(path.join(projectDirectory, ".tmp"), { recursive: true });
   const preview = spawn("/bin/bash", ["-c", project.previewCommand], {
     cwd: projectDirectory,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
-      ...process.env,
+      ...safeChildEnvironment(projectDirectory),
       ...(virtualEnvironmentExists ? { PATH: `${path.join(virtualEnvironment, "bin")}:${process.env.PATH}`, VIRTUAL_ENV: virtualEnvironment } : {}),
       PORT: String(project.previewPort),
       HOSTNAME: "127.0.0.1",
