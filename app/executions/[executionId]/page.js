@@ -64,7 +64,7 @@ export default async function ExecutionPage({ params }) {
           eyebrow={`${execution.demand.project.name} · ${execution.stage}`}
           title={execution.demand.title}
           description={`Execução ${execution.id.slice(-10)} · solicitada por ${execution.requestedBy.name ?? execution.requestedBy.githubLogin}`}
-          action={<div className="execution-header-actions">{canOpenPullRequest && <OpenPullRequestButton executionId={execution.id} />}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
+          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : canOpenPullRequest ? <OpenPullRequestButton executionId={execution.id} /> : null}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
         />
 
         <section className="execution-metrics">

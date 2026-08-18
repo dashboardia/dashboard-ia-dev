@@ -4,7 +4,7 @@ import { GitPullRequest, LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export default function OpenPullRequestButton({ executionId }) {
+export default function OpenPullRequestButton({ executionId, pullRequest = null }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -21,6 +21,10 @@ export default function OpenPullRequestButton({ executionId }) {
     }
     router.refresh();
     setLoading(false);
+  }
+
+  if (pullRequest) {
+    return <div className="execution-action"><a href={pullRequest.url} target="_blank" rel="noreferrer"><GitPullRequest size={14} />Abrir Pull Request #{pullRequest.externalNumber}</a></div>;
   }
 
   return <div className="execution-action"><button onClick={openPullRequest} disabled={loading} type="button">{loading ? <LoaderCircle className="spin" size={14} /> : <GitPullRequest size={14} />}{loading ? "Abrindo..." : "Aprovar e abrir PR"}</button>{error && <small>{error}</small>}</div>;
