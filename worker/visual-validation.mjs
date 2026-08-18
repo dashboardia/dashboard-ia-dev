@@ -47,6 +47,20 @@ async function captureSet({ browser, executionId, baseUrl, routes, source }) {
   return artifacts;
 }
 
+async function stopPreview(preview) {
+  if (!preview.pid || preview.exitCode !== null) return;
+  const exited = new Promise((resolve) => preview.once("exit", resolve));
+  try { process.kill(-preview.pid, "SIGTERM"); } catch { return; }
+  const stopped = await Promise.race([
+    exited.then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
+  ]);
+  if (!stopped) {
+    try { process.kill(-preview.pid, "SIGKILL"); } catch {}
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 1_000))]);
+  }
+}
+
 export async function runVisualValidation({ execution, projectDirectory, log }) {
   const project = execution.demand.project;
   if (!project.previewCommand || !project.previewPort) throw new Error("A demanda exige validação visual, mas o projeto não possui comando e porta de preview configurados");
@@ -84,8 +98,6 @@ export async function runVisualValidation({ execution, projectDirectory, log }) 
     return artifacts;
   } finally {
     await browser?.close().catch(() => null);
-    if (preview.pid) {
-      try { process.kill(-preview.pid, "SIGTERM"); } catch {}
-    }
+    await stopPreview(preview);
   }
 }

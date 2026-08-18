@@ -59,16 +59,16 @@ function agentPrompt(demand) {
   ].join("\n\n");
 }
 
-async function runValidations(execution, projectDirectory, settings) {
+async function runValidations(execution, projectDirectory, settings, scopes = ["install", "lint", "test", "build"], warnIfEmpty = true) {
   const commands = [
     ["install", execution.demand.project.installCommand],
     ["lint", execution.demand.project.lintCommand],
     ["test", execution.demand.project.testCommand],
     ["build", execution.demand.project.buildCommand],
-  ].filter(([, command]) => command?.trim());
+  ].filter(([scope, command]) => scopes.includes(scope) && command?.trim());
 
   if (!commands.length) {
-    await log(execution.id, "validation", "Nenhum comando de validação foi configurado", "warn");
+    if (warnIfEmpty) await log(execution.id, "validation", "Nenhum comando de validação foi configurado", "warn");
     return { passed: true };
   }
 
@@ -243,10 +243,18 @@ export async function processExecution(executionId, workerId) {
     execution.demand.project = await db.project.findUniqueOrThrow({
       where: { id: execution.demand.projectId },
     });
-    await runValidations(execution, projectDirectory, settings);
-    await assertExecutionActive(executionId);
     let visualArtifacts = [];
     if (execution.demand.visualValidation) {
+      const configuredValidations = [
+        execution.demand.project.installCommand,
+        execution.demand.project.lintCommand,
+        execution.demand.project.testCommand,
+        execution.demand.project.buildCommand,
+      ].some((command) => command?.trim());
+      if (!configuredValidations) await log(executionId, "validation", "Nenhum comando de validação foi configurado", "warn");
+
+      const dependencyValidation = await runValidations(execution, projectDirectory, settings, ["install"], false);
+      await assertExecutionActive(executionId);
       await log(executionId, "visual", "Validação visual iniciada");
       try {
         visualArtifacts = await runVisualValidation({
@@ -259,6 +267,13 @@ export async function processExecution(executionId, workerId) {
         const technical = visualError instanceof Error ? visualError.message : String(visualError);
         await log(executionId, "visual", "A validação visual falhou; a branch e o diff ainda serão gerados para revisão", "warn", { technical });
       }
+      await assertExecutionActive(executionId);
+      if (dependencyValidation.passed) {
+        await runValidations(execution, projectDirectory, settings, ["lint", "test", "build"], false);
+        await assertExecutionActive(executionId);
+      }
+    } else {
+      await runValidations(execution, projectDirectory, settings);
       await assertExecutionActive(executionId);
     }
     await cleanValidationArtifacts(projectDirectory);
