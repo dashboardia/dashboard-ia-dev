@@ -1,0 +1,2 @@
+ALTER TABLE "Demand"
+ADD COLUMN "aiModel" TEXT NOT NULL DEFAULT 'gpt-5.6-terra';

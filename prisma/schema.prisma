@@ -216,6 +216,7 @@ model Demand {
   acceptanceCriteria String?        @db.Text
   visualValidation   Boolean        @default(false)
   visualPaths        Json?
+  aiModel            String         @default("gpt-5.6-terra")
   type               DemandType
   priority           DemandPriority @default(NORMAL)
   status             DemandStatus   @default(DRAFT)

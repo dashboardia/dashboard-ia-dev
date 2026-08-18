@@ -18,6 +18,7 @@ import {
   runProcess,
 } from "./sandbox.mjs";
 import { runVisualValidation } from "./visual-validation.mjs";
+import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 
@@ -191,7 +192,7 @@ export async function processExecution(executionId, workerId) {
     const projectDirectory = resolveWorkspacePath(workspace, execution.demand.project.workingDirectory);
     await db.execution.update({
       where: { id: executionId },
-      data: { status: "RUNNING", stage: "IMPLEMENTATION", branchName, model: env.OPENAI_MODEL ?? "gpt-5.6" },
+      data: { status: "RUNNING", stage: "IMPLEMENTATION", branchName, model: execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL },
     });
     await log(executionId, "agent", "Agente de implementação iniciado");
 
@@ -199,7 +200,7 @@ export async function processExecution(executionId, workerId) {
     const implementationAgent = startImplementationAgent({
       projectDirectory,
       prompt: agentPrompt(execution.demand),
-      model: env.OPENAI_MODEL ?? "gpt-5.6",
+      model: execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL,
     });
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
