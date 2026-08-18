@@ -34,7 +34,11 @@ async function captureSet({ browser, executionId, baseUrl, routes, source }) {
     for (const viewport of viewports) {
       const page = await browser.newPage({ viewport });
       try {
-        await page.goto(new URL(route, baseUrl).toString(), { waitUntil: "networkidle", timeout: 60_000 });
+        await page.goto(new URL(route, baseUrl).toString(), { waitUntil: "domcontentloaded", timeout: 60_000 });
+        // Aplicações reais podem manter polling, analytics ou APIs indisponíveis no
+        // ambiente isolado. A captura não deve depender da rede ficar totalmente ociosa.
+        await page.waitForLoadState("load", { timeout: 10_000 }).catch(() => null);
+        await page.waitForTimeout(2_000);
         const body = await page.screenshot({ fullPage: true, type: "png" });
         const key = `executions/${executionId}/${source}-${safePath(route)}-${viewport.name}.png`;
         await putVisualEvidence(key, body);
