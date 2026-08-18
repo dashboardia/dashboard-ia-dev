@@ -10,6 +10,7 @@ import { getProjectGitHubAccessToken } from "../lib/github.js";
 import { getGlobalSettings } from "../lib/global-settings.js";
 import {
   cleanWorkspace,
+  cleanValidationArtifacts,
   gitAuthenticationArgs,
   ReadOnlyShell,
   resolveWorkspacePath,
@@ -252,6 +253,7 @@ export async function processExecution(executionId, workerId) {
       }
       await assertExecutionActive(executionId);
     }
+    await cleanValidationArtifacts(projectDirectory);
     const diffResult = await runProcess("git", ["diff", "--binary"], { cwd: workspace });
 
     await runProcess("git", ["add", "-A"], { cwd: workspace });
@@ -286,7 +288,11 @@ export async function processExecution(executionId, workerId) {
     const cancelled = error instanceof ExecutionCancelledError;
     await db.execution.update({ where: { id: executionId }, data: { status: cancelled ? "CANCELLED" : "FAILED", error: cancelled ? null : message, lockedAt: null, lockedBy: null, finishedAt: new Date() } }).catch(() => null);
     if (execution?.demandId) await db.demand.update({ where: { id: execution.demandId }, data: { status: cancelled ? "APPROVED" : "FAILED" } }).catch(() => null);
-    await log(executionId, "worker", message, cancelled ? "warn" : "error").catch(() => null);
+    await log(executionId, "worker", message, cancelled ? "warn" : "error", cancelled ? undefined : {
+      code: error?.code ?? null,
+      stdout: String(error?.stdout ?? "").slice(-12_000) || "(sem saída padrão)",
+      stderr: String(error?.stderr ?? "").slice(-12_000) || message,
+    }).catch(() => null);
     if (!cancelled) throw error;
   } finally {
     await cleanWorkspace(workspace).catch(() => null);

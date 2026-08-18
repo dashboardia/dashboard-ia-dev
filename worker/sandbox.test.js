@@ -1,9 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ReadOnlyShell, redactSensitiveData, resolveWorkspacePath, runConfiguredCommand, runProcess, WorkspaceEditor } from "./sandbox.mjs";
+import { cleanValidationArtifacts, ReadOnlyShell, redactSensitiveData, resolveWorkspacePath, runConfiguredCommand, runProcess, WorkspaceEditor } from "./sandbox.mjs";
 
 const directories = [];
 
@@ -73,6 +73,18 @@ describe("worker sandbox", () => {
 
     expect(result.stdout).toContain(path.join(workspace, ".forgeboard-venv"));
     expect(result.stdout).toContain(path.join(workspace, ".forgeboard-venv", "lib"));
+  });
+
+  it("remove artefatos temporários antes de preparar o commit", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "forgeboard-clean-"));
+    directories.push(workspace);
+    await mkdir(path.join(workspace, ".forgeboard-venv"), { recursive: true });
+    await mkdir(path.join(workspace, ".tmp"), { recursive: true });
+
+    await cleanValidationArtifacts(workspace);
+
+    await expect(access(path.join(workspace, ".forgeboard-venv"))).rejects.toThrow();
+    await expect(access(path.join(workspace, ".tmp"))).rejects.toThrow();
   });
 
   it("não expõe segredos quando um processo falha", async () => {

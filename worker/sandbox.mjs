@@ -269,6 +269,13 @@ export async function cleanWorkspace(workspace) {
   await rm(workspace, { recursive: true, force: true, maxRetries: 3 });
 }
 
+export async function cleanValidationArtifacts(projectDirectory) {
+  await Promise.all([
+    rm(path.join(projectDirectory, ".forgeboard-venv"), { recursive: true, force: true, maxRetries: 3 }),
+    rm(path.join(projectDirectory, ".tmp"), { recursive: true, force: true, maxRetries: 3 }),
+  ]);
+}
+
 export function gitAuthenticationArgs(token) {
   const authorization = Buffer.from(`x-access-token:${token}`).toString("base64");
   return ["-c", `http.extraHeader=Authorization: Basic ${authorization}`];
