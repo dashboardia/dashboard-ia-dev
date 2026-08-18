@@ -283,15 +283,9 @@ export async function processExecution(executionId, workerId) {
     execution.demand.project = { ...savedProject, ...detectedConfiguration };
     let visualArtifacts = [];
     if (execution.demand.visualValidation) {
-      const configuredValidations = [
-        execution.demand.project.installCommand,
-        execution.demand.project.lintCommand,
-        execution.demand.project.testCommand,
-        execution.demand.project.buildCommand,
-      ].some((command) => command?.trim());
-      if (!configuredValidations) await log(executionId, "validation", "Nenhum comando de validação foi configurado", "warn");
-
-      const dependencyValidation = await runValidations(execution, projectDirectory, settings, ["install"], false);
+      // O build aquece as transformações e o cache de arquivos usados pelo Vite.
+      // Mesmo quando falha, o processo é encerrado antes de iniciar o Chromium.
+      await runValidations(execution, projectDirectory, settings);
       await assertExecutionActive(executionId);
       await log(executionId, "visual", "Validação visual iniciada");
       try {
@@ -306,10 +300,6 @@ export async function processExecution(executionId, workerId) {
         await log(executionId, "visual", "A validação visual falhou; a branch e o diff ainda serão gerados para revisão", "warn", { technical });
       }
       await assertExecutionActive(executionId);
-      if (dependencyValidation.passed) {
-        await runValidations(execution, projectDirectory, settings, ["lint", "test", "build"], false);
-        await assertExecutionActive(executionId);
-      }
     } else {
       await runValidations(execution, projectDirectory, settings);
       await assertExecutionActive(executionId);
