@@ -87,7 +87,18 @@ export async function runVisualValidation({ execution, projectDirectory, log }) 
   try {
     await log("visual", "Aguardando o preview da implementação");
     await waitForServer(localUrl, preview, output);
-    browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-background-networking",
+        "--disable-extensions",
+        "--disable-gpu",
+        "--no-zygote",
+        "--single-process",
+      ],
+    });
     const artifacts = [];
     if (project.productionUrl) {
       await log("visual", "Capturando referência atual de produção");

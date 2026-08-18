@@ -162,7 +162,7 @@ export async function processExecution(executionId, workerId) {
     });
     await log(executionId, "agent", "Agente de implementação iniciado");
 
-    const agent = new Agent({
+    let agent = new Agent({
       name: "Forgeboard Coding Agent",
       model: env.OPENAI_MODEL ?? "gpt-5.6",
       modelSettings: { reasoning: { effort: "medium", summary: "concise" }, maxTokens: 24_000, store: false },
@@ -213,7 +213,13 @@ export async function processExecution(executionId, workerId) {
     }
 
     const summary = String(result.finalOutput ?? "Implementação concluída sem resumo.").trim();
-    const usage = result.runContext.usage;
+    const inputTokens = result.runContext.usage.inputTokens;
+    const outputTokens = result.runContext.usage.outputTokens;
+    // O resultado guarda todo o histórico da conversa do agente. Liberá-lo aqui é
+    // essencial antes de iniciar Vite e Chromium em workers com pouca memória.
+    result = null;
+    agent = null;
+    globalThis.gc?.();
     await log(executionId, "agent", "Agente de implementação concluído");
     await assertExecutionActive(executionId);
 
@@ -223,7 +229,7 @@ export async function processExecution(executionId, workerId) {
       await db.$transaction(async (transaction) => {
         const updated = await transaction.execution.updateMany({
           where: { id: executionId, cancelRequestedAt: null },
-          data: { status: "SUCCEEDED", stage: "ANALYSIS", summary, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, lockedAt: null, lockedBy: null, finishedAt: new Date() },
+          data: { status: "SUCCEEDED", stage: "ANALYSIS", summary, inputTokens, outputTokens, lockedAt: null, lockedBy: null, finishedAt: new Date() },
         });
         if (updated.count !== 1) throw new ExecutionCancelledError();
         await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "SUCCEEDED" } });
@@ -302,8 +308,8 @@ export async function processExecution(executionId, workerId) {
           summary,
           baseSha: base,
           headSha: implementationHead,
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
+          inputTokens,
+          outputTokens,
           lockedAt: null,
           lockedBy: null,
         },
