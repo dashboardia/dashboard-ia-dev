@@ -33,18 +33,22 @@ async function captureSet({ browser, executionId, baseUrl, routes, source }) {
   for (const route of routes) {
     for (const viewport of viewports) {
       const page = await browser.newPage({ viewport });
+      page.setDefaultTimeout(30_000);
       try {
-        await page.goto(new URL(route, baseUrl).toString(), { waitUntil: "domcontentloaded", timeout: 60_000 });
+        await page.goto(new URL(route, baseUrl).toString(), { waitUntil: "domcontentloaded", timeout: 30_000 });
         // Aplicações reais podem manter polling, analytics ou APIs indisponíveis no
         // ambiente isolado. A captura não deve depender da rede ficar totalmente ociosa.
-        await page.waitForLoadState("load", { timeout: 10_000 }).catch(() => null);
+        await page.waitForLoadState("load", { timeout: 5_000 }).catch(() => null);
         await page.waitForTimeout(2_000);
-        const body = await page.screenshot({ fullPage: true, type: "png" });
+        const body = await page.screenshot({ fullPage: true, type: "png", timeout: 30_000 });
         const key = `executions/${executionId}/${source}-${safePath(route)}-${viewport.name}.png`;
         await putVisualEvidence(key, body);
         artifacts.push({ type: "visual", name: `${source}-${safePath(route)}-${viewport.name}.png`, url: key, metadata: { source, route, viewport: viewport.name, width: viewport.width, height: viewport.height } });
       } finally {
-        await page.close();
+        await Promise.race([
+          page.close().catch(() => null),
+          new Promise((resolve) => setTimeout(resolve, 5_000)),
+        ]);
       }
     }
   }
@@ -99,8 +103,6 @@ export async function runVisualValidation({ execution, projectDirectory, log }) 
         "--disable-background-networking",
         "--disable-extensions",
         "--disable-gpu",
-        "--no-zygote",
-        "--single-process",
       ],
     });
     const artifacts = [];
@@ -112,7 +114,12 @@ export async function runVisualValidation({ execution, projectDirectory, log }) 
     artifacts.push(...await captureSet({ browser, executionId: execution.id, baseUrl: localUrl, routes, source: "after" }));
     return artifacts;
   } finally {
-    await browser?.close().catch(() => null);
+    if (browser) {
+      await Promise.race([
+        browser.close().catch(() => null),
+        new Promise((resolve) => setTimeout(resolve, 5_000)),
+      ]);
+    }
     await stopPreview(preview);
   }
 }
