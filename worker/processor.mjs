@@ -67,7 +67,7 @@ async function runValidations(execution, projectDirectory, settings) {
 
   if (!commands.length) {
     await log(execution.id, "validation", "Nenhum comando de validação foi configurado", "warn");
-    return;
+    return { passed: true };
   }
 
   for (const [scope, command] of commands) {
@@ -103,12 +103,17 @@ async function runValidations(execution, projectDirectory, settings) {
         stdout: stdout || "(sem saída padrão)",
         stderr: stderr || errorMessage || "(sem saída de erro)",
       });
-      throw new Error(`Validação ${scope} falhou\n${technical || "O processo terminou sem fornecer detalhes técnicos"}`);
+      await log(execution.id, "validation", `A validação ${scope} falhou; a branch e o diff ainda serão gerados para revisão`, "warn", {
+        failedScope: scope,
+        technical: technical || "O processo terminou sem fornecer detalhes técnicos",
+      });
+      return { passed: false, failedScope: scope, technical };
     } finally {
       clearInterval(cancellationTimer);
     }
     await assertExecutionActive(execution.id);
   }
+  return { passed: true };
 }
 
 export async function processExecution(executionId, workerId) {
@@ -234,12 +239,17 @@ export async function processExecution(executionId, workerId) {
     let visualArtifacts = [];
     if (execution.demand.visualValidation) {
       await log(executionId, "visual", "Validação visual iniciada");
-      visualArtifacts = await runVisualValidation({
-        execution,
-        projectDirectory,
-        log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
-      });
-      await log(executionId, "visual", `${visualArtifacts.length} evidências visuais geradas`);
+      try {
+        visualArtifacts = await runVisualValidation({
+          execution,
+          projectDirectory,
+          log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
+        });
+        await log(executionId, "visual", `${visualArtifacts.length} evidências visuais geradas`);
+      } catch (visualError) {
+        const technical = visualError instanceof Error ? visualError.message : String(visualError);
+        await log(executionId, "visual", "A validação visual falhou; a branch e o diff ainda serão gerados para revisão", "warn", { technical });
+      }
       await assertExecutionActive(executionId);
     }
     const diffResult = await runProcess("git", ["diff", "--binary"], { cwd: workspace });

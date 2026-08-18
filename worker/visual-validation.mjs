@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { access } from "node:fs/promises";
+import path from "node:path";
 
 import { chromium } from "playwright";
 
@@ -13,10 +15,10 @@ function safePath(route) {
   return route === "/" ? "home" : route.replace(/^\/+|\/+$/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-") || "home";
 }
 
-async function waitForServer(url, process, timeoutMs = 90_000) {
+async function waitForServer(url, process, output, timeoutMs = 90_000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    if (process.exitCode !== null) throw new Error("O comando de preview foi encerrado antes de iniciar a aplicação");
+    if (process.exitCode !== null) throw new Error(`O comando de preview foi encerrado antes de iniciar a aplicação\n${output.stderr || output.stdout || `Código de saída: ${process.exitCode}`}`);
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
       if (response.status < 500) return;
@@ -50,16 +52,28 @@ export async function runVisualValidation({ execution, projectDirectory, log }) 
   if (!project.previewCommand || !project.previewPort) throw new Error("A demanda exige validação visual, mas o projeto não possui comando e porta de preview configurados");
   const routes = Array.isArray(execution.demand.visualPaths) && execution.demand.visualPaths.length ? execution.demand.visualPaths : ["/"];
   const localUrl = `http://127.0.0.1:${project.previewPort}`;
-  const preview = spawn("/bin/sh", ["-lc", project.previewCommand], {
+  const virtualEnvironment = path.join(projectDirectory, ".forgeboard-venv");
+  const output = { stdout: "", stderr: "" };
+  let virtualEnvironmentExists = true;
+  try { await access(path.join(virtualEnvironment, "bin", "python")); } catch { virtualEnvironmentExists = false; }
+  const preview = spawn("/bin/bash", ["-c", project.previewCommand], {
     cwd: projectDirectory,
     detached: true,
-    stdio: "ignore",
-    env: { ...process.env, PORT: String(project.previewPort), HOSTNAME: "127.0.0.1" },
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      ...(virtualEnvironmentExists ? { PATH: `${path.join(virtualEnvironment, "bin")}:${process.env.PATH}`, VIRTUAL_ENV: virtualEnvironment } : {}),
+      PORT: String(project.previewPort),
+      HOSTNAME: "127.0.0.1",
+    },
   });
-  const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+  preview.stdout.on("data", (chunk) => { output.stdout = (output.stdout + chunk.toString()).slice(-12_000); });
+  preview.stderr.on("data", (chunk) => { output.stderr = (output.stderr + chunk.toString()).slice(-12_000); });
+  let browser;
   try {
     await log("visual", "Aguardando o preview da implementação");
-    await waitForServer(localUrl, preview);
+    await waitForServer(localUrl, preview, output);
+    browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
     const artifacts = [];
     if (project.productionUrl) {
       await log("visual", "Capturando referência atual de produção");
@@ -69,7 +83,7 @@ export async function runVisualValidation({ execution, projectDirectory, log }) 
     artifacts.push(...await captureSet({ browser, executionId: execution.id, baseUrl: localUrl, routes, source: "after" }));
     return artifacts;
   } finally {
-    await browser.close().catch(() => null);
+    await browser?.close().catch(() => null);
     if (preview.pid) {
       try { process.kill(-preview.pid, "SIGTERM"); } catch {}
     }

@@ -66,6 +66,8 @@ export default async function ProjectPage({ params }) {
               lintCommand: project.lintCommand,
               testCommand: project.testCommand,
               buildCommand: project.buildCommand,
+              previewCommand: project.previewCommand,
+              previewPort: project.previewPort,
             }} />
           </section>
         )}
