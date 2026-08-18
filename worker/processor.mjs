@@ -8,6 +8,7 @@ import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
 import { getProjectGitHubAccessToken } from "../lib/github.js";
 import { getGlobalSettings } from "../lib/global-settings.js";
+import { applyDetectedRuntime, detectWorkspaceProjectRuntime } from "../lib/project-runtime.js";
 import {
   cleanWorkspace,
   cleanValidationArtifacts,
@@ -240,9 +241,20 @@ export async function processExecution(executionId, workerId) {
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
 
     // Use sempre a configuração mais recente salva no cadastro do projeto.
-    execution.demand.project = await db.project.findUniqueOrThrow({
+    const savedProject = await db.project.findUniqueOrThrow({
       where: { id: execution.demand.projectId },
     });
+    const detectedRuntime = await detectWorkspaceProjectRuntime(projectDirectory);
+    const resolvedProject = applyDetectedRuntime(savedProject, detectedRuntime);
+    const runtimeFields = ["installCommand", "lintCommand", "testCommand", "buildCommand", "previewCommand", "previewPort"];
+    const detectedConfiguration = Object.fromEntries(runtimeFields
+      .filter((field) => savedProject[field] == null && resolvedProject[field] != null)
+      .map((field) => [field, resolvedProject[field]]));
+    if (Object.keys(detectedConfiguration).length) {
+      await db.project.update({ where: { id: savedProject.id }, data: detectedConfiguration });
+      await log(executionId, "validation", `Configuração ${detectedRuntime.runtime} detectada após a implementação`, "info", detectedConfiguration);
+    }
+    execution.demand.project = { ...savedProject, ...detectedConfiguration };
     let visualArtifacts = [];
     if (execution.demand.visualValidation) {
       const configuredValidations = [

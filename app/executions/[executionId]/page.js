@@ -1,4 +1,4 @@
-import { Activity, Clock3, Code2, GitBranch, Images, TerminalSquare, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Clock3, Code2, GitBranch, Images, TerminalSquare, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -52,6 +52,7 @@ export default async function ExecutionPage({ params }) {
   const visualArtifacts = execution.artifacts.filter((artifact) => artifact.type === "visual");
   const canCancel = role === "MANAGER" && cancellableStatuses.includes(execution.status) && !execution.cancelRequestedAt;
   const canOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.cancelRequestedAt;
+  const cancelled = execution.status === "CANCELLED" || Boolean(execution.cancelRequestedAt);
   const live = cancellableStatuses.includes(execution.status) && !execution.cancelRequestedAt;
   const explainedError = execution.error ? explainError(execution.error) : null;
 
@@ -64,7 +65,7 @@ export default async function ExecutionPage({ params }) {
           eyebrow={`${execution.demand.project.name} · ${execution.stage}`}
           title={execution.demand.title}
           description={`Execução ${execution.id.slice(-10)} · solicitada por ${execution.requestedBy.name ?? execution.requestedBy.githubLogin}`}
-          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : canOpenPullRequest ? <OpenPullRequestButton executionId={execution.id} /> : null}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
+          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : canOpenPullRequest ? <OpenPullRequestButton executionId={execution.id} /> : cancelled ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar para a demanda original</Link></div> : null}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
         />
 
         <section className="execution-metrics">
