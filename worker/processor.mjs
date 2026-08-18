@@ -1,8 +1,7 @@
+import { fork } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-
-import { Agent, applyPatchTool, run, shellTool } from "@openai/agents";
 
 import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
@@ -13,12 +12,10 @@ import {
   cleanWorkspace,
   cleanValidationArtifacts,
   gitAuthenticationArgs,
-  ReadOnlyShell,
   resolveWorkspacePath,
   restoreImplementationSnapshot,
   runConfiguredCommand,
   runProcess,
-  WorkspaceEditor,
 } from "./sandbox.mjs";
 import { runVisualValidation } from "./visual-validation.mjs";
 
@@ -58,6 +55,45 @@ function agentPrompt(demand) {
     demand.acceptanceCriteria ? `Critérios de aceite:\n${demand.acceptanceCriteria}` : "Critérios de aceite: não informados",
     demand.visualValidation ? `Validação visual obrigatória nas rotas: ${(Array.isArray(demand.visualPaths) ? demand.visualPaths : ["/"]).join(", ")}` : "Validação visual: não solicitada",
   ].join("\n\n");
+}
+
+function startImplementationAgent({ projectDirectory, prompt, model }) {
+  const child = fork(new URL("./implementation-runner.mjs", import.meta.url), [], {
+    env: process.env,
+    stdio: ["ignore", "ignore", "pipe", "ipc"],
+  });
+  let stderr = "";
+  let settled = false;
+  let forceKillTimer;
+  child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-12_000); });
+
+  const promise = new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.on("message", (message) => {
+      if (message?.type === "result") {
+        settled = true;
+        resolve(message.result);
+      } else if (message?.type === "error") {
+        settled = true;
+        reject(new Error(message.error?.message || "O subprocesso do agente falhou"));
+      }
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(forceKillTimer);
+      if (!settled) reject(new Error(stderr || `O subprocesso do agente foi encerrado (${signal || code})`));
+    });
+    child.send({ type: "run", projectDirectory, prompt, model });
+  });
+
+  return {
+    promise,
+    abort() {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      child.send({ type: "abort" }, () => null);
+      forceKillTimer = setTimeout(() => child.kill("SIGKILL"), 5_000);
+      forceKillTimer.unref();
+    },
+  };
 }
 
 async function runValidations(execution, projectDirectory, settings, scopes = ["install", "lint", "test", "build"], warnIfEmpty = true) {
@@ -153,54 +189,46 @@ export async function processExecution(executionId, workerId) {
     const branchName = `forgeboard/demand-${execution.demandId.slice(-8)}-${execution.id.slice(-6)}`;
     await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
     const projectDirectory = resolveWorkspacePath(workspace, execution.demand.project.workingDirectory);
-    const editor = new WorkspaceEditor(projectDirectory);
-    const readOnlyShell = new ReadOnlyShell(projectDirectory);
-
     await db.execution.update({
       where: { id: executionId },
       data: { status: "RUNNING", stage: "IMPLEMENTATION", branchName, model: env.OPENAI_MODEL ?? "gpt-5.6" },
     });
     await log(executionId, "agent", "Agente de implementação iniciado");
 
-    let agent = new Agent({
-      name: "Forgeboard Coding Agent",
-      model: env.OPENAI_MODEL ?? "gpt-5.6",
-      modelSettings: { reasoning: { effort: "medium", summary: "concise" }, maxTokens: 24_000, store: false },
-      instructions: "Você é um engenheiro de software sênior. Trabalhe apenas na demanda aprovada e respeite rigorosamente as ferramentas e os limites do workspace.",
-      tools: [
-        shellTool({ shell: readOnlyShell, needsApproval: false }),
-        applyPatchTool({ editor, needsApproval: false }),
-      ],
-    });
-
-    let result;
     let abortReason = null;
-    const agentController = new AbortController();
+    const implementationAgent = startImplementationAgent({
+      projectDirectory,
+      prompt: agentPrompt(execution.demand),
+      model: env.OPENAI_MODEL ?? "gpt-5.6",
+    });
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
         where: { id: executionId },
         select: { cancelRequestedAt: true },
       }).catch(() => null);
-      if (current?.cancelRequestedAt && !agentController.signal.aborted) {
+      if (current?.cancelRequestedAt && !abortReason) {
         abortReason = "cancelled";
-        agentController.abort();
+        implementationAgent.abort();
       }
     }, 2_000);
     cancellationTimer.unref();
 
     const agentTimeout = setTimeout(() => {
-      if (!agentController.signal.aborted) {
+      if (!abortReason) {
         abortReason = "timeout";
-        agentController.abort();
+        implementationAgent.abort();
       }
     }, settings.agentTimeoutMinutes * 60_000);
     agentTimeout.unref();
 
+    let summary;
+    let inputTokens;
+    let outputTokens;
     try {
-      result = await run(agent, agentPrompt(execution.demand), {
-        maxTurns: 24,
-        signal: agentController.signal,
-      });
+      const result = await implementationAgent.promise;
+      summary = result.summary;
+      inputTokens = result.inputTokens;
+      outputTokens = result.outputTokens;
     } catch (error) {
       if (abortReason === "cancelled") throw new ExecutionCancelledError();
       if (abortReason === "timeout") {
@@ -212,14 +240,6 @@ export async function processExecution(executionId, workerId) {
       clearTimeout(agentTimeout);
     }
 
-    const summary = String(result.finalOutput ?? "Implementação concluída sem resumo.").trim();
-    const inputTokens = result.runContext.usage.inputTokens;
-    const outputTokens = result.runContext.usage.outputTokens;
-    // O resultado guarda todo o histórico da conversa do agente. Liberá-lo aqui é
-    // essencial antes de iniciar Vite e Chromium em workers com pouca memória.
-    result = null;
-    agent = null;
-    globalThis.gc?.();
     await log(executionId, "agent", "Agente de implementação concluído");
     await assertExecutionActive(executionId);
 
