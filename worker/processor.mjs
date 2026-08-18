@@ -19,6 +19,7 @@ import {
 } from "./sandbox.mjs";
 import { runVisualValidation } from "./visual-validation.mjs";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
+import { saveFinancialSnapshot } from "../lib/financial-shadow.js";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 
@@ -176,14 +177,16 @@ async function runValidations(execution, projectDirectory, settings, scopes = ["
 export async function processExecution(executionId, workerId) {
   const workspace = path.join(workspaceRoot, executionId);
   let execution;
+  let settings;
+  let measuredUsage;
 
   try {
-    if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada no worker");
-    const settings = await getGlobalSettings();
+    settings = await getGlobalSettings();
     execution = await db.execution.findUniqueOrThrow({
       where: { id: executionId },
       include: { demand: { include: { project: true } } },
     });
+    if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada no worker");
     await mkdir(workspaceRoot, { recursive: true });
     await cleanWorkspace(workspace);
     await assertExecutionActive(executionId);
@@ -209,9 +212,11 @@ export async function processExecution(executionId, workerId) {
     const agentLabel = documentationOnly ? "Agente de documentação" : "Agente de implementação";
     await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
     const projectDirectory = resolveWorkspacePath(workspace, execution.demand.project.workingDirectory);
+    const selectedModel = execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL;
+    execution.model = selectedModel;
     await db.execution.update({
       where: { id: executionId },
-      data: { status: "RUNNING", stage: documentationOnly ? "ANALYSIS" : "IMPLEMENTATION", branchName, model: execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL },
+      data: { status: "RUNNING", stage: documentationOnly ? "ANALYSIS" : "IMPLEMENTATION", branchName, model: selectedModel },
     });
     await log(executionId, "agent", `${agentLabel} iniciado`);
 
@@ -219,7 +224,7 @@ export async function processExecution(executionId, workerId) {
     const implementationAgent = startImplementationAgent({
       projectDirectory,
       prompt: agentPrompt(execution.demand),
-      model: execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL,
+      model: selectedModel,
     });
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
@@ -249,6 +254,7 @@ export async function processExecution(executionId, workerId) {
       summary = result.summary;
       inputTokens = result.inputTokens;
       outputTokens = result.outputTokens;
+      measuredUsage = { inputTokens, outputTokens };
     } catch (error) {
       if (abortReason === "cancelled") throw new ExecutionCancelledError();
       if (abortReason === "timeout") {
@@ -266,12 +272,14 @@ export async function processExecution(executionId, workerId) {
     const statusResult = await runProcess("git", ["status", "--porcelain"], { cwd: workspace });
     if (!statusResult.stdout.trim()) {
       if (!["INVESTIGATION", "DOCUMENTATION"].includes(execution.demand.type)) throw new Error("A IA não produziu alterações no repositório");
+      const finishedAt = new Date();
       await db.$transaction(async (transaction) => {
         const updated = await transaction.execution.updateMany({
           where: { id: executionId, cancelRequestedAt: null },
-          data: { status: "SUCCEEDED", stage: "ANALYSIS", summary, inputTokens, outputTokens, lockedAt: null, lockedBy: null, finishedAt: new Date() },
+          data: { status: "SUCCEEDED", stage: "ANALYSIS", summary, inputTokens, outputTokens, lockedAt: null, lockedBy: null, finishedAt },
         });
         if (updated.count !== 1) throw new ExecutionCancelledError();
+        await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt });
         await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "SUCCEEDED" } });
       });
       return;
@@ -345,6 +353,7 @@ export async function processExecution(executionId, workerId) {
         },
       });
       if (updated.count !== 1) throw new ExecutionCancelledError();
+      await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage });
       await transaction.executionArtifact.create({ data: { executionId, type: "diff", name: "changes.diff", content: diffResult.stdout.slice(0, 200_000) } });
       if (visualArtifacts.length) await transaction.executionArtifact.createMany({ data: visualArtifacts.map((artifact) => ({ executionId, ...artifact })) });
       await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "REVIEW" } });
@@ -353,7 +362,11 @@ export async function processExecution(executionId, workerId) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha desconhecida na execução";
     const cancelled = error instanceof ExecutionCancelledError;
-    await db.execution.update({ where: { id: executionId }, data: { status: cancelled ? "CANCELLED" : "FAILED", error: cancelled ? null : message, lockedAt: null, lockedBy: null, finishedAt: new Date() } }).catch(() => null);
+    const finishedAt = new Date();
+    await db.$transaction(async (transaction) => {
+      await transaction.execution.update({ where: { id: executionId }, data: { status: cancelled ? "CANCELLED" : "FAILED", error: cancelled ? null : message, lockedAt: null, lockedBy: null, finishedAt } });
+      if (execution && settings) await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt });
+    }).catch(() => null);
     if (execution?.demandId) await db.demand.update({ where: { id: execution.demandId }, data: { status: cancelled ? "APPROVED" : "FAILED" } }).catch(() => null);
     await log(executionId, "worker", message, cancelled ? "warn" : "error", cancelled ? undefined : {
       code: error?.code ?? null,

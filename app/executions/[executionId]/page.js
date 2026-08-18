@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, Clock3, Code2, Download, FileText, GitBranch, Images, TerminalSquare, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Clock3, Code2, Coins, Download, FileText, GitBranch, Images, TerminalSquare, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -10,6 +10,7 @@ import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
 import { redactSensitiveData } from "../../../lib/redaction";
 import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error-messages";
+import { formatBrlCents } from "../../../lib/financial-shadow";
 import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings";
 import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-button";
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
@@ -44,6 +45,7 @@ export default async function ExecutionPage({ params }) {
       logs: { orderBy: { createdAt: "asc" } },
       artifacts: { orderBy: { createdAt: "asc" } },
       pullRequest: true,
+      financialSnapshot: true,
     },
   });
   if (!execution) notFound();
@@ -89,6 +91,19 @@ export default async function ExecutionPage({ params }) {
             <div className="commit-list"><span><small>Base</small><code>{execution.baseSha ?? "—"}</code></span><span><small>Resultado</small><code>{execution.headSha ?? "—"}</code></span><span><small>Modelo</small><code>{execution.model ?? "—"}</code></span></div>
           </section>
         </div>
+
+        {user.globalRole === "ADMIN" && execution.financialSnapshot && <section className="form-card detail-card full-card financial-execution-card">
+          <div className="card-heading"><div><h2>Simulação financeira</h2><p>Visível somente para administradores. Nenhum crédito foi cobrado.</p></div><div className="shadow-mode-badge"><Coins size={14} />MODO SILENCIOSO</div></div>
+          <div className="financial-summary-grid">
+            <span><small>Custo interno</small><strong>{formatBrlCents(execution.financialSnapshot.totalInternalCostBrlCents)}</strong></span>
+            <span><small>Reserva simulada</small><strong>{execution.financialSnapshot.simulatedReservedCredits} créditos</strong></span>
+            <span><small>Consumo simulado</small><strong>{execution.financialSnapshot.simulatedConsumedCredits} créditos</strong></span>
+            <span><small>Valor comercial</small><strong>{formatBrlCents(execution.financialSnapshot.simulatedCommercialValueBrlCents)}</strong></span>
+            <span><small>Margem estimada</small><strong>{(execution.financialSnapshot.estimatedGrossMarginBasisPoints / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</strong></span>
+            <span><small>Medição</small><strong>{execution.financialSnapshot.calculationStatus === "MEASURED" ? "Tokens medidos" : "Sem dados de uso"}</strong></span>
+          </div>
+          <details className="financial-details"><summary>Ver composição e fórmula</summary><div><span>IA ajustada: <strong>{formatBrlCents(execution.financialSnapshot.adjustedAiCostBrlCents)}</strong></span><span>Worker ({execution.financialSnapshot.workerDurationSeconds}s): <strong>{formatBrlCents(execution.financialSnapshot.workerCostBrlCents)}</strong></span><span>Validação visual: <strong>{formatBrlCents(execution.financialSnapshot.visualValidationCostBrlCents)}</strong></span><span>Modelo: <strong>{execution.financialSnapshot.model}</strong></span><span>Fórmula: <strong>{execution.financialSnapshot.formulaVersion}</strong></span></div></details>
+        </section>}
 
         {execution.demand.type === "DOCUMENTATION" && execution.summary && <section className="form-card detail-card full-card documentation-download-card">
           <div className="card-heading"><div><h2>Documentação de negócio</h2><p>Arquivos formatados para compartilhar, apresentar ou arquivar.</p></div><FileText size={20} /></div>

@@ -236,37 +236,72 @@ model Demand {
 }
 
 model Execution {
-  id            String              @id @default(cuid())
-  demandId      String
-  requestedById String
-  approvedById  String?
-  status        ExecutionStatus     @default(QUEUED)
-  stage         ExecutionStage      @default(ANALYSIS)
-  branchName    String?
-  baseSha       String?
-  headSha       String?
-  model         String?
-  summary       String?             @db.Text
-  error         String?             @db.Text
-  inputTokens   Int?
-  outputTokens  Int?
-  attempts      Int                 @default(0)
+  id                String                      @id @default(cuid())
+  demandId          String
+  requestedById     String
+  approvedById      String?
+  status            ExecutionStatus             @default(QUEUED)
+  stage             ExecutionStage              @default(ANALYSIS)
+  branchName        String?
+  baseSha           String?
+  headSha           String?
+  model             String?
+  summary           String?                     @db.Text
+  error             String?                     @db.Text
+  inputTokens       Int?
+  outputTokens      Int?
+  attempts          Int                         @default(0)
   cancelRequestedAt DateTime?
-  lockedAt      DateTime?
-  lockedBy      String?
-  startedAt     DateTime?
-  finishedAt    DateTime?
-  demand        Demand              @relation(fields: [demandId], references: [id], onDelete: Cascade)
-  requestedBy   User                @relation("ExecutionRequester", fields: [requestedById], references: [id], onDelete: Restrict)
-  approvedBy    User?               @relation("ExecutionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  logs          ExecutionLog[]
-  artifacts     ExecutionArtifact[]
-  pullRequest   PullRequest?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  lockedAt          DateTime?
+  lockedBy          String?
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  demand            Demand                      @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  requestedBy       User                        @relation("ExecutionRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy        User?                       @relation("ExecutionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  logs              ExecutionLog[]
+  artifacts         ExecutionArtifact[]
+  pullRequest       PullRequest?
+  financialSnapshot ExecutionFinancialSnapshot?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
 
   @@index([status, createdAt])
   @@index([demandId])
+}
+
+model ExecutionFinancialSnapshot {
+  id                               String    @id @default(cuid())
+  executionId                      String    @unique
+  mode                             String    @default("SHADOW")
+  formulaVersion                   String
+  calculationStatus                String
+  model                            String
+  inputTokens                      Int       @default(0)
+  outputTokens                     Int       @default(0)
+  inputPriceUsdMicrosPerMillion    Int
+  outputPriceUsdMicrosPerMillion   Int
+  aiCostUsdMicros                  Int
+  usdToBrlCents                    Int
+  aiSafetyPercent                  Int
+  adjustedAiCostBrlCents           Int
+  workerDurationSeconds            Int
+  workerCostBrlCents               Int
+  visualValidationCostBrlCents     Int
+  totalInternalCostBrlCents        Int
+  simulatedReservedCredits         Int
+  simulatedConsumedCredits         Int
+  simulatedCommercialValueBrlCents Int
+  estimatedGrossMarginBasisPoints  Int
+  targetGrossMarginPercent         Int
+  wouldCharge                      Boolean   @default(false)
+  pricingMetadata                  Json?
+  execution                        Execution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  calculatedAt                     DateTime  @default(now())
+  updatedAt                        DateTime  @updatedAt
+
+  @@index([calculatedAt])
+  @@index([mode, calculationStatus])
 }
 
 model ExecutionLog {
@@ -376,11 +411,19 @@ model WorkerHeartbeat {
 }
 
 model GlobalSettings {
-  id                    String   @id
-  timeZone              String   @default("America/Sao_Paulo")
-  nodeMemoryMb          Int      @default(384)
-  commandTimeoutMinutes Int      @default(10)
-  agentTimeoutMinutes   Int      @default(5)
-  parallelExecutions    Int      @default(2)
-  updatedAt             DateTime @updatedAt
+  id                        String   @id
+  timeZone                  String   @default("America/Sao_Paulo")
+  nodeMemoryMb              Int      @default(384)
+  commandTimeoutMinutes     Int      @default(10)
+  agentTimeoutMinutes       Int      @default(5)
+  parallelExecutions        Int      @default(2)
+  financialShadowEnabled    Boolean  @default(true)
+  usdToBrlCents             Int      @default(600)
+  aiSafetyPercent           Int      @default(15)
+  targetGrossMarginPercent  Int      @default(80)
+  creditValueCents          Int      @default(10)
+  reservationBufferPercent  Int      @default(20)
+  workerCostCentsPerHour    Int      @default(100)
+  visualValidationCostCents Int      @default(10)
+  updatedAt                 DateTime @updatedAt
 }

@@ -27,4 +27,4 @@ RUN ./node_modules/.bin/prisma generate
 RUN npx playwright install-deps chromium
 
 USER node
-CMD ["npm", "run", "worker"]
+CMD ["npm", "run", "worker:start"]
