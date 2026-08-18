@@ -44,7 +44,7 @@ async function stopHeartbeat() {
 async function refreshConcurrencyLimit() {
   if (Date.now() - lastConcurrencyRefresh < 5_000) return;
   const settings = await getGlobalSettings();
-  const nextLimit = Math.max(1, Math.min(4, settings.parallelExecutions));
+  const nextLimit = Math.max(1, Math.min(5, settings.parallelExecutions));
   if (nextLimit !== concurrencyLimit) {
     concurrencyLimit = nextLimit;
     console.log(`[worker:${workerId}] limite atualizado para ${concurrencyLimit} execuções paralelas`);

@@ -76,6 +76,10 @@ npm run build
 | `NEXTAUTH_SECRET` | Web | Assinatura das sessões |
 | `NEXTAUTH_URL` | Web | URL pública da aplicação |
 | `OPENAI_API_KEY` | Web e worker | Autorizar e executar demandas |
+| `ASAAS_ENVIRONMENT` | Web | `sandbox` durante testes e `production` após homologação |
+| `ASAAS_API_KEY` | Web | Criar checkouts e administrar assinaturas no Asaas |
+| `ASAAS_WEBHOOK_TOKEN` | Web | Validar notificações do Asaas; use segredo exclusivo de 32–255 caracteres |
+| `BILLING_CONTACT_URL` | Web | Link opcional para contato do plano Sob medida |
 | `OPENAI_MODEL` | Worker | Modelo, padrão `gpt-5.6` |
 | `WORKER_POLL_INTERVAL_MS` | Worker | Intervalo da fila, padrão 5000 ms |
 | `HEALTH_CHECK_INTERVAL_MS` | Worker | Intervalo de monitoramento, padrão 5 minutos |

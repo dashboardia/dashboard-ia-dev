@@ -31,6 +31,7 @@ export default async function SettingsPage() {
     ["GitHub OAuth", configuration.githubAuth, "GITHUB_ID, GITHUB_SECRET e NEXTAUTH_SECRET"],
     ["Webhook GitHub", configuration.githubWebhook, "GITHUB_WEBHOOK_SECRET e NEXTAUTH_URL"],
     ["OpenAI", configuration.openai, "OPENAI_API_KEY"],
+    ["Asaas", configuration.asaas, "ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN e NEXTAUTH_URL"],
     ["Worker", worker.online, worker.online ? `${worker.instances} instância(s) ativa(s)` : "Aguardando heartbeat do serviço worker", worker.online ? "Online" : "Offline"],
   ];
   const measuredExecutions = financialSummary?._count.id ?? 0;

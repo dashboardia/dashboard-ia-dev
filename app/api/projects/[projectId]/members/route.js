@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { AccessDeniedError, requireProjectRole } from "../../../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../../../lib/api";
 import { auditData } from "../../../../../lib/audit";
+import { assertCanAddProjectMember } from "../../../../../lib/billing";
 import { db } from "../../../../../lib/db";
 import { projectMemberInputSchema } from "../../../../../lib/validation";
 
@@ -28,6 +29,7 @@ export async function POST(request, context) {
     assertSameOrigin(request);
     const { projectId } = await context.params;
     const { user } = await requireProjectRole(projectId, "MANAGER");
+    await assertCanAddProjectMember(projectId);
     const input = projectMemberInputSchema.parse(await request.json());
     const target = await db.user.findFirst({
       where: input.userId

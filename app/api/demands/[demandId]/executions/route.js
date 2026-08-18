@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireProjectRole } from "../../../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../../../lib/api";
 import { auditData } from "../../../../../lib/audit";
+import { prepareExecutionBilling } from "../../../../../lib/billing";
 import { db } from "../../../../../lib/db";
 import { env } from "../../../../../lib/env";
 import { queueDemandExecution } from "../../../../../lib/executions";
@@ -34,7 +35,8 @@ export async function POST(request, context) {
       }, { status: 409 });
     }
 
-    const { activeExecutionId, execution } = await queueDemandExecution({ demand, requestedById: user.id });
+    const billing = await prepareExecutionBilling({ demand });
+    const { activeExecutionId, execution } = await queueDemandExecution({ demand, requestedById: user.id, billing });
     if (activeExecutionId) {
       return NextResponse.json({ error: "Já existe uma execução ativa", executionId: activeExecutionId }, { status: 409 });
     }

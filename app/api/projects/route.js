@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../lib/api";
 import { auditData } from "../../../lib/audit";
+import { assertCanCreateProject, claimTrialOrganization } from "../../../lib/billing";
 import { db } from "../../../lib/db";
 import { explainError } from "../../../lib/error-messages";
 import { findGitHubRepositoryInstallation, getGitHubAccessToken, getGitHubInstallationToken, verifyRepositoryAccess, verifyRepositoryBranch } from "../../../lib/github";
@@ -103,9 +104,11 @@ export async function POST(request) {
       const webhook = await configureProjectGitHubWebhook({ project: connectedProject, userId: user.id });
       return NextResponse.json({ project: connectedProject, webhook, detectedRuntime: detectedRuntime.runtime, detectionWarning });
     }
+    const billing = await assertCanCreateProject(user);
     const slug = await createUniqueProjectSlug(input.name);
 
     const project = await db.$transaction(async (transaction) => {
+      await claimTrialOrganization(billing.account, repositoryFullName, transaction);
       const created = await transaction.project.create({
         data: {
           ...resolvedInput,

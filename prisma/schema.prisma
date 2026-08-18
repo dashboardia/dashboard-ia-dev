@@ -94,6 +94,57 @@ enum HealthStatus {
   UNKNOWN
 }
 
+enum BillingPlan {
+  TRIAL
+  STUDIO
+  AGENCY
+  CUSTOM
+}
+
+enum BillingStatus {
+  TRIALING
+  PENDING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum CreditBucketType {
+  TRIAL
+  MONTHLY
+  ADDITIONAL
+  ADJUSTMENT
+}
+
+enum CreditTransactionType {
+  GRANT
+  RESERVE
+  RELEASE
+  CONSUME
+  EXPIRE
+  ADJUSTMENT
+}
+
+enum CreditReservationStatus {
+  RESERVED
+  SETTLED
+  RELEASED
+}
+
+enum BillingCheckoutKind {
+  PLAN
+  CREDIT_PACK
+}
+
+enum BillingCheckoutStatus {
+  PENDING
+  PAID
+  CANCELED
+  EXPIRED
+  FAILED
+}
+
 model User {
   id                  String          @id @default(cuid())
   name                String?
@@ -112,6 +163,7 @@ model User {
   executionsRequested Execution[]     @relation("ExecutionRequester")
   executionsApproved  Execution[]     @relation("ExecutionApprover")
   auditLogs           AuditLog[]
+  billingAccount      BillingAccount?
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 }
@@ -236,38 +288,165 @@ model Demand {
 }
 
 model Execution {
-  id                String                      @id @default(cuid())
-  demandId          String
-  requestedById     String
-  approvedById      String?
-  status            ExecutionStatus             @default(QUEUED)
-  stage             ExecutionStage              @default(ANALYSIS)
-  branchName        String?
-  baseSha           String?
-  headSha           String?
-  model             String?
-  summary           String?                     @db.Text
-  error             String?                     @db.Text
-  inputTokens       Int?
-  outputTokens      Int?
-  attempts          Int                         @default(0)
-  cancelRequestedAt DateTime?
-  lockedAt          DateTime?
-  lockedBy          String?
-  startedAt         DateTime?
-  finishedAt        DateTime?
-  demand            Demand                      @relation(fields: [demandId], references: [id], onDelete: Cascade)
-  requestedBy       User                        @relation("ExecutionRequester", fields: [requestedById], references: [id], onDelete: Restrict)
-  approvedBy        User?                       @relation("ExecutionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  logs              ExecutionLog[]
-  artifacts         ExecutionArtifact[]
-  pullRequest       PullRequest?
-  financialSnapshot ExecutionFinancialSnapshot?
-  createdAt         DateTime                    @default(now())
-  updatedAt         DateTime                    @updatedAt
+  id                 String                      @id @default(cuid())
+  demandId           String
+  requestedById      String
+  approvedById       String?
+  status             ExecutionStatus             @default(QUEUED)
+  stage              ExecutionStage              @default(ANALYSIS)
+  branchName         String?
+  baseSha            String?
+  headSha            String?
+  model              String?
+  summary            String?                     @db.Text
+  error              String?                     @db.Text
+  inputTokens        Int?
+  outputTokens       Int?
+  attempts           Int                         @default(0)
+  cancelRequestedAt  DateTime?
+  lockedAt           DateTime?
+  lockedBy           String?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  demand             Demand                      @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  requestedBy        User                        @relation("ExecutionRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy         User?                       @relation("ExecutionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  logs               ExecutionLog[]
+  artifacts          ExecutionArtifact[]
+  pullRequest        PullRequest?
+  financialSnapshot  ExecutionFinancialSnapshot?
+  creditReservation  ExecutionCreditReservation?
+  creditTransactions CreditTransaction[]
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
 
   @@index([status, createdAt])
   @@index([demandId])
+}
+
+model BillingAccount {
+  id                     String                       @id @default(cuid())
+  ownerUserId            String                       @unique
+  trialIdentity          String                       @unique
+  plan                   BillingPlan                  @default(TRIAL)
+  pendingPlan            BillingPlan?
+  status                 BillingStatus                @default(TRIALING)
+  trialStartedAt         DateTime?
+  trialEndsAt            DateTime?
+  cycleStartedAt         DateTime?
+  cycleEndsAt            DateTime?
+  cancelAtPeriodEnd      Boolean                      @default(false)
+  provider               String?                      @default("ASAAS")
+  providerCustomerId     String?                      @unique
+  providerSubscriptionId String?                      @unique
+  creditDebt             Int                          @default(0)
+  owner                  User                         @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  creditBuckets          CreditBucket[]
+  creditTransactions     CreditTransaction[]
+  creditReservations     ExecutionCreditReservation[]
+  checkouts              BillingCheckout[]
+  trialOrganizations     BillingTrialOrganization[]
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+
+  @@index([status, plan])
+}
+
+model BillingTrialOrganization {
+  id          String         @id @default(cuid())
+  githubOwner String         @unique
+  accountId   String
+  account     BillingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+
+  @@index([accountId])
+}
+
+model CreditBucket {
+  id           String              @id @default(cuid())
+  accountId    String
+  type         CreditBucketType
+  granted      Int
+  remaining    Int
+  reserved     Int                 @default(0)
+  expiresAt    DateTime
+  sourceRef    String?             @unique
+  account      BillingAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transactions CreditTransaction[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([accountId, expiresAt])
+}
+
+model CreditTransaction {
+  id          String                @id @default(cuid())
+  accountId   String
+  bucketId    String?
+  executionId String?
+  type        CreditTransactionType
+  amount      Int
+  balance     Int?
+  description String?
+  metadata    Json?
+  account     BillingAccount        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  bucket      CreditBucket?         @relation(fields: [bucketId], references: [id], onDelete: SetNull)
+  execution   Execution?            @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  createdAt   DateTime              @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([executionId])
+}
+
+model ExecutionCreditReservation {
+  id               String                  @id @default(cuid())
+  executionId      String                  @unique
+  accountId        String
+  status           CreditReservationStatus @default(RESERVED)
+  reservedCredits  Int
+  consumedCredits  Int                     @default(0)
+  uncoveredCredits Int                     @default(0)
+  allocations      Json
+  execution        Execution               @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  account          BillingAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  settledAt        DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([accountId, status])
+}
+
+model BillingCheckout {
+  id                 String                @id @default(cuid())
+  accountId          String
+  kind               BillingCheckoutKind
+  targetPlan         BillingPlan?
+  creditAmount       Int?
+  amountCents        Int
+  status             BillingCheckoutStatus @default(PENDING)
+  providerCheckoutId String?               @unique
+  providerLink       String?
+  expiresAt          DateTime?
+  paidAt             DateTime?
+  account            BillingAccount        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@index([accountId, status])
+}
+
+model BillingWebhookEvent {
+  id              String    @id @default(cuid())
+  provider        String
+  providerEventId String
+  eventType       String
+  payload         Json
+  processedAt     DateTime?
+  error           String?   @db.Text
+  createdAt       DateTime  @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([processedAt, createdAt])
 }
 
 model ExecutionFinancialSnapshot {

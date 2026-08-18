@@ -20,6 +20,7 @@ import {
 import { runVisualValidation } from "./visual-validation.mjs";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 import { saveFinancialSnapshot } from "../lib/financial-shadow.js";
+import { settleExecutionCredits } from "../lib/billing.js";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 
@@ -279,7 +280,8 @@ export async function processExecution(executionId, workerId) {
           data: { status: "SUCCEEDED", stage: "ANALYSIS", summary, inputTokens, outputTokens, lockedAt: null, lockedBy: null, finishedAt },
         });
         if (updated.count !== 1) throw new ExecutionCancelledError();
-        await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt });
+        const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt });
+        await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
         await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "SUCCEEDED" } });
       });
       return;
@@ -353,7 +355,8 @@ export async function processExecution(executionId, workerId) {
         },
       });
       if (updated.count !== 1) throw new ExecutionCancelledError();
-      await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage });
+      const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage });
+      await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
       await transaction.executionArtifact.create({ data: { executionId, type: "diff", name: "changes.diff", content: diffResult.stdout.slice(0, 200_000) } });
       if (visualArtifacts.length) await transaction.executionArtifact.createMany({ data: visualArtifacts.map((artifact) => ({ executionId, ...artifact })) });
       await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "REVIEW" } });
@@ -365,7 +368,10 @@ export async function processExecution(executionId, workerId) {
     const finishedAt = new Date();
     await db.$transaction(async (transaction) => {
       await transaction.execution.update({ where: { id: executionId }, data: { status: cancelled ? "CANCELLED" : "FAILED", error: cancelled ? null : message, lockedAt: null, lockedBy: null, finishedAt } });
-      if (execution && settings) await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt });
+      if (execution && settings) {
+        const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt });
+        await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
+      }
     }).catch(() => null);
     if (execution?.demandId) await db.demand.update({ where: { id: execution.demandId }, data: { status: cancelled ? "APPROVED" : "FAILED" } }).catch(() => null);
     await log(executionId, "worker", message, cancelled ? "warn" : "error", cancelled ? undefined : {

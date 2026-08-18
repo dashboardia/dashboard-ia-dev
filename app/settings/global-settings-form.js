@@ -91,7 +91,7 @@ export default function GlobalSettingsForm({ initialSettings }) {
         </label>
         <label>
           <span>Execuções paralelas</span>
-          <input name="parallelExecutions" type="number" min="1" max="4" value={form.parallelExecutions} onChange={change} />
+          <input name="parallelExecutions" type="number" min="1" max="5" value={form.parallelExecutions} onChange={change} />
           <small>Quantidade de demandas processadas ao mesmo tempo. Recomendado: 2.</small>
         </label>
         <label>

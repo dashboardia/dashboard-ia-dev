@@ -46,6 +46,7 @@ export default async function ExecutionPage({ params }) {
       artifacts: { orderBy: { createdAt: "asc" } },
       pullRequest: true,
       financialSnapshot: true,
+      creditReservation: true,
     },
   });
   if (!execution) notFound();
@@ -93,7 +94,7 @@ export default async function ExecutionPage({ params }) {
         </div>
 
         {user.globalRole === "ADMIN" && execution.financialSnapshot && <section className="form-card detail-card full-card financial-execution-card">
-          <div className="card-heading"><div><h2>Simulação financeira</h2><p>Visível somente para administradores. Nenhum crédito foi cobrado.</p></div><div className="shadow-mode-badge"><Coins size={14} />MODO SILENCIOSO</div></div>
+          <div className="card-heading"><div><h2>Simulação financeira</h2><p>Visível somente para administradores. O custo segue silencioso; créditos são liquidados pelo consumo medido.</p></div><div className="shadow-mode-badge"><Coins size={14} />CUSTO SILENCIOSO</div></div>
           <div className="financial-summary-grid">
             <span><small>Custo interno</small><strong>{formatBrlCents(execution.financialSnapshot.totalInternalCostBrlCents)}</strong></span>
             <span><small>Reserva simulada</small><strong>{execution.financialSnapshot.simulatedReservedCredits} créditos</strong></span>
@@ -104,6 +105,8 @@ export default async function ExecutionPage({ params }) {
           </div>
           <details className="financial-details"><summary>Ver composição e fórmula</summary><div><span>IA ajustada: <strong>{formatBrlCents(execution.financialSnapshot.adjustedAiCostBrlCents)}</strong></span><span>Worker ({execution.financialSnapshot.workerDurationSeconds}s): <strong>{formatBrlCents(execution.financialSnapshot.workerCostBrlCents)}</strong></span><span>Validação visual: <strong>{formatBrlCents(execution.financialSnapshot.visualValidationCostBrlCents)}</strong></span><span>Modelo: <strong>{execution.financialSnapshot.model}</strong></span><span>Fórmula: <strong>{execution.financialSnapshot.formulaVersion}</strong></span></div></details>
         </section>}
+
+        {execution.creditReservation && <section className="form-card detail-card full-card execution-credit-card"><div className="card-heading"><div><h2>Créditos da execução</h2><p>A reserva protege o saldo antes de iniciar; o excedente é devolvido ao concluir.</p></div><Coins size={20} /></div><div className="financial-summary-grid"><span><small>Reservados</small><strong>{execution.creditReservation.reservedCredits}</strong></span><span><small>Consumidos</small><strong>{execution.creditReservation.consumedCredits}</strong></span><span><small>Devolvidos</small><strong>{Math.max(0, execution.creditReservation.reservedCredits - execution.creditReservation.consumedCredits)}</strong></span><span><small>Situação</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em processamento" : execution.creditReservation.status === "SETTLED" ? "Liquidado" : "Devolvido"}</strong></span></div></section>}
 
         {execution.demand.type === "DOCUMENTATION" && execution.summary && <section className="form-card detail-card full-card documentation-download-card">
           <div className="card-heading"><div><h2>Documentação de negócio</h2><p>Arquivos formatados para compartilhar, apresentar ou arquivar.</p></div><FileText size={20} /></div>
