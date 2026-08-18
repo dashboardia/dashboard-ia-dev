@@ -102,7 +102,6 @@ export async function runVisualValidation({ execution, projectDirectory, log }) 
         "--disable-dev-shm-usage",
         "--disable-background-networking",
         "--disable-extensions",
-        "--disable-gpu",
       ],
     });
     const artifacts = [];
