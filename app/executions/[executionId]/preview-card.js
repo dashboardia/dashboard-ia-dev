@@ -21,6 +21,7 @@ export default function PreviewCard({ executionId, executionStatus, headSha }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestInFlight = useRef(false);
+  const pollingStartedAt = useRef(null);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (requestInFlight.current) return;
@@ -46,9 +47,13 @@ export default function PreviewCard({ executionId, executionStatus, headSha }) {
   }, [load, executionStatus, headSha]);
   useEffect(() => {
     if (!shouldPollPreview(preview?.state, executionStatus)) return undefined;
-    const timer = window.setInterval(() => load({ silent: true }), 4_000);
+    pollingStartedAt.current ??= Date.now();
+    const timeoutMinutes = preview?.timeoutMinutes ?? 15;
+    const timer = window.setInterval(() => {
+      if (Date.now() - pollingStartedAt.current < timeoutMinutes * 60_000) load({ silent: true });
+    }, 4_000);
     return () => window.clearInterval(timer);
-  }, [executionStatus, load, preview?.state]);
+  }, [executionStatus, load, preview?.state, preview?.timeoutMinutes]);
 
   useEffect(() => {
     if (!shouldPollPreview(preview?.state, executionStatus)) return undefined;

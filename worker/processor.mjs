@@ -427,18 +427,27 @@ export async function processExecution(executionId, workerId) {
     await restoreImplementationSnapshot(workspace, implementationHead);
     const diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
     await runProcess("git", [...authenticationArgs, "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
-    if (validationResult.passed) {
+    // A API de preview precisa conhecer a branch e o commit assim que eles
+    // existem. A liquidação e a transição para revisão continuam atômicas no
+    // encerramento, mas o ambiente navegável não deve depender desse passo.
+    await db.execution.updateMany({
+      where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
+      data: { branchName, baseSha: base, headSha: implementationHead },
+    });
+
+    if (!documentationOnly) {
+      if (!validationResult.passed) {
+        await log(executionId, "preview", "A validação local falhou; o host de preview tentará compilar o projeto em seu ambiente isolado", "warn", {
+          failedScope: validationResult.failedScope,
+          technical: validationResult.technical,
+        });
+      }
       await publishDashboardiaPreview({
         database: db,
         execution,
         projectDirectory,
         runtime: detectedRuntime.runtime,
         log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
-      });
-    } else {
-      await log(executionId, "preview", "Preview interativo não publicado porque a implementação ainda não compila", "warn", {
-        failedScope: validationResult.failedScope,
-        technical: validationResult.technical,
       });
     }
 

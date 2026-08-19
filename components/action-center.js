@@ -4,6 +4,8 @@ import { Activity, Bell, CheckCircle2, FileClock, HeartPulse, LoaderCircle, Tria
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { markActionCenterItemRead, unreadActionCenterData } from "../lib/action-center-read";
+
 const itemIcons = {
   EXECUTION_FAILED: TriangleAlert,
   PROJECT_HEALTH: HeartPulse,
@@ -37,7 +39,7 @@ export default function ActionCenter({ disabled = false }) {
       const response = await fetch("/api/action-center", { signal, headers: { Accept: "application/json" } });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível carregar as pendências");
-      setData(payload);
+      setData(unreadActionCenterData(payload, window.localStorage));
     } catch (loadError) {
       if (loadError.name !== "AbortError") setError(loadError.message);
     } finally {
@@ -74,6 +76,16 @@ export default function ActionCenter({ disabled = false }) {
     };
   }, []);
 
+  function openItem(item) {
+    markActionCenterItemRead(item, window.localStorage);
+    setData((current) => ({
+      ...current,
+      count: Math.max(0, current.count - 1),
+      items: current.items.filter((candidate) => candidate.id !== item.id),
+    }));
+    setOpen(false);
+  }
+
   return (
     <div className="notification-center" ref={rootRef}>
       <button className="icon-button" type="button" disabled={disabled} onClick={() => setOpen((current) => !current)} aria-label={`Pendências operacionais: ${data.count}`} aria-expanded={open}>
@@ -87,7 +99,7 @@ export default function ActionCenter({ disabled = false }) {
           <div className="notification-list">
             {data.items.map((item) => {
               const Icon = itemIcons[item.kind] ?? Bell;
-              return <Link href={item.href} key={item.id} onClick={() => setOpen(false)}><i className={item.tone}><Icon size={16} /></i><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><time>{relativeTime(item.occurredAt)}</time></Link>;
+              return <Link href={item.href} key={item.id} onClick={() => openItem(item)}><i className={item.tone}><Icon size={16} /></i><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><time>{relativeTime(item.occurredAt)}</time></Link>;
             })}
             {!loading && !error && !data.items.length && <div className="notification-empty"><CheckCircle2 size={25} /><strong>Tudo em ordem</strong><span>Não há pendências operacionais para seu acesso.</span></div>}
             {error && <div className="notification-empty notification-error"><TriangleAlert size={24} /><strong>Não foi possível atualizar</strong><span>{error}</span><button type="button" onClick={() => load()}>Tentar novamente</button></div>}
