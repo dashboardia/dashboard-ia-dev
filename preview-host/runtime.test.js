@@ -32,16 +32,18 @@ test("mantém comandos não confiáveis dentro do JSON da instrução", () => {
   assert.match(result, /npm ci\\nFROM alpine/);
 });
 
-test("gera preview estático para projeto Maven legado", () => {
+test("publica HTML estático mesmo quando o repositório principal é Java", () => {
   const result = buildPreviewDockerfile({
     runtime: "JAVA_MAVEN",
-    installCommand: null,
+    installCommand: "npm ci",
     buildCommand: "mvn -B -DskipTests package",
     previewCommand: "python3 -m http.server $PORT --bind 127.0.0.1",
     port: 3000,
   });
-  assert.match(result, /^FROM maven:3-eclipse-temurin-8/m);
-  assert.match(result, /apt-get install[^\n]*python3/);
+
+  assert.match(result, /^FROM python:3\.12-slim/m);
+  assert.doesNotMatch(result, /npm ci/);
+  assert.doesNotMatch(result, /mvn -B/);
   assert.match(result, /python3 -m http\.server \$PORT --bind 0\.0\.0\.0/);
 });
 

@@ -1,6 +1,6 @@
 const RUNTIME_IMAGES = {
   NODE: "node:22-bookworm-slim",
-  JAVA_MAVEN: "maven:3-eclipse-temurin-8",
+  JAVA_MAVEN: "maven:3.9.9-eclipse-temurin-17",
   JAVA_GRADLE: "gradle:8.10-jdk17",
   PHP: "php:8.3-cli",
   STATIC: "python:3.12-slim",
@@ -43,24 +43,23 @@ function normalizePreviewCommand(command) {
     .replaceAll("localhost", "0.0.0.0");
 }
 
-function needsPython(configuration, runtime) {
-  if (runtime.startsWith("MONOREPO_")) return true;
-  return [
-    configuration.installCommand,
-    configuration.buildCommand,
-    configuration.previewCommand,
-  ].some((command) => /(^|[\s;&|])python3?(?=\s|$)/.test(String(command || "")));
+function isStaticHttpServer(command) {
+  return /^python3?\s+-m\s+http\.server(?:\s|$)/i.test(String(command || "").trim());
 }
 
 export function buildPreviewDockerfile(configuration) {
   const runtime = String(configuration.runtime || "UNKNOWN");
-  const lines = [`FROM ${runtimeImage(runtime)}`];
-  if (needsPython(configuration, runtime)) {
+  const staticHttpServer = isStaticHttpServer(configuration.previewCommand);
+  const lines = [`FROM ${runtimeImage(staticHttpServer ? "STATIC" : runtime)}`];
+  if (runtime.startsWith("MONOREPO_")) {
     lines.push("RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && rm -rf /var/lib/apt/lists/*");
   }
   lines.push("WORKDIR /app", "COPY . .");
-  const install = shellInstruction("RUN", configuration.installCommand);
-  const build = shellInstruction("RUN", configuration.buildCommand);
+  // Um servidor HTTP estático não depende da stack principal do repositório.
+  // Não execute comandos legados/incompatíveis (por exemplo npm em uma imagem
+  // Maven) quando o cliente escolheu publicar diretamente os arquivos HTML.
+  const install = shellInstruction("RUN", staticHttpServer ? null : configuration.installCommand);
+  const build = shellInstruction("RUN", staticHttpServer ? null : configuration.buildCommand);
   if (install) lines.push(install);
   if (build) lines.push(build);
   lines.push(
