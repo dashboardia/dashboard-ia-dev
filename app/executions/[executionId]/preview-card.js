@@ -6,7 +6,7 @@ import { Braces, ExternalLink, Images, LoaderCircle, MonitorPlay, RefreshCw, Ser
 import { useCallback, useEffect, useState } from "react";
 
 const stateLabels = {
-  NOT_READY: "Aguardando Pull Request",
+  NOT_READY: "Aguardando branch",
   PREPARING: "Preparando",
   AVAILABLE: "Disponível",
   EVIDENCE: "Evidência visual",
@@ -14,7 +14,7 @@ const stateLabels = {
   UNAVAILABLE: "Não configurado",
 };
 
-export default function PreviewCard({ executionId }) {
+export default function PreviewCard({ executionId, executionStatus, headSha }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -37,9 +37,9 @@ export default function PreviewCard({ executionId }) {
   useEffect(() => {
     const timer = setTimeout(load, 0);
     return () => clearTimeout(timer);
-  }, [load]);
+  }, [load, executionStatus, headSha]);
   useEffect(() => {
-    if (preview?.state !== "PREPARING") return undefined;
+    if (!["NOT_READY", "PREPARING"].includes(preview?.state)) return undefined;
     const timer = setTimeout(load, 10_000);
     return () => clearTimeout(timer);
   }, [load, preview?.state]);

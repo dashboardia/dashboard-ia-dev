@@ -33,11 +33,14 @@ export async function GET(_request, context) {
       }
     }
 
-    if (!execution.headSha) {
+    // O host próprio recebe o código assim que a branch é enviada, antes da
+    // abertura do Pull Request e antes de o worker persistir os metadados
+    // finais da execução. Não bloqueie um ambiente já criado por headSha.
+    if (!deployment && !execution.headSha) {
       return NextResponse.json({
         preview: {
           state: "NOT_READY",
-          message: "O preview ficará disponível depois que a implementação gerar uma branch.",
+          message: "Aguardando o worker enviar a branch e solicitar o ambiente temporário.",
         },
       });
     }

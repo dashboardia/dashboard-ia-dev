@@ -119,7 +119,7 @@ export default async function ExecutionPage({ params }) {
           <div className="execution-timeline">{execution.logs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; return <div key={entry.id}><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Ver detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>; })}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div>
         </section>
 
-        {execution.demand.type !== "DOCUMENTATION" && <PreviewCard executionId={execution.id} />}
+        {execution.demand.type !== "DOCUMENTATION" && <PreviewCard executionId={execution.id} executionStatus={execution.status} headSha={execution.headSha} />}
 
         <section className="form-card detail-card full-card execution-diff-card">
           <div className="card-heading"><div><h2>Diff para revisão</h2><p>Alterações exatas geradas antes da abertura do Pull Request</p></div><Code2 size={20} /></div>
