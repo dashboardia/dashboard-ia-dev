@@ -7,7 +7,7 @@ import { assertCanCreateProject, claimTrialOrganization } from "../../../lib/bil
 import { db } from "../../../lib/db";
 import { explainError } from "../../../lib/error-messages";
 import { findGitHubRepositoryInstallation, getGitHubAccessToken, getGitHubInstallationToken, verifyRepositoryAccess, verifyRepositoryBranch } from "../../../lib/github";
-import { createUniqueProjectSlug, projectAccessWhere } from "../../../lib/projects";
+import { createUniqueProjectSlug, projectAccessWhere, projectConnectionMode } from "../../../lib/projects";
 import { applyDetectedRuntime, detectGitHubProjectRuntime } from "../../../lib/project-runtime";
 import { configureProjectGitHubWebhook } from "../../../lib/project-webhooks";
 import { projectInputSchema } from "../../../lib/validation";
@@ -38,6 +38,13 @@ export async function POST(request) {
     const user = await requireUser();
     const input = projectInputSchema.parse(await request.json());
     const repositoryFullName = input.repositoryFullName.toLowerCase();
+    const currentProject = await db.project.findUnique({
+      where: { provider_repositoryFullName: { provider: "GITHUB", repositoryFullName } },
+      select: { id: true, createdById: true, status: true },
+    });
+    projectConnectionMode(currentProject, user);
+    await assertCanCreateProject(user);
+
     const repositoryInstallation = input.githubInstallationId
       ? { id: input.githubInstallationId }
       : await findGitHubRepositoryInstallation(repositoryFullName);
@@ -69,19 +76,23 @@ export async function POST(request) {
     }
     const resolvedInput = applyDetectedRuntime(input, detectedRuntime);
 
-    const existingProject = await db.project.findUnique({
-      where: {
-        provider_repositoryFullName: {
-          provider: "GITHUB",
-          repositoryFullName: input.repositoryFullName.toLowerCase(),
-        },
-      },
-    });
-    if (existingProject) {
-      await db.$transaction(async (transaction) => {
-        await transaction.project.update({
+    const project = await db.$transaction(async (transaction) => {
+      const existingProject = await transaction.project.findUnique({
+        where: { provider_repositoryFullName: { provider: "GITHUB", repositoryFullName } },
+      });
+      const mode = projectConnectionMode(existingProject, user);
+      const billing = await assertCanCreateProject(user, transaction);
+      await claimTrialOrganization(billing.account, repositoryFullName, transaction);
+
+      if (mode === "RESTORE") {
+        const restored = await transaction.project.update({
           where: { id: existingProject.id },
-          data: { ...resolvedInput, status: "ACTIVE", githubInstallationId: githubInstallationId ?? existingProject.githubInstallationId },
+          data: {
+            ...resolvedInput,
+            status: "ACTIVE",
+            repositoryId: String(githubRepository.id),
+            githubInstallationId: githubInstallationId ?? existingProject.githubInstallationId,
+          },
         });
         await transaction.projectMember.upsert({
           where: { projectId_userId: { projectId: existingProject.id, userId: user.id } },
@@ -91,24 +102,18 @@ export async function POST(request) {
         await transaction.auditLog.create({
           data: auditData({
             actorId: user.id,
-            projectId: existingProject.id,
-            action: "project.connect",
+            projectId: restored.id,
+            action: "project.restore",
             entityType: "Project",
-            entityId: existingProject.id,
-            metadata: { repositoryFullName: existingProject.repositoryFullName },
+            entityId: restored.id,
+            metadata: { repositoryFullName: restored.repositoryFullName },
             request,
           }),
         });
-      });
-      const connectedProject = { ...existingProject, ...resolvedInput, status: "ACTIVE", githubInstallationId: githubInstallationId ?? existingProject.githubInstallationId };
-      const webhook = await configureProjectGitHubWebhook({ project: connectedProject, userId: user.id });
-      return NextResponse.json({ project: connectedProject, webhook, detectedRuntime: detectedRuntime.runtime, detectionWarning });
-    }
-    const billing = await assertCanCreateProject(user);
-    const slug = await createUniqueProjectSlug(input.name);
+        return restored;
+      }
 
-    const project = await db.$transaction(async (transaction) => {
-      await claimTrialOrganization(billing.account, repositoryFullName, transaction);
+      const slug = await createUniqueProjectSlug(input.name, transaction);
       const created = await transaction.project.create({
         data: {
           ...resolvedInput,
