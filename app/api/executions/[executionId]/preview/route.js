@@ -6,6 +6,7 @@ import { configuredProjectPreview, expireStaleDeploymentPreview, findDeploymentP
 import { db } from "../../../../../lib/db";
 import { getGitHubAccessToken, getProjectGitHubAccessToken } from "../../../../../lib/github";
 import { getGlobalSettings } from "../../../../../lib/global-settings";
+import { dashboardiaPreviewResponse, syncDashboardiaPreview } from "../../../../../lib/preview-host-client";
 
 export const dynamic = "force-dynamic";
 
@@ -19,34 +20,44 @@ export async function GET(_request, context) {
         pullRequest: true,
         demand: { include: { project: true } },
         artifacts: { where: { type: "visual" }, orderBy: { createdAt: "asc" } },
+        previewEnvironment: true,
       },
     });
     const { user } = await requireProjectRole(execution.demand.projectId, "VIEWER");
-    if (!execution.headSha || !execution.pullRequest) {
+    let deployment = null;
+    if (execution.previewEnvironment) {
+      const environment = await syncDashboardiaPreview(db, execution.previewEnvironment).catch(() => execution.previewEnvironment);
+      deployment = dashboardiaPreviewResponse(environment);
+      if (deployment?.state === "PREPARING") {
+        return NextResponse.json({ preview: { ...deployment, mode: null, inspection: null, timeoutMinutes: settings.previewPreparationTimeoutMinutes } });
+      }
+    }
+
+    if (!execution.headSha) {
       return NextResponse.json({
         preview: {
           state: "NOT_READY",
-          message: execution.headSha
-            ? "Aprove e abra o Pull Request para o provedor gerar um preview navegável."
-            : "O preview ficará disponível depois que a implementação gerar uma branch.",
+          message: "O preview ficará disponível depois que a implementação gerar uma branch.",
         },
       });
     }
 
-    const findPreview = (token) => findDeploymentPreview({
-      token,
-      repositoryFullName: execution.demand.project.repositoryFullName,
-      sha: execution.headSha,
-      pullRequestNumber: execution.pullRequest.externalNumber,
-    });
-    const projectToken = await getProjectGitHubAccessToken(execution.demand.project, user.id);
-    let deployment;
-    try {
-      deployment = await findPreview(projectToken);
-    } catch (error) {
-      if (!execution.demand.project.githubInstallationId) throw error;
-      deployment = await findPreview(await getGitHubAccessToken(user.id));
+    if (deployment?.state !== "AVAILABLE" && execution.pullRequest) {
+      const findPreview = (token) => findDeploymentPreview({
+        token,
+        repositoryFullName: execution.demand.project.repositoryFullName,
+        sha: execution.headSha,
+        pullRequestNumber: execution.pullRequest.externalNumber,
+      });
+      const projectToken = await getProjectGitHubAccessToken(execution.demand.project, user.id);
+      try {
+        deployment = await findPreview(projectToken);
+      } catch (error) {
+        if (!execution.demand.project.githubInstallationId) throw error;
+        deployment = await findPreview(await getGitHubAccessToken(user.id));
+      }
     }
+    deployment ??= { state: "NOT_FOUND", url: null, environment: null, provider: null, updatedAt: null, message: null };
     if (["NOT_FOUND", "FAILED", "UNAVAILABLE"].includes(deployment.state)) {
       const configuredPreview = configuredProjectPreview(execution.demand.project.productionUrl);
       if (configuredPreview) deployment = configuredPreview;
@@ -80,14 +91,14 @@ export async function GET(_request, context) {
     }
     if (deployment.state === "NOT_FOUND") {
       const registrationGraceMinutes = Math.min(2, settings.previewPreparationTimeoutMinutes);
-      const recentlyOpened = Date.now() - execution.pullRequest.createdAt.getTime() < registrationGraceMinutes * 60_000;
+      const recentlyOpened = execution.pullRequest && Date.now() - execution.pullRequest.createdAt.getTime() < registrationGraceMinutes * 60_000;
       return NextResponse.json({
         preview: {
           ...deployment,
           state: recentlyOpened ? "PREPARING" : "UNAVAILABLE",
           message: recentlyOpened
             ? "O Pull Request foi aberto. Aguardando o provedor registrar o deployment."
-            : "Nenhum provedor publicou um preview para este Pull Request. Ative Pull Request Previews no serviço que hospeda o repositório.",
+            : "O host próprio de previews não publicou um ambiente para esta execução.",
           timeoutMinutes: settings.previewPreparationTimeoutMinutes,
         },
       });

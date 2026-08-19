@@ -18,6 +18,7 @@ import {
   runProcess,
 } from "./sandbox.mjs";
 import { runImplementationPreview, runVisualValidation } from "./visual-validation.mjs";
+import { publishDashboardiaPreview } from "./preview-publisher.mjs";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 import { saveFinancialSnapshot } from "../lib/financial-shadow.js";
 import { settleExecutionCredits } from "../lib/billing.js";
@@ -361,6 +362,13 @@ export async function processExecution(executionId, workerId) {
     await restoreImplementationSnapshot(workspace, implementationHead);
     const diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
     await runProcess("git", [...authenticationArgs, "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
+    await publishDashboardiaPreview({
+      database: db,
+      execution,
+      projectDirectory,
+      runtime: detectedRuntime.runtime,
+      log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
+    });
 
     await db.$transaction(async (transaction) => {
       const updated = await transaction.execution.updateMany({

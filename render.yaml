@@ -47,3 +47,9 @@ services:
         sync: false
       - key: ASAAS_WEBHOOK_TOKEN
         sync: false
+      - key: PREVIEW_HOST_URL
+        sync: false
+      - key: PREVIEW_HOST_TOKEN
+        sync: false
+      - key: PREVIEW_TTL_MINUTES
+        value: "60"

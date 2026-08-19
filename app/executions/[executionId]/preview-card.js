@@ -49,11 +49,11 @@ export default function PreviewCard({ executionId }) {
   return (
     <section className="form-card detail-card full-card interactive-preview-card">
       <div className="card-heading">
-        <div><h2>Preview da implementação</h2><p>Visualização real publicada pelo provedor conectado ao repositório.</p></div>
+        <div><h2>Preview da implementação</h2><p>Ambiente temporário e navegável publicado pelo Dashboardia.</p></div>
         {preview?.state === "EVIDENCE" ? <Images size={20} /> : api ? <Server size={20} /> : <MonitorPlay size={20} />}
       </div>
 
-      {loading && !preview ? <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Localizando preview</strong><small>Consultando deployments do commit no GitHub.</small></span></div> : null}
+      {loading && !preview ? <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Localizando preview</strong><small>Consultando o ambiente temporário desta execução.</small></span></div> : null}
       {error ? <div className="form-error">{error}</div> : null}
       {preview && <div className="preview-content">
         <div className="preview-toolbar">
@@ -64,13 +64,13 @@ export default function PreviewCard({ executionId }) {
         </div>
 
         {preview.state === "NOT_READY" && <div className="list-empty">{preview.message}</div>}
-        {preview.state === "PREPARING" && <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Preparando o ambiente de preview</strong><small>Atualização automática ativa. O Dashboardia consulta deployments, checks e comentários do PR. A espera termina após {preview.timeoutMinutes ?? 15} minutos sem avanço.</small></span></div>}
+        {preview.state === "PREPARING" && <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Preparando o ambiente de preview</strong><small>{preview.message ?? "O Dashboardia está construindo e iniciando o container temporário."}</small></span></div>}
         {preview.state === "FAILED" && <div className="form-error">{preview.message ?? "O deployment de preview não ficou disponível."}</div>}
-        {preview.state === "UNAVAILABLE" && <div className="preview-unavailable"><strong>O código está pronto, mas não existe um ambiente publicado</strong><p>{preview.message ?? "O projeto não possui um provedor de preview conectado ao GitHub."}</p><small>No Render, abra o serviço → Previews → Pull Request Previews e selecione Automatic. No Railway, habilite PR Environments no serviço.</small></div>}
+        {preview.state === "UNAVAILABLE" && <div className="preview-unavailable"><strong>O código está pronto, mas o ambiente temporário não está disponível</strong><p>{preview.message}</p><small>As evidências visuais continuam disponíveis para revisão quando o container não puder ser iniciado.</small></div>}
         {preview.state === "EVIDENCE" && <div className="preview-evidence">
           <div className="preview-evidence-heading"><Images size={17} /><span><strong>Resultado visual da implementação</strong><small>{preview.message}</small></span></div>
           <div className="preview-evidence-grid">{preview.evidence?.map((item) => <figure key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><img src={item.url} alt={`Preview ${item.route} em ${item.viewport}`} loading="lazy" /></a><figcaption><strong>{item.route}</strong><span>{item.viewport === "mobile" ? "Celular" : "Desktop"}</span></figcaption></figure>)}</div>
-          <small className="preview-evidence-footnote">Esta é uma captura do código executado pelo worker. Para navegar na página, o provedor ainda precisa publicar um Pull Request Preview.</small>
+          <small className="preview-evidence-footnote">Esta é uma captura do código executado pelo worker porque o ambiente temporário navegável não ficou disponível.</small>
         </div>}
 
         {preview.state === "AVAILABLE" && api && inspection && <div className="api-preview">
@@ -79,7 +79,7 @@ export default function PreviewCard({ executionId }) {
           {inspection.endpoints?.length > 0 && <details className="api-endpoints"><summary>Ver {inspection.endpoints.length} endpoints detectados</summary><div>{inspection.endpoints.map((endpoint) => <span key={`${endpoint.method}:${endpoint.path}`}><code>{endpoint.method}</code><strong>{endpoint.path}</strong><small>{endpoint.summary ?? "Sem descrição"}</small></span>)}</div></details>}
         </div>}
 
-        {preview.state === "AVAILABLE" && !api && <div className="web-preview"><div className="web-preview-address"><span aria-hidden="true" /><span aria-hidden="true" /><span aria-hidden="true" /><code>{preview.url}</code><a href={preview.url} target="_blank" rel="noreferrer" referrerPolicy="no-referrer"><ExternalLink size={13} />Abrir em nova aba</a></div><iframe src={preview.url} title="Preview navegável da implementação" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts" referrerPolicy="no-referrer" loading="lazy" /><small>Ambiente isolado do provedor. Se a aplicação bloquear incorporação, use “Abrir em nova aba”.</small></div>}
+        {preview.state === "AVAILABLE" && !api && <div className="web-preview"><div className="web-preview-address"><span aria-hidden="true" /><span aria-hidden="true" /><span aria-hidden="true" /><code>{preview.url}</code><a href={preview.url} target="_blank" rel="noreferrer" referrerPolicy="no-referrer"><ExternalLink size={13} />Abrir em nova aba</a></div><iframe src={preview.url} title="Preview navegável da implementação" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts" referrerPolicy="no-referrer" loading="lazy" /><small>Container temporário isolado do Dashboardia. Ele será removido automaticamente após o prazo informado.</small></div>}
       </div>}
     </section>
   );
