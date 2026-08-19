@@ -67,7 +67,7 @@ function normalizePreviewCommand(command) {
 }
 
 function isStaticHttpServer(command) {
-  return /^python3?\s+-m\s+http\.server(?:\s|$)/i.test(String(command || "").trim());
+  return /^(?:\(cd\s+[^&]+\s+&&\s+)?python3?\s+-m\s+http\.server(?:\s|$)/i.test(String(command || "").trim());
 }
 
 function buildMavenWarDockerfile(configuration) {

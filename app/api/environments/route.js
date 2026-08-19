@@ -9,7 +9,7 @@ import { ACTIVE_ENVIRONMENT_STATUSES, environmentExpirationDate } from "../../..
 import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../lib/github";
 import { getGlobalSettings } from "../../../lib/global-settings";
 import { createDashboardiaPreview, dashboardiaPreviewConfigured } from "../../../lib/preview-host-client";
-import { applyDetectedRuntime, detectGitHubProjectRuntime } from "../../../lib/project-runtime";
+import { applyDetectedRuntime, applyWorkingDirectory, detectGitHubProjectRuntime } from "../../../lib/project-runtime";
 import { devEnvironmentInputSchema } from "../../../lib/validation";
 
 export async function POST(request) {
@@ -34,7 +34,8 @@ export async function POST(request) {
     const token = await getProjectGitHubAccessToken(project, user.id);
     await verifyRepositoryBranch(token, project.repositoryFullName, input.branchName);
     const detected = await detectGitHubProjectRuntime(token, project.repositoryFullName, input.branchName);
-    const configuration = applyDetectedRuntime(project, detected);
+    const workingDirectory = project.workingDirectory !== "." ? project.workingDirectory : detected.workingDirectory ?? ".";
+    const configuration = applyDetectedRuntime(applyWorkingDirectory(project, workingDirectory), detected);
     if (!configuration.previewCommand || !configuration.previewPort) {
       return NextResponse.json({ error: `A stack ${detected.runtime} foi detectada, mas não há comando de inicialização. Configure o projeto antes de subir o ambiente.` }, { status: 422 });
     }
@@ -64,6 +65,7 @@ export async function POST(request) {
       archive,
       configuration: {
         runtime: detected.runtime,
+        workingDirectory: configuration.workingDirectory,
         installCommand: configuration.installCommand,
         buildCommand: configuration.buildCommand,
         previewCommand: configuration.previewCommand,

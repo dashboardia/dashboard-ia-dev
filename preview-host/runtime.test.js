@@ -59,6 +59,20 @@ test("compila e publica o WAR completo quando um projeto Maven tinha fallback es
   assert.doesNotMatch(result, /python3 -m http\.server/);
 });
 
+test("compila Maven no diretório detectado sem perder a publicação do WAR", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "JAVA_MAVEN",
+    workingDirectory: "sistema-web",
+    buildCommand: "(cd sistema-web && mvn -B -DskipTests package)",
+    previewCommand: "(cd sistema-web && python3 -m http.server $PORT --bind 127.0.0.1)",
+    port: 8080,
+  });
+
+  assert.match(result, /cd sistema-web && mvn -B -DskipTests package/);
+  assert.match(result, /^FROM tomcat:9\.0-jdk8-temurin/m);
+  assert.match(result, /find \. -type f -path/);
+});
+
 test("não considera 404 como preview pronto", () => {
   assert.equal(isPreviewReadyStatus(200), true);
   assert.equal(isPreviewReadyStatus(302), true);

@@ -115,6 +115,9 @@ function parseConfiguration(request) {
   if (!Number.isInteger(configuration.port) || configuration.port < 1 || configuration.port > 65535) throw new Error("Porta do preview inválida");
   if (!Number.isInteger(configuration.ttlMinutes) || configuration.ttlMinutes < 5 || configuration.ttlMinutes > 1440) throw new Error("TTL do preview inválido");
   if (![0, 1].includes(configuration.stripComponents ?? 0)) throw new Error("Formato do arquivo compactado inválido");
+  const workingDirectory = String(configuration.workingDirectory || ".");
+  if (path.isAbsolute(workingDirectory) || workingDirectory.split(/[\\/]/).includes("..")) throw new Error("Diretório de trabalho inválido");
+  configuration.workingDirectory = workingDirectory;
   return configuration;
 }
 
@@ -287,6 +290,7 @@ async function handleApi(request, response, url) {
   const state = await writeState(id, {
     status: "QUEUED",
     runtime: configuration.runtime,
+    workingDirectory: configuration.workingDirectory,
     port: configuration.port,
     imageReference: null,
     url: null,
