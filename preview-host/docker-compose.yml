@@ -17,6 +17,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - preview-data:/var/lib/dashboardia-previews
     networks:
+      - public
       - preview
 
   caddy:
