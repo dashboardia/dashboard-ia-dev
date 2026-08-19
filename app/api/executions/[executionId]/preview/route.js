@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requireProjectRole } from "../../../../../lib/access";
 import { apiError } from "../../../../../lib/api";
-import { findDeploymentPreview, inspectDeploymentPreview } from "../../../../../lib/deployment-preview";
+import { expireStaleDeploymentPreview, findDeploymentPreview, inspectDeploymentPreview } from "../../../../../lib/deployment-preview";
 import { db } from "../../../../../lib/db";
 import { getGitHubAccessToken, getProjectGitHubAccessToken } from "../../../../../lib/github";
 
@@ -52,6 +52,7 @@ export async function GET(_request, context) {
         },
       });
     }
+    deployment = expireStaleDeploymentPreview(deployment);
     if (deployment.state !== "AVAILABLE" || !deployment.url) {
       return NextResponse.json({ preview: { ...deployment, mode: null, inspection: null } });
     }
