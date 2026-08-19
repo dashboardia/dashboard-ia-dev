@@ -1,6 +1,7 @@
 import { CalendarDays, Check, Coins, CreditCard, FolderGit2, Gauge, ShieldCheck } from "lucide-react";
 
 import AppShell from "../../components/app-shell";
+import AutoRefresh from "../../components/auto-refresh";
 import SectionHeader from "../../components/section-header";
 import { getBillingOverview } from "../../lib/billing";
 import { BILLING_PLANS, CREDIT_PACKS, formatPlanPrice } from "../../lib/billing-plans";
@@ -42,11 +43,14 @@ export default async function BillingPage({ searchParams }) {
   const account = overview.account;
   const endDate = account.plan === "TRIAL" ? account.trialEndsAt : account.cycleEndsAt;
   const remainingDays = daysRemaining(endDate);
+  const awaitingCheckoutConfirmation = params?.checkout === "success"
+    && !(account.status === "ACTIVE" && ["STUDIO", "AGENCY"].includes(account.plan));
 
   return <AppShell user={user}><div className="section-page billing-page">
     <SectionHeader eyebrow="ASSINATURA" title="Plano e créditos" description="Controle de acesso, saldo de créditos e cobrança do Dashboard IA." />
     {params?.welcome === "1" && <div className="billing-notice success"><ShieldCheck size={18} /><span><strong>Seu teste de 7 dias começou.</strong> Você recebeu 300 créditos e pode conectar 1 projeto sem informar cartão.</span></div>}
-    {params?.checkout === "success" && <div className="billing-notice"><CreditCard size={18} /><span><strong>Pagamento enviado.</strong> O plano será liberado após a confirmação segura do Asaas.</span></div>}
+    {awaitingCheckoutConfirmation && <div className="billing-notice"><CreditCard size={18} /><span><strong>Confirmando pagamento.</strong> Esta página será atualizada automaticamente após a confirmação segura do Asaas.</span><AutoRefresh active interval={2500} /></div>}
+    {params?.checkout === "success" && !awaitingCheckoutConfirmation && <div className="billing-notice success"><ShieldCheck size={18} /><span><strong>Pagamento confirmado.</strong> Seu plano já está ativo.</span></div>}
     {account.pendingPlan && <div className="billing-notice"><CalendarDays size={18} /><span><strong>Troca de plano agendada.</strong> O plano {BILLING_PLANS[account.pendingPlan].name} entra em vigor no próximo ciclo confirmado.</span></div>}
     {!configuration.asaas && user.globalRole !== "ADMIN" && <div className="billing-notice warning"><span><strong>Checkout em configuração.</strong> O administrador precisa informar as variáveis do Asaas antes das contratações.</span></div>}
 
