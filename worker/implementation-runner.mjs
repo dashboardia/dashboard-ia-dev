@@ -1,5 +1,6 @@
 import { Agent, applyPatchTool, run, shellTool } from "@openai/agents";
 
+import { calculateLiveUsageCredits } from "../lib/financial-shadow.js";
 import { ReadOnlyShell, WorkspaceEditor } from "./sandbox.mjs";
 
 let controller;
@@ -36,7 +37,41 @@ process.on("message", async (message) => {
         applyPatchTool({ editor, needsApproval: false }),
       ],
     });
-    const result = await run(agent, message.prompt, { maxTurns: message.policy?.maxTurns ?? 36, signal: controller.signal });
+    const result = await run(agent, message.prompt, {
+      maxTurns: message.policy?.maxTurns ?? 36,
+      signal: controller.signal,
+      stream: true,
+    });
+    let budgetExceeded = false;
+    for await (const _event of result) {
+      if (!message.creditBudget || !message.creditCostPolicy) continue;
+      const consumedCredits = calculateLiveUsageCredits({
+        ...message.creditCostPolicy,
+        inputTokens: result.runContext.usage.inputTokens,
+        outputTokens: result.runContext.usage.outputTokens,
+      });
+      if (consumedCredits >= message.creditBudget) {
+        budgetExceeded = true;
+        controller.abort();
+        break;
+      }
+    }
+    await result.completed.catch((error) => {
+      if (!budgetExceeded) throw error;
+    });
+    if (budgetExceeded) {
+      finish({
+        type: "error",
+        error: {
+          name: "CreditBudgetExceededError",
+          code: "CREDIT_BUDGET_EXCEEDED",
+          message: `A execução atingiu o limite rígido de ${message.creditBudget} créditos e foi interrompida sem consumir saldo adicional.`,
+          inputTokens: result.runContext.usage.inputTokens,
+          outputTokens: result.runContext.usage.outputTokens,
+        },
+      }, 1);
+      return;
+    }
     finish({
       type: "result",
       result: {

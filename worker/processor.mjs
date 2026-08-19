@@ -49,7 +49,7 @@ async function assertExecutionActive(executionId) {
   if (current?.cancelRequestedAt) throw new ExecutionCancelledError();
 }
 
-function startImplementationAgent({ projectDirectory, prompt, model, policy }) {
+function startImplementationAgent({ projectDirectory, prompt, model, policy, creditBudget, creditCostPolicy }) {
   const child = fork(new URL("./implementation-runner.mjs", import.meta.url), [], {
     env: process.env,
     stdio: ["ignore", "ignore", "pipe", "ipc"],
@@ -67,14 +67,16 @@ function startImplementationAgent({ projectDirectory, prompt, model, policy }) {
         resolve(message.result);
       } else if (message?.type === "error") {
         settled = true;
-        reject(new Error(message.error?.message || "O subprocesso do agente falhou"));
+        const error = new Error(message.error?.message || "O subprocesso do agente falhou");
+        Object.assign(error, message.error);
+        reject(error);
       }
     });
     child.once("exit", (code, signal) => {
       clearTimeout(forceKillTimer);
       if (!settled) reject(new Error(stderr || `O subprocesso do agente foi encerrado (${signal || code})`));
     });
-    child.send({ type: "run", projectDirectory, prompt, model, policy });
+    child.send({ type: "run", projectDirectory, prompt, model, policy, creditBudget, creditCostPolicy });
   });
 
   return {
@@ -202,6 +204,11 @@ export async function processExecution(executionId, workerId) {
       configuredTimeoutMinutes: settings.agentTimeoutMinutes,
       powerMode: settings.agentPowerMode,
     });
+    const reservation = await db.executionCreditReservation.findUnique({
+      where: { executionId },
+      select: { reservedCredits: true },
+    });
+    const creditBudget = reservation?.reservedCredits ?? null;
     await log(executionId, "agent", `Escopo ${agentPolicy.scope === "COMPLEX" ? "amplo" : "padrão"} detectado`, "info", {
       maxTurns: agentPolicy.maxTurns,
       timeoutMinutes: agentPolicy.timeoutMinutes,
@@ -211,6 +218,14 @@ export async function processExecution(executionId, workerId) {
       prompt: buildAgentPrompt(execution.demand, agentPolicy.scope),
       model: selectedModel,
       policy: agentPolicy,
+      creditBudget,
+      creditCostPolicy: creditBudget ? {
+        model: selectedModel,
+        usdToBrlCents: settings.usdToBrlCents,
+        aiSafetyPercent: settings.aiSafetyPercent,
+        creditValueCents: settings.creditValueCents,
+        targetGrossMarginPercent: settings.targetGrossMarginPercent,
+      } : null,
     });
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
@@ -245,6 +260,9 @@ export async function processExecution(executionId, workerId) {
       outputTokens = result.outputTokens;
       measuredUsage = { inputTokens, outputTokens };
     } catch (error) {
+      if (error?.inputTokens != null && error?.outputTokens != null) {
+        measuredUsage = { inputTokens: error.inputTokens, outputTokens: error.outputTokens };
+      }
       if (abortReason === "stopped") throw new ExecutionStoppedError();
       if (abortReason === "cancelled") throw new ExecutionCancelledError();
       if (abortReason === "timeout") {
