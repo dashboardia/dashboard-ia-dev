@@ -9,6 +9,7 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
   const [refreshing, setRefreshing] = useState(false);
   const lastRefreshAt = useRef(0);
   const indicatorTimer = useRef(null);
+  const refreshFallbackTimer = useRef(null);
   const inFlight = useRef(false);
   const currentRevision = useRef(revision);
 
@@ -24,6 +25,13 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
         if (!response.ok) return;
         const result = await response.json();
         if (result.revision === currentRevision.current) return;
+        const expectedRevision = result.revision;
+        router.refresh();
+        window.clearTimeout(refreshFallbackTimer.current);
+        refreshFallbackTimer.current = window.setTimeout(() => {
+          if (currentRevision.current !== expectedRevision) window.location.reload();
+        }, 1_500);
+        return;
       }
       router.refresh();
     } finally {
@@ -43,7 +51,10 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
     return () => window.clearInterval(timer);
   }, [active, interval, refresh]);
 
-  useEffect(() => () => window.clearTimeout(indicatorTimer.current), []);
+  useEffect(() => () => {
+    window.clearTimeout(indicatorTimer.current);
+    window.clearTimeout(refreshFallbackTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!active) return undefined;

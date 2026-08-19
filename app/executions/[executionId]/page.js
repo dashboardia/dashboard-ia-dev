@@ -15,6 +15,7 @@ import { formatBrlCents } from "../../../lib/financial-shadow";
 import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings";
 import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-button";
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
+import AutoOpenPullRequest from "./auto-open-pull-request";
 import EvidenceCard from "./evidence-card";
 import DiffViewer from "./diff-viewer";
 import ExecutionConversation from "./execution-conversation";
@@ -56,7 +57,7 @@ export default async function ExecutionPage({ params }) {
   if (!role) redirect("/executions");
   const diff = execution.artifacts.find((artifact) => artifact.type === "diff");
   const canCancel = role === "MANAGER" && cancellableStatuses.includes(execution.status) && !execution.cancelRequestedAt;
-  const canOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.cancelRequestedAt;
+  const shouldAutoOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.pullRequest && !execution.cancelRequestedAt;
   const interrupted = ["CANCELLED", "STOPPED"].includes(execution.status) || Boolean(execution.cancelRequestedAt);
   const live = isExecutionLive(execution.status, Boolean(execution.cancelRequestedAt)) || isExecutionSettling(execution);
   const explainedError = execution.error ? explainError(execution.error) : null;
@@ -85,7 +86,7 @@ export default async function ExecutionPage({ params }) {
           eyebrow={`${execution.demand.project.name} · ${execution.stage}`}
           title={execution.demand.title}
           description={`Execução ${execution.id.slice(-10)} · solicitada por ${execution.requestedBy.name ?? execution.requestedBy.githubLogin}`}
-          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : canOpenPullRequest ? <OpenPullRequestButton executionId={execution.id} /> : interrupted ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar a demanda</Link></div> : null}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
+          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : interrupted ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar a demanda</Link></div> : null}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
         />
 
         <section className="execution-metrics">

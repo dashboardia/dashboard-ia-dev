@@ -54,7 +54,7 @@ export async function POST(request, context) {
         `## Demanda\n${execution.demand.description}`,
         execution.demand.acceptanceCriteria ? `## Critérios de aceite\n${execution.demand.acceptanceCriteria}` : null,
         execution.summary ? `## Resultado da execução\n${execution.summary}` : null,
-        "---\nPull Request criado pelo Forgeboard após aprovação de um Gestor.",
+        "---\nPull Request criado automaticamente pelo Dashboard IA. Novos ajustes podem ser enviados pelo chat da execução.",
       ].filter(Boolean).join("\n\n");
       const githubPullRequest = existingPullRequest ?? await createGitHubPullRequest(token, execution.demand.project.repositoryFullName, {
         title: execution.demand.title,
@@ -83,7 +83,6 @@ export async function POST(request, context) {
           data: {
             status: "AWAITING_CLIENT",
             stage: "PUBLISH",
-            approvedById: user.id,
             lockedAt: null,
             lockedBy: null,
             finishedAt: null,
@@ -100,7 +99,7 @@ export async function POST(request, context) {
             action: "pull_request.create",
             entityType: "PullRequest",
             entityId: created.id,
-            metadata: { externalNumber: created.externalNumber, recovered: Boolean(existingPullRequest) },
+            metadata: { externalNumber: created.externalNumber, automatic: true, recovered: Boolean(existingPullRequest) },
             request,
           }),
         });

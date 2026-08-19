@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
-import { getProjectGitHubAccessToken } from "../lib/github.js";
+import { createGitHubPullRequest, findOpenGitHubPullRequest, getProjectGitHubAccessToken } from "../lib/github.js";
 import { getGlobalSettings } from "../lib/global-settings.js";
 import { applyDetectedRuntime, detectWorkspaceProjectRuntime } from "../lib/project-runtime.js";
 import {
@@ -19,6 +19,7 @@ import {
 } from "./sandbox.mjs";
 import { runImplementationPreview, runVisualValidation } from "./visual-validation.mjs";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
+import { auditData } from "../lib/audit.js";
 import { calculateLiveUsageCredits, saveFinancialSnapshot } from "../lib/financial-shadow.js";
 import { getExecutionCreditBudget, settleExecutionCredits } from "../lib/billing.js";
 import { getBusinessKnowledgeContext } from "../lib/business-knowledge.js";
@@ -550,11 +551,70 @@ export async function processExecution(executionId, workerId) {
       headSha: implementationHead,
     });
 
+    let publishedPullRequest = execution.pullRequest;
+    if (!publishedPullRequest) {
+      await log(executionId, "publish", "Abrindo Pull Request automaticamente");
+      const existingPullRequest = await findOpenGitHubPullRequest(
+        token,
+        execution.demand.project.repositoryFullName,
+        branchName,
+        execution.demand.project.defaultBranch,
+      );
+      const body = [
+        `## Demanda\n${execution.demand.description}`,
+        execution.demand.acceptanceCriteria ? `## Critérios de aceite\n${execution.demand.acceptanceCriteria}` : null,
+        summary ? `## Resultado da execução\n${summary}` : null,
+        "---\nPull Request criado automaticamente pelo Dashboard IA. Novos ajustes podem ser enviados pelo chat da execução.",
+      ].filter(Boolean).join("\n\n");
+      const githubPullRequest = existingPullRequest ?? await createGitHubPullRequest(
+        token,
+        execution.demand.project.repositoryFullName,
+        {
+          title: execution.demand.title,
+          body,
+          head: branchName,
+          base: execution.demand.project.defaultBranch,
+          draft: true,
+        },
+      );
+      publishedPullRequest = {
+        externalNumber: githubPullRequest.number,
+        url: githubPullRequest.html_url,
+        title: githubPullRequest.title,
+        status: githubPullRequest.draft ? "DRAFT" : "OPEN",
+        headBranch: branchName,
+        baseBranch: execution.demand.project.defaultBranch,
+        recovered: Boolean(existingPullRequest),
+      };
+    }
+
     await db.$transaction(async (transaction) => {
+      const pullRequest = execution.pullRequest ?? await transaction.pullRequest.upsert({
+        where: { executionId },
+        update: {
+          externalNumber: publishedPullRequest.externalNumber,
+          url: publishedPullRequest.url,
+          title: publishedPullRequest.title,
+          status: publishedPullRequest.status,
+          headBranch: publishedPullRequest.headBranch,
+          baseBranch: publishedPullRequest.baseBranch,
+        },
+        create: {
+          executionId,
+          projectId: execution.demand.projectId,
+          demandId: execution.demandId,
+          externalNumber: publishedPullRequest.externalNumber,
+          url: publishedPullRequest.url,
+          title: publishedPullRequest.title,
+          status: publishedPullRequest.status,
+          headBranch: publishedPullRequest.headBranch,
+          baseBranch: publishedPullRequest.baseBranch,
+        },
+      });
       const updated = await transaction.execution.updateMany({
         where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
         data: {
-          status: execution.pullRequest ? "AWAITING_CLIENT" : "WAITING_APPROVAL",
+          status: "AWAITING_CLIENT",
           stage: "PUBLISH",
           summary,
           baseSha: base,
@@ -563,10 +623,8 @@ export async function processExecution(executionId, workerId) {
           outputTokens,
           lockedAt: null,
           lockedBy: null,
-          ...(execution.pullRequest ? {
-            conversationExpiresAt: new Date(Date.now() + settings.executionConversationTimeoutMinutes * 60_000),
-            lastInteractionAt: new Date(),
-          } : {}),
+          conversationExpiresAt: new Date(Date.now() + settings.executionConversationTimeoutMinutes * 60_000),
+          lastInteractionAt: new Date(),
         },
       });
       if (updated.count !== 1) throw new ExecutionCancelledError();
@@ -589,9 +647,20 @@ export async function processExecution(executionId, workerId) {
       });
       if (visualArtifacts.length) await transaction.executionArtifact.createMany({ data: visualArtifacts.map((artifact) => ({ executionId, ...artifact })) });
       if (isFollowUp) await transaction.executionMessage.create({ data: { executionId, role: "AGENT", content: summary || "Ajuste aplicado na mesma branch e no Pull Request existente." } });
+      else {
+        await transaction.executionMessage.create({ data: { executionId, role: "SYSTEM", content: `Pull Request #${pullRequest.externalNumber} aberto automaticamente. Revise o resultado e envie qualquer ajuste diretamente neste chat. Quando estiver tudo certo, conclua a execução.` } });
+        await transaction.auditLog.create({ data: auditData({
+          actorId: execution.requestedById,
+          projectId: execution.demand.projectId,
+          action: "pull_request.create",
+          entityType: "PullRequest",
+          entityId: pullRequest.id,
+          metadata: { externalNumber: pullRequest.externalNumber, automatic: true, recovered: publishedPullRequest.recovered },
+        }) });
+      }
       await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "REVIEW" } });
     });
-    await log(executionId, "publish", execution.pullRequest ? `Ajuste enviado para o Pull Request #${execution.pullRequest.externalNumber}; aguardando o cliente` : `Branch ${branchName} enviada; aguardando aprovação para abrir Pull Request`);
+    await log(executionId, "publish", isFollowUp ? `Ajuste enviado para o Pull Request #${publishedPullRequest.externalNumber}; aguardando o cliente` : `Pull Request #${publishedPullRequest.externalNumber} aberto automaticamente; aguardando o cliente`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha desconhecida na execução";
     const cancelled = error instanceof ExecutionCancelledError;

@@ -27,5 +27,5 @@ export default function OpenPullRequestButton({ executionId, pullRequest = null 
     return <div className="execution-action"><a href={pullRequest.url} target="_blank" rel="noreferrer"><GitPullRequest size={14} />Abrir Pull Request #{pullRequest.externalNumber}</a></div>;
   }
 
-  return <div className="execution-action"><button onClick={openPullRequest} disabled={loading} type="button">{loading ? <LoaderCircle className="spin" size={14} /> : <GitPullRequest size={14} />}{loading ? "Abrindo..." : "Aprovar e abrir PR"}</button>{error && <small>{error}</small>}</div>;
+  return <div className="execution-action"><button onClick={openPullRequest} disabled={loading} type="button">{loading ? <LoaderCircle className="spin" size={14} /> : <GitPullRequest size={14} />}{loading ? "Abrindo..." : "Abrir PR"}</button>{error && <small>{error}</small>}</div>;
 }
