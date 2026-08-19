@@ -3,7 +3,9 @@
 /* eslint-disable @next/next/no-img-element -- imagens privadas de altura variável servidas por rota autenticada */
 
 import { Braces, ExternalLink, Images, LoaderCircle, MonitorPlay, RefreshCw, Server } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { shouldPollPreview } from "../../../lib/execution-refresh";
 
 const stateLabels = {
   NOT_READY: "Aguardando branch",
@@ -18,18 +20,22 @@ export default function PreviewCard({ executionId, executionStatus, headSha }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const requestInFlight = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
+    if (!silent) setLoading(true);
     try {
       const response = await fetch(`/api/executions/${executionId}/preview`, { cache: "no-store" });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? "Não foi possível consultar o preview");
       setPreview(result.preview);
+      setError("");
     } catch (loadError) {
       setError(loadError.message);
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
     }
   }, [executionId]);
@@ -39,10 +45,23 @@ export default function PreviewCard({ executionId, executionStatus, headSha }) {
     return () => clearTimeout(timer);
   }, [load, executionStatus, headSha]);
   useEffect(() => {
-    if (!["NOT_READY", "PREPARING"].includes(preview?.state)) return undefined;
-    const timer = setTimeout(load, 10_000);
-    return () => clearTimeout(timer);
-  }, [load, preview?.state]);
+    if (!shouldPollPreview(preview?.state, executionStatus)) return undefined;
+    const timer = window.setInterval(() => load({ silent: true }), 4_000);
+    return () => window.clearInterval(timer);
+  }, [executionStatus, load, preview?.state]);
+
+  useEffect(() => {
+    if (!shouldPollPreview(preview?.state, executionStatus)) return undefined;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") load({ silent: true });
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [executionStatus, load, preview?.state]);
 
   const inspection = preview?.inspection;
   const api = preview?.mode === "API";
