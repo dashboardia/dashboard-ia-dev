@@ -65,6 +65,18 @@
 [data-theme="dark"] .status-pill.preview-evidence { color:#79c0ff; background:#17233b; }
 [data-theme="dark"] .execution-chat-header,[data-theme="dark"] .execution-message-list,[data-theme="dark"] .execution-reply-form,[data-theme="dark"] .execution-collapsible-header { background:#12141a; border-color:#2a2d36; }
 [data-theme="dark"] .execution-message { color:#e5e7ee; background:#1b1e26; border-color:#30333d; }[data-theme="dark"] .execution-message.user { background:#241d3a; border-color:#4d3d78; }[data-theme="dark"] .execution-message p,[data-theme="dark"] .execution-message header strong,[data-theme="dark"] .execution-chat-header h2,[data-theme="dark"] .execution-collapsible-header strong { color:#eceef4; }[data-theme="dark"] .execution-message.system { background:#242731; }[data-theme="dark"] .execution-message.system p,[data-theme="dark"] .execution-chat-header p,[data-theme="dark"] .execution-collapsible-header small { color:#a7abb7; }[data-theme="dark"] .execution-chat-processing { background:#15171e; border-color:#2a2d36; }[data-theme="dark"] .execution-chat-processing strong { color:#e5e7ee; }[data-theme="dark"] .execution-collapsible-content { border-color:#2a2d36; }
+[data-theme="dark"] .execution-reply-form textarea { color:#eef0f6; background:#181b22; border-color:#343844; caret-color:#b49aff; }
+[data-theme="dark"] .execution-reply-form textarea:hover { border-color:#48435a; }
+[data-theme="dark"] .execution-reply-form textarea:focus { color:#fff; background:#1c1f27; border-color:#8d70ff; box-shadow:0 0 0 3px rgba(141,112,255,.16); }
+[data-theme="dark"] .execution-reply-form textarea::placeholder { color:#7f8492; }
+[data-theme="dark"] .execution-reply-form>label { color:#e6e8ee; }
+[data-theme="dark"] .execution-conversation-actions>small { color:#a7abb7; }
+[data-theme="dark"] .execution-complete-button { color:#d8dae3; background:#1a1d24; border-color:#383c47; }
+[data-theme="dark"] .execution-complete-button:hover { color:#fff; background:#23262f; border-color:#555064; }
+[data-theme="dark"] .execution-chat-status { color:#c3c6d0; background:#252832; }
+[data-theme="dark"] .execution-chat-status.available { color:#72d8ad; background:#142b23; }
+[data-theme="dark"] .execution-chat-status.processing { color:#b8a3ff; background:#29213f; }
+[data-theme="dark"] .live-update { color:#b59cff; background:#211b34; border:1px solid #382d5a; }
 [data-theme="dark"] .execution-screenshot,[data-theme="dark"] .execution-file-icon { background:#171920; border-color:#30333d; }[data-theme="dark"] .execution-screenshot strong,[data-theme="dark"] .execution-evidence-files strong { color:#eceef4; }[data-theme="dark"] .execution-screenshot small,[data-theme="dark"] .execution-evidence-files small { color:#a8acb7; }[data-theme="dark"] .execution-evidence-files>a { color:#dfe1e8; background:#171920; }[data-theme="dark"] .execution-evidence-files>a:hover { background:#1d2028; border-color:#3b3f4a; }
 .support-chat { isolation:isolate; }
 

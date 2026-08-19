@@ -9,9 +9,9 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
   const [refreshing, setRefreshing] = useState(false);
   const lastRefreshAt = useRef(0);
   const indicatorTimer = useRef(null);
-  const refreshFallbackTimer = useRef(null);
   const inFlight = useRef(false);
   const currentRevision = useRef(revision);
+  const pendingRevision = useRef(null);
 
   const refresh = useCallback(async () => {
     if (!active || document.visibilityState === "hidden" || inFlight.current) return;
@@ -24,13 +24,11 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
         const response = await fetch(`${revisionUrl}${separator}t=${Date.now()}`, { cache: "no-store" });
         if (!response.ok) return;
         const result = await response.json();
-        if (result.revision === currentRevision.current) return;
-        const expectedRevision = result.revision;
-        router.refresh();
-        window.clearTimeout(refreshFallbackTimer.current);
-        refreshFallbackTimer.current = window.setTimeout(() => {
-          if (currentRevision.current !== expectedRevision) window.location.reload();
-        }, 1_500);
+        if (result.revision === currentRevision.current || result.revision === pendingRevision.current) return;
+        pendingRevision.current = result.revision;
+        const target = new URL(window.location.href);
+        target.searchParams.set("_live", Date.now().toString(36));
+        router.replace(`${target.pathname}${target.search}${target.hash}`, { scroll: false });
         return;
       }
       router.refresh();
@@ -43,6 +41,7 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
 
   useEffect(() => {
     currentRevision.current = revision;
+    if (pendingRevision.current === revision) pendingRevision.current = null;
   }, [revision]);
 
   useEffect(() => {
@@ -51,10 +50,7 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
     return () => window.clearInterval(timer);
   }, [active, interval, refresh]);
 
-  useEffect(() => () => {
-    window.clearTimeout(indicatorTimer.current);
-    window.clearTimeout(refreshFallbackTimer.current);
-  }, []);
+  useEffect(() => () => window.clearTimeout(indicatorTimer.current), []);
 
   useEffect(() => {
     if (!active) return undefined;
