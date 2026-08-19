@@ -23,24 +23,27 @@ async function processCheckoutEvent(transaction, payload) {
   if (!order) throw new Error(`Checkout do Asaas nao conciliado: ${payload.checkout?.id || "sem-id"}`);
   if (payload.event === "CHECKOUT_CANCELED") {
     await transaction.billingCheckout.update({ where: { id: order.id }, data: { status: "CANCELED" } });
-    return;
+    return { action: "checkout_canceled", checkoutId: order.id };
   }
   if (payload.event === "CHECKOUT_EXPIRED") {
     await transaction.billingCheckout.update({ where: { id: order.id }, data: { status: "EXPIRED" } });
-    return;
+    return { action: "checkout_expired", checkoutId: order.id };
   }
-  if (payload.event !== "CHECKOUT_PAID" || order.status === "PAID") return;
+  if (payload.event !== "CHECKOUT_PAID") return { action: "checkout_ignored", checkoutId: order.id };
 
   const providerCustomerId = payload.checkout?.customer || null;
   const providerSubscriptionId = payload.checkout?.subscription?.id || payload.checkout?.subscriptionId || null;
   if (order.kind === "PLAN") {
-    await activatePlan(transaction, {
-      account: order.account,
-      planCode: order.targetPlan,
-      sourceRef: order.id,
-      providerCustomerId,
-      providerSubscriptionId,
-    });
+    const planIsActive = order.account.status === "ACTIVE" && order.account.plan === order.targetPlan;
+    if (!planIsActive) {
+      await activatePlan(transaction, {
+        account: order.account,
+        planCode: order.targetPlan,
+        sourceRef: order.id,
+        providerCustomerId,
+        providerSubscriptionId,
+      });
+    }
   } else {
     await grantCredits(transaction, {
       accountId: order.accountId,
@@ -54,7 +57,14 @@ async function processCheckoutEvent(transaction, payload) {
       await transaction.billingAccount.update({ where: { id: order.accountId }, data: { providerCustomerId } });
     }
   }
-  await transaction.billingCheckout.update({ where: { id: order.id }, data: { status: "PAID", paidAt: new Date() } });
+  if (order.status !== "PAID") {
+    await transaction.billingCheckout.update({ where: { id: order.id }, data: { status: "PAID", paidAt: new Date() } });
+  }
+  return {
+    action: order.kind === "PLAN" ? "plan_activated" : "credits_granted",
+    checkoutId: order.id,
+    plan: order.targetPlan,
+  };
 }
 
 async function processPaymentEvent(transaction, payload) {
@@ -98,26 +108,29 @@ export async function POST(request) {
   if (!payload?.id || !payload?.event) return NextResponse.json({ error: "Evento inválido" }, { status: 400 });
 
   try {
-    await db.$transaction(async (transaction) => {
+    const result = await db.$transaction(async (transaction) => {
       const existing = await transaction.billingWebhookEvent.findUnique({
         where: { provider_providerEventId: { provider: "ASAAS", providerEventId: payload.id } },
       });
       // Eventos de checkout sao idempotentes pelo status do pedido e podem ser
       // reenviados para recuperar uma conciliacao que ocorreu antes da correcao.
-      if (existing?.processedAt && !payload.event.startsWith("CHECKOUT_")) return;
+      if (existing?.processedAt && !payload.event.startsWith("CHECKOUT_")) return { action: "event_deduplicated" };
       const event = existing || await transaction.billingWebhookEvent.create({
         data: { provider: "ASAAS", providerEventId: payload.id, eventType: payload.event, payload },
       });
       try {
-        if (payload.event.startsWith("CHECKOUT_")) await processCheckoutEvent(transaction, payload);
+        const checkout = payload.event.startsWith("CHECKOUT_")
+          ? await processCheckoutEvent(transaction, payload)
+          : null;
         if (payload.event.startsWith("PAYMENT_")) await processPaymentEvent(transaction, payload);
         await transaction.billingWebhookEvent.update({ where: { id: event.id }, data: { processedAt: new Date(), error: null } });
+        return checkout || { action: "event_processed" };
       } catch (error) {
         await transaction.billingWebhookEvent.update({ where: { id: event.id }, data: { error: error instanceof Error ? error.message : String(error) } });
         throw error;
       }
     });
-    return NextResponse.json({ received: true });
+    return NextResponse.json({ received: true, result });
   } catch (error) {
     console.error("[asaas-webhook] Falha ao processar evento", error);
     return NextResponse.json({ error: "Falha temporária ao processar evento" }, { status: 500 });
