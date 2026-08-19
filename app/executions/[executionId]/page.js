@@ -10,7 +10,7 @@ import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
 import { redactSensitiveData } from "../../../lib/redaction";
 import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error-messages";
-import { isExecutionLive } from "../../../lib/execution-refresh";
+import { isExecutionLive, isExecutionSettling } from "../../../lib/execution-refresh";
 import { formatBrlCents } from "../../../lib/financial-shadow";
 import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings";
 import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-button";
@@ -58,7 +58,7 @@ export default async function ExecutionPage({ params }) {
   const canCancel = role === "MANAGER" && cancellableStatuses.includes(execution.status) && !execution.cancelRequestedAt;
   const canOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.cancelRequestedAt;
   const interrupted = ["CANCELLED", "STOPPED"].includes(execution.status) || Boolean(execution.cancelRequestedAt);
-  const live = isExecutionLive(execution.status, Boolean(execution.cancelRequestedAt));
+  const live = isExecutionLive(execution.status, Boolean(execution.cancelRequestedAt)) || isExecutionSettling(execution);
   const explainedError = execution.error ? explainError(execution.error) : null;
 
   return (
