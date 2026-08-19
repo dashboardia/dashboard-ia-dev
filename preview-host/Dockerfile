@@ -5,7 +5,10 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY server.mjs runtime.mjs ./
+# O servidor importa módulos auxiliares em tempo de execução. Copiar todos os
+# arquivos .mjs evita publicar uma imagem que constrói, mas encerra ao iniciar
+# quando um novo módulo de runtime é adicionado.
+COPY *.mjs ./
 
 ENV NODE_ENV=production
 ENV PORT=8080
