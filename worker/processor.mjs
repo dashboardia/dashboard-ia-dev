@@ -197,16 +197,34 @@ async function runValidations(execution, projectDirectory, settings, scopes = ["
 
 export async function processExecution(executionId, workerId) {
   const workspace = path.join(workspaceRoot, executionId);
+  const runStartedAt = new Date();
   let execution;
   let settings;
   let measuredUsage;
+  let inputTokens;
+  let outputTokens;
+  let runInputTokens = 0;
+  let runOutputTokens = 0;
+  let visualValidationPerformed = false;
 
   try {
     settings = await getGlobalSettings();
     execution = await db.execution.findUniqueOrThrow({
       where: { id: executionId },
-      include: { demand: { include: { project: true } }, pullRequest: true, messages: { orderBy: { createdAt: "asc" } } },
+      include: { demand: { include: { project: true } }, pullRequest: true, financialSnapshot: true, messages: { orderBy: { createdAt: "asc" } } },
     });
+    inputTokens = Math.max(0, execution.inputTokens ?? 0);
+    outputTokens = Math.max(0, execution.outputTokens ?? 0);
+    if (execution.inputTokens != null && execution.outputTokens != null) measuredUsage = { inputTokens, outputTokens };
+    const addMeasuredUsage = (usage) => {
+      const addedInputTokens = Math.max(0, Number(usage?.inputTokens) || 0);
+      const addedOutputTokens = Math.max(0, Number(usage?.outputTokens) || 0);
+      inputTokens += addedInputTokens;
+      outputTokens += addedOutputTokens;
+      runInputTokens += addedInputTokens;
+      runOutputTokens += addedOutputTokens;
+      measuredUsage = { inputTokens, outputTokens };
+    };
     if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada no worker");
     await mkdir(workspaceRoot, { recursive: true });
     await cleanWorkspace(workspace);
@@ -268,7 +286,7 @@ export async function processExecution(executionId, workerId) {
       maxTurns: agentPolicy.maxTurns,
       timeoutMinutes: agentPolicy.timeoutMinutes,
     });
-    const creditCostPolicy = creditBudget ? {
+    const creditCostPolicy = creditBudget != null ? {
       model: selectedModel,
       usdToBrlCents: settings.usdToBrlCents,
       aiSafetyPercent: settings.aiSafetyPercent,
@@ -321,21 +339,17 @@ export async function processExecution(executionId, workerId) {
     agentTimeout.unref();
 
     let summary;
-    let inputTokens;
-    let outputTokens;
     try {
       const maxAgentAttempts = 3;
       for (let attempt = 1; attempt <= maxAgentAttempts; attempt += 1) {
         try {
           const result = await implementationAgent.promise;
           summary = result.summary;
-          inputTokens = result.inputTokens;
-          outputTokens = result.outputTokens;
-          measuredUsage = { inputTokens, outputTokens };
+          addMeasuredUsage(result);
           break;
         } catch (error) {
           if (error?.inputTokens != null && error?.outputTokens != null) {
-            measuredUsage = { inputTokens: error.inputTokens, outputTokens: error.outputTokens };
+            addMeasuredUsage(error);
           }
           if (abortReason === "stopped") throw new ExecutionStoppedError();
           if (abortReason === "cancelled") throw new ExecutionCancelledError();
@@ -371,8 +385,11 @@ export async function processExecution(executionId, workerId) {
     if (!statusResult.stdout.trim()) {
       if (isFollowUp) {
         const expiresAt = new Date(Date.now() + settings.executionConversationTimeoutMinutes * 60_000);
+        const finishedAt = new Date();
         await db.$transaction(async (transaction) => {
-          await transaction.execution.update({ where: { id: executionId }, data: { status: "AWAITING_CLIENT", stage: "PUBLISH", summary, lockedAt: null, lockedBy: null, conversationExpiresAt: expiresAt, lastInteractionAt: new Date() } });
+          await transaction.execution.update({ where: { id: executionId }, data: { status: "AWAITING_CLIENT", stage: "PUBLISH", summary, inputTokens, outputTokens, lockedAt: null, lockedBy: null, conversationExpiresAt: expiresAt, lastInteractionAt: new Date() } });
+          const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt, runStartedAt, previousSnapshot: execution.financialSnapshot, visualValidationPerformed });
+          await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
           await transaction.executionMessage.create({ data: { executionId, role: "AGENT", content: summary || "Revisei o pedido, mas ele não exigiu alterações adicionais no código." } });
         });
         await log(executionId, "agent", "Interação concluída sem novas alterações no código");
@@ -386,7 +403,7 @@ export async function processExecution(executionId, workerId) {
           data: { status: "SUCCEEDED", stage: "ANALYSIS", summary, inputTokens, outputTokens, lockedAt: null, lockedBy: null, finishedAt },
         });
         if (updated.count !== 1) throw new ExecutionCancelledError();
-        const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt });
+        const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt, runStartedAt, previousSnapshot: execution.financialSnapshot, visualValidationPerformed });
         await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
         await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "SUCCEEDED" } });
       });
@@ -419,8 +436,8 @@ export async function processExecution(executionId, workerId) {
     execution.demand.project = { ...savedProject, ...detectedConfiguration };
     let validationResult = await runValidations(execution, projectDirectory, settings);
     if (!validationResult.passed) {
-      const consumedBeforeRepair = creditCostPolicy && measuredUsage
-        ? calculateLiveUsageCredits({ ...creditCostPolicy, ...measuredUsage })
+      const consumedBeforeRepair = creditCostPolicy
+        ? calculateLiveUsageCredits({ ...creditCostPolicy, inputTokens: runInputTokens, outputTokens: runOutputTokens })
         : 0;
       const remainingCreditBudget = creditBudget == null ? null : Math.max(0, creditBudget - consumedBeforeRepair);
       if (remainingCreditBudget == null || remainingCreditBudget > 0) {
@@ -456,11 +473,10 @@ export async function processExecution(executionId, workerId) {
         let repairCompleted = false;
         try {
           const repairResult = await repairAgent.promise;
-          inputTokens = (inputTokens ?? 0) + (repairResult.inputTokens ?? 0);
-          outputTokens = (outputTokens ?? 0) + (repairResult.outputTokens ?? 0);
-          measuredUsage = { inputTokens, outputTokens };
+          addMeasuredUsage(repairResult);
           repairCompleted = true;
         } catch (repairError) {
+          if (repairError?.inputTokens != null && repairError?.outputTokens != null) addMeasuredUsage(repairError);
           await cleanValidationArtifacts(projectDirectory);
           await restoreImplementationSnapshot(workspace, implementationHead);
           await log(executionId, "validation", "A correção automática não foi concluída; a implementação original continuará disponível para revisão", "warn", {
@@ -489,6 +505,7 @@ export async function processExecution(executionId, workerId) {
     if (execution.demand.visualValidation) {
       await assertExecutionActive(executionId);
       await log(executionId, "visual", "Validação visual iniciada");
+      visualValidationPerformed = true;
       try {
         visualArtifacts = await runVisualValidation({
           execution,
@@ -553,7 +570,7 @@ export async function processExecution(executionId, workerId) {
         },
       });
       if (updated.count !== 1) throw new ExecutionCancelledError();
-      const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage });
+      const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, runStartedAt, previousSnapshot: execution.financialSnapshot, visualValidationPerformed });
       await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
       await saveReviewDiff(transaction, executionId, diffResult.stdout);
       await transaction.executionArtifact.deleteMany({ where: { executionId, type: "validation" } });
@@ -581,11 +598,11 @@ export async function processExecution(executionId, workerId) {
     const stopped = error instanceof ExecutionStoppedError;
     const finishedAt = new Date();
     await db.$transaction(async (transaction) => {
-      await transaction.execution.update({ where: { id: executionId }, data: { status: stopped ? "STOPPED" : cancelled ? "CANCELLED" : "FAILED", error: stopped || cancelled ? null : message, lockedAt: null, lockedBy: null, finishedAt } });
+      await transaction.execution.update({ where: { id: executionId }, data: { status: stopped ? "STOPPED" : cancelled ? "CANCELLED" : "FAILED", error: stopped || cancelled ? null : message, inputTokens, outputTokens, lockedAt: null, lockedBy: null, finishedAt } });
       if (execution && settings) {
         if (stopped) await settleExecutionCredits(transaction, { executionId, consumedCredits: 0 });
         else {
-          const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt });
+          const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt, runStartedAt, previousSnapshot: execution.financialSnapshot, visualValidationPerformed });
           await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
         }
       }

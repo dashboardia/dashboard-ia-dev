@@ -16,6 +16,7 @@ import {
   validPreviewId,
 } from "./runtime.mjs";
 import { applyKnownBuildRepairs } from "./build-repairs.mjs";
+import { expectedRepositoryPaths, normalizeExtractedRepository } from "./archive.mjs";
 
 const execFile = promisify(execFileCallback);
 const port = Number(process.env.PORT || 8080);
@@ -175,20 +176,30 @@ async function deployPreview(id, configuration) {
     const extractArguments = ["-xzf", path.join(directory, "source.tar.gz"), "-C", sourceDirectory, "--no-same-owner", "--no-same-permissions"];
     if (configuration.stripComponents === 1) extractArguments.push("--strip-components=1");
     await execFile("tar", extractArguments, { timeout: 90_000 });
+    const normalizedDirectories = await normalizeExtractedRepository(sourceDirectory, expectedRepositoryPaths(configuration));
+    if (normalizedDirectories.length) {
+      await patchState(id, {
+        adjustments: [{
+          kind: "ARCHIVE_ROOT_NORMALIZED",
+          message: `Estrutura do pacote ajustada: ${normalizedDirectories.join(" / ")} foi removido da raiz.`,
+        }],
+      });
+    }
     const generatedDockerfile = path.join(directory, "Dockerfile");
     await writeFile(generatedDockerfile, buildPreviewDockerfile(configuration), { mode: 0o600 });
     await removeRuntime(id);
     try {
       await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
     } catch (firstBuildError) {
-      const adjustments = await applyKnownBuildRepairs({
+      const buildAdjustments = await applyKnownBuildRepairs({
         sourceDirectory,
         buildOutput: dockerErrorText(firstBuildError),
       });
-      if (!adjustments.length) throw firstBuildError;
+      if (!buildAdjustments.length) throw firstBuildError;
+      const currentState = await readState(id).catch(() => null);
       await patchState(id, {
         status: "BUILDING",
-        adjustments,
+        adjustments: [...(currentState?.adjustments ?? []), ...buildAdjustments],
         error: null,
       });
       await buildPreviewImage(id, generatedDockerfile, sourceDirectory);

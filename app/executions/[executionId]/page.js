@@ -109,7 +109,7 @@ export default async function ExecutionPage({ params }) {
           </section>
         </div>
 
-        {(execution.pullRequest || execution.messages.length > 0) && <ExecutionConversation executionId={execution.id} status={execution.status} messages={execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} maxAdjustments={settings.executionConversationMaxAdjustments} interactionCreditCost={settings.executionConversationCreditCost} />}
+        {(execution.pullRequest || execution.messages.length > 0) && <ExecutionConversation executionId={execution.id} status={execution.status} messages={execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} maxAdjustments={settings.executionConversationMaxAdjustments} />}
 
         {user.globalRole === "ADMIN" && execution.financialSnapshot && <section className="form-card detail-card full-card financial-execution-card">
           <div className="card-heading"><div><h2>Simulação financeira</h2><p>Visível somente para administradores. O custo segue silencioso; créditos são liquidados pelo consumo medido.</p></div><div className="shadow-mode-badge"><Coins size={14} />CUSTO SILENCIOSO</div></div>

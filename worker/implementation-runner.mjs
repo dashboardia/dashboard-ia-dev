@@ -44,7 +44,7 @@ process.on("message", async (message) => {
     });
     let budgetExceeded = false;
     for await (const _event of result) {
-      if (!message.creditBudget || !message.creditCostPolicy) continue;
+      if (message.creditBudget == null || !message.creditCostPolicy) continue;
       const consumedCredits = calculateLiveUsageCredits({
         ...message.creditCostPolicy,
         inputTokens: result.runContext.usage.inputTokens,

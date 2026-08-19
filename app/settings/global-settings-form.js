@@ -30,7 +30,6 @@ export default function GlobalSettingsForm({ initialSettings }) {
     environmentMaxPerUser: String(initialSettings.environmentMaxPerUser),
     executionConversationTimeoutMinutes: String(initialSettings.executionConversationTimeoutMinutes),
     executionConversationMaxAdjustments: String(initialSettings.executionConversationMaxAdjustments),
-    executionConversationCreditCost: String(initialSettings.executionConversationCreditCost),
     financialShadowEnabled: initialSettings.financialShadowEnabled,
     usdToBrlCents: String(initialSettings.usdToBrlCents),
     aiSafetyPercent: String(initialSettings.aiSafetyPercent),
@@ -150,7 +149,6 @@ export default function GlobalSettingsForm({ initialSettings }) {
           <label><span>Ambientes por usuário</span><input name="environmentMaxPerUser" type="number" min="1" max="20" value={form.environmentMaxPerUser} onChange={change} /><small>Quantidade máxima de ambientes ativos por usuário.</small></label>
           <label><span>Inatividade da execução (min)</span><input name="executionConversationTimeoutMinutes" type="number" min="15" max="10080" value={form.executionConversationTimeoutMinutes} onChange={change} /><small>Padrão: 180 minutos antes do encerramento automático.</small></label>
           <label><span>Máximo de ajustes</span><input name="executionConversationMaxAdjustments" type="number" min="1" max="100" value={form.executionConversationMaxAdjustments} onChange={change} /><small>Limite de respostas do cliente dentro da mesma execução.</small></label>
-          <label><span>Custo por ajuste (créditos)</span><input name="executionConversationCreditCost" type="number" min="0" max="100000" value={form.executionConversationCreditCost} onChange={change} /><small>Valor fixo cobrado ao cliente por nova interação na execução.</small></label>
         </div>
       </div>
       <div className="financial-settings">
