@@ -546,6 +546,8 @@ export async function processExecution(executionId, workerId) {
               "A implementação já foi concluída, mas a aplicação falhou ao iniciar no container temporário de preview.",
               "Investigue a saída real de inicialização abaixo e aplique somente as correções necessárias para a aplicação compilar, iniciar e responder pela porta configurada.",
               "Preserve integralmente o escopo aprovado. Corrija também dados de demonstração, migrações ou configuração quando forem a causa da falha.",
+              "Identifique a exceção raiz mais interna, não apenas a última linha do stack trace. Se a persistência ou o bootstrap falhar, inicialize corretamente campos obrigatórios de auditoria como createdAt, updatedAt e version na entidade, no ciclo de vida ou no serviço/bootstrap apropriado.",
+              "Não mascare a falha, não remova constraints, não torne campos obrigatórios opcionais e não substitua a aplicação por conteúdo estático.",
               "Use exclusivamente apply_patch. Não execute build, instalação, testes, servidor ou Docker; o host de preview fará a validação novamente.",
               `Saída técnica do container:\n${previewTechnical}`,
               `Demanda original:\n${buildAgentPrompt(execution.demand, agentPolicy.scope)}`,
