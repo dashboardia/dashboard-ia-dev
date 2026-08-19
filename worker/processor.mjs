@@ -24,7 +24,12 @@ import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 import { calculateLiveUsageCredits, saveFinancialSnapshot } from "../lib/financial-shadow.js";
 import { getExecutionCreditBudget, settleExecutionCredits } from "../lib/billing.js";
 import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
-import { buildPreviewRepairPrompt, MAX_PREVIEW_REPAIR_ATTEMPTS } from "./preview-repair.mjs";
+import {
+  buildPreviewRepairPrompt,
+  canRetryPreviewRepair,
+  describePreviewRepairFailure,
+  MAX_PREVIEW_REPAIR_ATTEMPTS,
+} from "./preview-repair.mjs";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 
@@ -543,6 +548,7 @@ export async function processExecution(executionId, workerId) {
         });
       } else if (previewOutcome?.status === "FAILED") {
         const previewErrors = [];
+        let previewRepairAttempts = 0;
         const previewRepairPolicy = {
           ...agentPolicy,
           maxTurns: Math.min(agentPolicy.maxTurns, 24),
@@ -551,6 +557,7 @@ export async function processExecution(executionId, workerId) {
         };
 
         for (let attempt = 1; attempt <= MAX_PREVIEW_REPAIR_ATTEMPTS && previewOutcome?.status === "FAILED"; attempt += 1) {
+          previewRepairAttempts = attempt;
           const consumedBeforePreviewRepair = creditCostPolicy && measuredUsage
             ? calculateLiveUsageCredits({ ...creditCostPolicy, ...measuredUsage })
             : 0;
@@ -601,9 +608,12 @@ export async function processExecution(executionId, workerId) {
           } catch (repairError) {
             previewRepairAgent.abort();
             await restoreImplementationSnapshot(workspace, implementationHead);
+            const repairFailure = describePreviewRepairFailure(repairError);
+            previewErrors.push(`Tentativa ${attempt}: ${repairFailure}`);
             await log(executionId, "preview", "A correção automática do preview não foi concluída; a branch, o diff e as evidências visuais foram preservados", "warn", {
-              technical: repairError instanceof Error ? repairError.message : String(repairError),
+              technical: repairFailure,
               timedOut: repairError?.code === "PREVIEW_REPAIR_TIMEOUT",
+              retrying: canRetryPreviewRepair(attempt),
             });
           } finally {
             clearTimeout(previewRepairTimeout);
@@ -613,8 +623,20 @@ export async function processExecution(executionId, workerId) {
           const previewRepairStatus = previewRepairCompleted
             ? await runProcess("git", ["status", "--porcelain"], { cwd: workspace })
             : { stdout: "" };
-          if (!previewRepairCompleted || !previewRepairStatus.stdout.trim()) {
-            if (previewRepairCompleted) await log(executionId, "preview", "O agente não encontrou uma nova correção aplicável para a falha de inicialização", "warn");
+          if (!previewRepairCompleted) {
+            if (canRetryPreviewRepair(attempt)) {
+              await log(executionId, "preview", `A tentativa ${attempt} falhou antes de alterar o código; iniciando uma nova tentativa independente`, "warn");
+              continue;
+            }
+            break;
+          }
+          if (!previewRepairStatus.stdout.trim()) {
+            const noChangesMessage = `Tentativa ${attempt}: o agente concluiu sem produzir uma correção no código`;
+            previewErrors.push(noChangesMessage);
+            await log(executionId, "preview", "O agente não encontrou uma nova correção aplicável para a falha de inicialização", "warn", {
+              retrying: canRetryPreviewRepair(attempt),
+            });
+            if (canRetryPreviewRepair(attempt)) continue;
             break;
           }
 
@@ -662,7 +684,7 @@ export async function processExecution(executionId, workerId) {
         } else if (previewOutcome?.status === "FAILED") {
           await log(executionId, "preview", "O ambiente continuou indisponível após as correções automáticas; as evidências visuais foram preservadas", "warn", {
             previewId: previewOutcome?.id ?? remotePreview?.id,
-            attempts: previewErrors.length,
+            attempts: previewRepairAttempts,
             technical: String(previewOutcome?.error || "O host não confirmou a inicialização").slice(-20_000),
           });
         }

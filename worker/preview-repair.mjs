@@ -1,5 +1,14 @@
 export const MAX_PREVIEW_REPAIR_ATTEMPTS = 3;
 
+export function canRetryPreviewRepair(attempt) {
+  return attempt < MAX_PREVIEW_REPAIR_ATTEMPTS;
+}
+
+export function describePreviewRepairFailure(error) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return message.trim() || "O agente de reparo encerrou sem informar uma causa técnica";
+}
+
 export function buildPreviewRepairPrompt({ technical, demandPrompt, attempt, previousErrors = [] }) {
   const history = previousErrors.length
     ? `Falhas já observadas em tentativas anteriores:\n${previousErrors.map((error, index) => `${index + 1}. ${error}`).join("\n\n")}`

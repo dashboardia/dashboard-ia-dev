@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPreviewRepairPrompt, MAX_PREVIEW_REPAIR_ATTEMPTS } from "./preview-repair.mjs";
+import {
+  buildPreviewRepairPrompt,
+  canRetryPreviewRepair,
+  describePreviewRepairFailure,
+  MAX_PREVIEW_REPAIR_ATTEMPTS,
+} from "./preview-repair.mjs";
 
 describe("preview repair", () => {
   it("orienta a correção da causa raiz e dos campos obrigatórios de auditoria", () => {
@@ -22,5 +27,16 @@ describe("preview repair", () => {
   it("marca explicitamente a primeira tentativa quando não há histórico", () => {
     expect(buildPreviewRepairPrompt({ technical: "erro", demandPrompt: "demanda", attempt: 1 }))
       .toContain("Esta é a primeira tentativa de reparo");
+  });
+
+  it("permite novas tentativas até o limite configurado", () => {
+    expect(canRetryPreviewRepair(1)).toBe(true);
+    expect(canRetryPreviewRepair(2)).toBe(true);
+    expect(canRetryPreviewRepair(3)).toBe(false);
+  });
+
+  it("preserva a causa do agente e cria uma mensagem útil quando ela vier vazia", () => {
+    expect(describePreviewRepairFailure(new Error("falha transitória"))).toBe("falha transitória");
+    expect(describePreviewRepairFailure(new Error(""))).toContain("sem informar uma causa técnica");
   });
 });
