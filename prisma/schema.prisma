@@ -82,6 +82,16 @@ enum ExecutionStage {
   PUBLISH
 }
 
+enum PreviewEnvironmentStatus {
+  QUEUED
+  BUILDING
+  DEPLOYING
+  READY
+  FAILED
+  STOPPING
+  EXPIRED
+}
+
 enum PullRequestStatus {
   DRAFT
   OPEN
@@ -322,11 +332,38 @@ model Execution {
   financialSnapshot  ExecutionFinancialSnapshot?
   creditReservation  ExecutionCreditReservation?
   creditTransactions CreditTransaction[]
+  previewEnvironment PreviewEnvironment?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
   @@index([status, createdAt])
   @@index([demandId])
+}
+
+model PreviewEnvironment {
+  id              String                   @id @default(cuid())
+  executionId     String                   @unique
+  status          PreviewEnvironmentStatus @default(QUEUED)
+  provider        String                   @default("DASHBOARDIA")
+  externalId      String?                  @unique
+  url             String?
+  runtime         String?
+  imageReference  String?
+  port            Int?
+  attempts        Int                      @default(0)
+  error           String?                  @db.Text
+  requestedAt     DateTime                 @default(now())
+  startedAt       DateTime?
+  readyAt         DateTime?
+  expiresAt       DateTime
+  stoppedAt       DateTime?
+  lastHeartbeatAt DateTime?
+  execution       Execution                @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([provider, externalId])
 }
 
 model BillingAccount {
