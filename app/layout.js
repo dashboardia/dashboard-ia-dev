@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./preferences.css";
 
 export const metadata = {
   title: "Forgeboard",

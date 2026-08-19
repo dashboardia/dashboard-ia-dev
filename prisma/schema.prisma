@@ -156,6 +156,8 @@ model User {
   githubLogin         String?         @unique
   globalRole          GlobalRole      @default(USER)
   status              UserStatus      @default(ACTIVE)
+  theme               String          @default("SYSTEM")
+  locale              String          @default("pt-BR")
   accounts            Account[]
   sessions            Session[]
   projectMemberships  ProjectMember[]
