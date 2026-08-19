@@ -21,7 +21,7 @@ import { runImplementationPreview, runVisualValidation } from "./visual-validati
 import { publishDashboardiaPreview } from "./preview-publisher.mjs";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 import { saveFinancialSnapshot } from "../lib/financial-shadow.js";
-import { settleExecutionCredits } from "../lib/billing.js";
+import { getExecutionCreditBudget, settleExecutionCredits } from "../lib/billing.js";
 import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
@@ -50,7 +50,7 @@ async function assertExecutionActive(executionId) {
   if (current?.cancelRequestedAt) throw new ExecutionCancelledError();
 }
 
-function startImplementationAgent({ projectDirectory, prompt, model, policy, creditBudget, creditCostPolicy }) {
+function startImplementationAgent({ projectDirectory, prompt, model, policy, creditBudget, creditBudgetContext, creditCostPolicy }) {
   const child = fork(new URL("./implementation-runner.mjs", import.meta.url), [], {
     env: process.env,
     stdio: ["ignore", "ignore", "pipe", "ipc"],
@@ -77,7 +77,7 @@ function startImplementationAgent({ projectDirectory, prompt, model, policy, cre
       clearTimeout(forceKillTimer);
       if (!settled) reject(new Error(stderr || `O subprocesso do agente foi encerrado (${signal || code})`));
     });
-    child.send({ type: "run", projectDirectory, prompt, model, policy, creditBudget, creditCostPolicy });
+    child.send({ type: "run", projectDirectory, prompt, model, policy, creditBudget, creditBudgetContext, creditCostPolicy });
   });
 
   return {
@@ -205,11 +205,11 @@ export async function processExecution(executionId, workerId) {
       configuredTimeoutMinutes: settings.agentTimeoutMinutes,
       powerMode: settings.agentPowerMode,
     });
-    const reservation = await db.executionCreditReservation.findUnique({
-      where: { executionId },
-      select: { reservedCredits: true },
+    const creditBudgetContext = await getExecutionCreditBudget(db, {
+      executionId,
+      marginPercent: settings.creditBalanceSafetyMarginPercent,
     });
-    const creditBudget = reservation?.reservedCredits ?? null;
+    const creditBudget = creditBudgetContext?.hardLimitCredits ?? null;
     await log(executionId, "agent", `Escopo ${agentPolicy.scope === "COMPLEX" ? "amplo" : "padrão"} detectado`, "info", {
       maxTurns: agentPolicy.maxTurns,
       timeoutMinutes: agentPolicy.timeoutMinutes,
@@ -220,6 +220,7 @@ export async function processExecution(executionId, workerId) {
       model: selectedModel,
       policy: agentPolicy,
       creditBudget,
+      creditBudgetContext,
       creditCostPolicy: creditBudget ? {
         model: selectedModel,
         usdToBrlCents: settings.usdToBrlCents,

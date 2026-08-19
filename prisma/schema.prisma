@@ -653,6 +653,7 @@ model GlobalSettings {
   targetGrossMarginPercent         Int      @default(80)
   creditValueCents                 Int      @default(10)
   reservationBufferPercent         Int      @default(20)
+  creditBalanceSafetyMarginPercent Int      @default(20)
   workerCostCentsPerHour           Int      @default(100)
   visualValidationCostCents        Int      @default(10)
   updatedAt                        DateTime @updatedAt

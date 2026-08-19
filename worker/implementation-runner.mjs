@@ -50,7 +50,7 @@ process.on("message", async (message) => {
         inputTokens: result.runContext.usage.inputTokens,
         outputTokens: result.runContext.usage.outputTokens,
       });
-      if (consumedCredits >= message.creditBudget) {
+      if (consumedCredits > message.creditBudget) {
         budgetExceeded = true;
         controller.abort();
         break;
@@ -65,7 +65,7 @@ process.on("message", async (message) => {
         error: {
           name: "CreditBudgetExceededError",
           code: "CREDIT_BUDGET_EXCEEDED",
-          message: `A execução atingiu o limite rígido de ${message.creditBudget} créditos e foi interrompida sem consumir saldo adicional.`,
+          message: `A execução ultrapassou o limite de ${message.creditBudget} créditos, calculado sobre ${message.creditBudgetContext?.availableCredits ?? "o saldo disponível"} créditos disponíveis com margem de continuidade de ${message.creditBudgetContext?.marginPercent ?? 0}%.`,
           inputTokens: result.runContext.usage.inputTokens,
           outputTokens: result.runContext.usage.outputTokens,
         },

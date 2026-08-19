@@ -31,6 +31,7 @@ export default function GlobalSettingsForm({ initialSettings }) {
     targetGrossMarginPercent: String(initialSettings.targetGrossMarginPercent),
     creditValueCents: String(initialSettings.creditValueCents),
     reservationBufferPercent: String(initialSettings.reservationBufferPercent),
+    creditBalanceSafetyMarginPercent: String(initialSettings.creditBalanceSafetyMarginPercent),
     workerCostCentsPerHour: String(initialSettings.workerCostCentsPerHour),
     visualValidationCostCents: String(initialSettings.visualValidationCostCents),
   });
@@ -157,6 +158,7 @@ export default function GlobalSettingsForm({ initialSettings }) {
           <label><span>Margem bruta alvo (%)</span><input name="targetGrossMarginPercent" type="number" min="50" max="95" value={form.targetGrossMarginPercent} onChange={change} /><small>Define quanto custo interno cabe em cada crédito.</small></label>
           <label><span>Valor comercial do crédito (centavos)</span><input name="creditValueCents" type="number" min="1" max="1000" value={form.creditValueCents} onChange={change} /><small>10 representa R$ 0,10 por crédito.</small></label>
           <label><span>Reserva preventiva (%)</span><input name="reservationBufferPercent" type="number" min="0" max="100" value={form.reservationBufferPercent} onChange={change} /><small>Créditos simulados reservados acima do consumo medido.</small></label>
+          <label><span>Margem de continuidade do saldo (%)</span><input name="creditBalanceSafetyMarginPercent" type="number" min="0" max="100" value={form.creditBalanceSafetyMarginPercent} onChange={change} /><small>Permite concluir uma execução além do saldo disponível. O padrão é 20%; o excedente vira saldo devedor e bloqueia novas execuções.</small></label>
           <label><span>Worker por hora (centavos)</span><input name="workerCostCentsPerHour" type="number" min="0" max="100000" value={form.workerCostCentsPerHour} onChange={change} /><small>100 representa R$ 1,00 por hora de execução.</small></label>
           <label><span>Validação visual fixa (centavos)</span><input name="visualValidationCostCents" type="number" min="0" max="100000" value={form.visualValidationCostCents} onChange={change} /><small>Somada apenas quando a demanda exige evidências visuais.</small></label>
         </div>
