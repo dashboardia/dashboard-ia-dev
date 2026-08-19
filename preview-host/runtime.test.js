@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
   buildPreviewDockerfile,
+  isPreviewReadyStatus,
   previewContainerName,
   previewNetworkName,
   validPreviewId,
@@ -41,15 +42,23 @@ test("compila e publica o WAR completo quando um projeto Maven tinha fallback es
     port: 3000,
   });
 
-  assert.match(result, /^FROM maven:3\.9\.9-eclipse-temurin-17 AS build/m);
-  assert.match(result, /^FROM tomcat:9\.0-jdk17-temurin/m);
+  assert.match(result, /^FROM maven:3\.8\.8-eclipse-temurin-8 AS build/m);
+  assert.match(result, /^FROM tomcat:9\.0-jdk8-temurin/m);
   assert.doesNotMatch(result, /npm ci/);
   assert.match(result, /mvn -B -DskipTests package/);
   assert.match(result, /target\/\*\.war/);
   assert.match(result, /ROOT\.war/);
+  assert.match(result, /jar -xf \/tmp\/ROOT\.war/);
   assert.match(result, /port="3000"/);
   assert.match(result, /CMD \["catalina\.sh","run"\]/);
   assert.doesNotMatch(result, /python3 -m http\.server/);
+});
+
+test("não considera 404 como preview pronto", () => {
+  assert.equal(isPreviewReadyStatus(200), true);
+  assert.equal(isPreviewReadyStatus(302), true);
+  assert.equal(isPreviewReadyStatus(404), false);
+  assert.equal(isPreviewReadyStatus(500), false);
 });
 
 test("mantém servidor estático em repositório realmente estático", () => {

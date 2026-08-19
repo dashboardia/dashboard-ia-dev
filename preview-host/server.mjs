@@ -8,6 +8,7 @@ import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import {
   buildPreviewDockerfile,
+  isPreviewReadyStatus,
   previewContainerName,
   previewImageName,
   previewNetworkName,
@@ -21,6 +22,7 @@ const stateDirectory = path.join(dataDirectory, "state");
 const workDirectory = path.join(dataDirectory, "work");
 const token = process.env.PREVIEW_HOST_TOKEN || "";
 const baseDomain = process.env.PREVIEW_BASE_DOMAIN || "preview.dashboardia.app";
+const apiDomain = String(process.env.PREVIEW_API_DOMAIN || `preview-api.${baseDomain}`).toLowerCase();
 const hostContainerName = process.env.PREVIEW_HOST_CONTAINER_NAME || "dashboardia-preview-host";
 const maxArchiveBytes = Number(process.env.PREVIEW_MAX_ARCHIVE_MB || 64) * 1024 * 1024;
 const buildTimeoutMs = Number(process.env.PREVIEW_BUILD_TIMEOUT_MINUTES || 15) * 60_000;
@@ -121,7 +123,7 @@ async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
     }
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(3_000), redirect: "manual" });
-      if (response.status < 500) return;
+      if (isPreviewReadyStatus(response.status)) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 1_500));
   }
@@ -285,10 +287,13 @@ async function proxyPreview(request, response, state) {
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
-    if (url.pathname === "/health") return sendJson(response, 200, { status: "ok", timestamp: new Date().toISOString() });
+    const host = String(request.headers.host || "").split(":")[0].toLowerCase();
+    if (url.pathname === "/health" && host === apiDomain) {
+      return sendJson(response, 200, { status: "ok", timestamp: new Date().toISOString() });
+    }
     if (url.pathname === "/tls-ask") {
       const domain = String(url.searchParams.get("domain") || "").toLowerCase();
-      if (domain === String(process.env.PREVIEW_API_DOMAIN || `preview-api.${baseDomain}`).toLowerCase()) {
+      if (domain === apiDomain) {
         response.writeHead(200).end();
         return;
       }
@@ -300,7 +305,6 @@ const server = http.createServer(async (request, response) => {
       return response.writeHead(403).end();
     }
     if (url.pathname.startsWith("/v1/")) return await handleApi(request, response, url);
-    const host = String(request.headers.host || "").split(":")[0];
     const suffix = `.${baseDomain}`;
     if (!host.endsWith(suffix)) return sendJson(response, 404, { error: "Preview não encontrado" });
     const id = host.slice(0, -suffix.length);

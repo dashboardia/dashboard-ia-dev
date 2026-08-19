@@ -1,6 +1,6 @@
 const RUNTIME_IMAGES = {
   NODE: "node:22-bookworm-slim",
-  JAVA_MAVEN: "maven:3.9.9-eclipse-temurin-17",
+  JAVA_MAVEN: "maven:3.8.8-eclipse-temurin-8",
   JAVA_GRADLE: "gradle:8.10-jdk17",
   PHP: "php:8.3-cli",
   STATIC: "python:3.12-slim",
@@ -23,6 +23,10 @@ export function previewImageName(id) {
 export function previewNetworkName(id) {
   if (!validPreviewId(id)) throw new Error("Identificador de preview inválido");
   return `dashboardia-preview-${id}`;
+}
+
+export function isPreviewReadyStatus(status) {
+  return Number(status) >= 200 && Number(status) < 400;
 }
 
 function runtimeImage(runtime) {
@@ -52,7 +56,7 @@ function buildMavenWarDockerfile(configuration) {
   const buildCommand = configuration.buildCommand?.trim() || "mvn -B -DskipTests package";
 
   return [
-    "FROM maven:3.9.9-eclipse-temurin-17 AS build",
+    "FROM maven:3.8.8-eclipse-temurin-8 AS build",
     "WORKDIR /app",
     "COPY . .",
     shellInstruction("RUN", buildCommand),
@@ -61,10 +65,12 @@ function buildMavenWarDockerfile(configuration) {
       'war="$(find . -type f -path "*/target/*.war" ! -name "*sources*" ! -name "*javadoc*" | head -n 1)"; test -n "$war"; cp "$war" /tmp/ROOT.war',
     ),
     "",
-    "FROM tomcat:9.0-jdk17-temurin",
+    "FROM tomcat:9.0-jdk8-temurin",
     "RUN rm -rf /usr/local/tomcat/webapps/*",
     `RUN sed -i 's/port="8080" protocol="HTTP\\/1.1"/port="${port}" protocol="HTTP\\/1.1"/' /usr/local/tomcat/conf/server.xml`,
-    "COPY --from=build /tmp/ROOT.war /usr/local/tomcat/webapps/ROOT.war",
+    "COPY --from=build /tmp/ROOT.war /tmp/ROOT.war",
+    "RUN mkdir -p /usr/local/tomcat/webapps/ROOT && cd /usr/local/tomcat/webapps/ROOT && jar -xf /tmp/ROOT.war && rm /tmp/ROOT.war",
+    'ENV JAVA_OPTS="-Djava.awt.headless=true"',
     `ENV PORT=${port}`,
     "ENV HOST=0.0.0.0",
     "ENV HOSTNAME=0.0.0.0",
