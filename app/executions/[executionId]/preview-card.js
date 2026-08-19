@@ -56,14 +56,14 @@ export default function PreviewCard({ executionId }) {
         <div className="preview-toolbar">
           <span className={`status-pill preview-${preview.state?.toLowerCase()}`}>{stateLabels[preview.state] ?? preview.state}</span>
           {preview.provider && <small>{preview.environment ?? "Preview"} · {preview.provider}</small>}
-          <button className="preview-refresh-button" disabled={loading} onClick={load} type="button" aria-label="Atualizar preview" title="Atualizar preview">{loading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}</button>
+          <button className="preview-refresh-button" disabled={loading} onClick={load} type="button">{loading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}<span>{loading ? "Consultando" : "Sincronizar"}</span></button>
           {preview.url && <a className="primary compact" href={preview.url} target="_blank" rel="noreferrer" referrerPolicy="no-referrer"><ExternalLink size={14} />{api ? "Abrir API" : "Navegar no preview"}</a>}
         </div>
 
         {preview.state === "NOT_READY" && <div className="list-empty">{preview.message}</div>}
-        {preview.state === "PREPARING" && <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Preparando o ambiente de preview</strong><small>Atualização automática ativa. A espera será encerrada se o provedor não avançar em 15 minutos.</small></span></div>}
+        {preview.state === "PREPARING" && <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Preparando o ambiente de preview</strong><small>Atualização automática ativa. O Dashboardia consulta deployments, checks e comentários do PR. A espera termina após {preview.timeoutMinutes ?? 15} minutos sem avanço.</small></span></div>}
         {preview.state === "FAILED" && <div className="form-error">{preview.message ?? "O deployment de preview não ficou disponível."}</div>}
-        {preview.state === "UNAVAILABLE" && <div className="list-empty">{preview.message ?? "O projeto não possui um provedor de preview conectado ao GitHub."}</div>}
+        {preview.state === "UNAVAILABLE" && <div className="preview-unavailable"><strong>O código está pronto, mas não existe um ambiente publicado</strong><p>{preview.message ?? "O projeto não possui um provedor de preview conectado ao GitHub."}</p><small>No Render, abra o serviço → Previews → Pull Request Previews e selecione Automatic. No Railway, habilite PR Environments no serviço.</small></div>}
 
         {preview.state === "AVAILABLE" && api && inspection && <div className="api-preview">
           <div className="api-preview-heading"><Braces size={17} /><span><strong>{inspection.title}</strong><small>{inspection.version ? `Versão ${inspection.version}` : "Endpoints detectados automaticamente"}</small></span>{inspection.documentationUrl && <a href={inspection.documentationUrl} target="_blank" rel="noreferrer" referrerPolicy="no-referrer">Abrir OpenAPI</a>}</div>
@@ -71,7 +71,7 @@ export default function PreviewCard({ executionId }) {
           {inspection.endpoints?.length > 0 && <details className="api-endpoints"><summary>Ver {inspection.endpoints.length} endpoints detectados</summary><div>{inspection.endpoints.map((endpoint) => <span key={`${endpoint.method}:${endpoint.path}`}><code>{endpoint.method}</code><strong>{endpoint.path}</strong><small>{endpoint.summary ?? "Sem descrição"}</small></span>)}</div></details>}
         </div>}
 
-        {preview.state === "AVAILABLE" && !api && <div className="preview-state preview-ready"><MonitorPlay size={20} /><span><strong>Aplicação pronta para navegação</strong><small>O preview abre em uma aba isolada e não altera o ambiente de produção.</small></span></div>}
+        {preview.state === "AVAILABLE" && !api && <div className="web-preview"><div className="web-preview-address"><span aria-hidden="true" /><span aria-hidden="true" /><span aria-hidden="true" /><code>{preview.url}</code><a href={preview.url} target="_blank" rel="noreferrer" referrerPolicy="no-referrer"><ExternalLink size={13} />Abrir em nova aba</a></div><iframe src={preview.url} title="Preview navegável da implementação" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts" referrerPolicy="no-referrer" loading="lazy" /><small>Ambiente isolado do provedor. Se a aplicação bloquear incorporação, use “Abrir em nova aba”.</small></div>}
       </div>}
     </section>
   );

@@ -15,6 +15,7 @@ import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings"
 import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-button";
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
 import PreviewCard from "./preview-card";
+import DiffViewer from "./diff-viewer";
 
 /* eslint-disable @next/next/no-img-element -- imagens privadas e de altura variável servidas por rota autenticada */
 
@@ -130,7 +131,7 @@ export default async function ExecutionPage({ params }) {
 
         <section className="form-card detail-card full-card execution-diff-card">
           <div className="card-heading"><div><h2>Diff para revisão</h2><p>Alterações exatas geradas antes da abertura do Pull Request</p></div><Code2 size={20} /></div>
-          {diff?.content ? <pre>{diff.content}</pre> : <div className="list-empty">O diff ficará disponível após as validações.</div>}
+          {diff?.content ? <DiffViewer content={diff.content} /> : <div className="list-empty">O diff ficará disponível após as validações.</div>}
         </section>
       </div>
     </AppShell>
