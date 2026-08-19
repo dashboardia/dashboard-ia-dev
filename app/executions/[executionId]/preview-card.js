@@ -1,12 +1,15 @@
 "use client";
 
-import { Braces, ExternalLink, LoaderCircle, MonitorPlay, RefreshCw, Server } from "lucide-react";
+/* eslint-disable @next/next/no-img-element -- imagens privadas de altura variável servidas por rota autenticada */
+
+import { Braces, ExternalLink, Images, LoaderCircle, MonitorPlay, RefreshCw, Server } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 const stateLabels = {
   NOT_READY: "Aguardando Pull Request",
   PREPARING: "Preparando",
   AVAILABLE: "Disponível",
+  EVIDENCE: "Evidência visual",
   FAILED: "Indisponível",
   UNAVAILABLE: "Não configurado",
 };
@@ -47,7 +50,7 @@ export default function PreviewCard({ executionId }) {
     <section className="form-card detail-card full-card interactive-preview-card">
       <div className="card-heading">
         <div><h2>Preview da implementação</h2><p>Visualização real publicada pelo provedor conectado ao repositório.</p></div>
-        {api ? <Server size={20} /> : <MonitorPlay size={20} />}
+        {preview?.state === "EVIDENCE" ? <Images size={20} /> : api ? <Server size={20} /> : <MonitorPlay size={20} />}
       </div>
 
       {loading && !preview ? <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Localizando preview</strong><small>Consultando deployments do commit no GitHub.</small></span></div> : null}
@@ -64,6 +67,11 @@ export default function PreviewCard({ executionId }) {
         {preview.state === "PREPARING" && <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Preparando o ambiente de preview</strong><small>Atualização automática ativa. O Dashboardia consulta deployments, checks e comentários do PR. A espera termina após {preview.timeoutMinutes ?? 15} minutos sem avanço.</small></span></div>}
         {preview.state === "FAILED" && <div className="form-error">{preview.message ?? "O deployment de preview não ficou disponível."}</div>}
         {preview.state === "UNAVAILABLE" && <div className="preview-unavailable"><strong>O código está pronto, mas não existe um ambiente publicado</strong><p>{preview.message ?? "O projeto não possui um provedor de preview conectado ao GitHub."}</p><small>No Render, abra o serviço → Previews → Pull Request Previews e selecione Automatic. No Railway, habilite PR Environments no serviço.</small></div>}
+        {preview.state === "EVIDENCE" && <div className="preview-evidence">
+          <div className="preview-evidence-heading"><Images size={17} /><span><strong>Resultado visual da implementação</strong><small>{preview.message}</small></span></div>
+          <div className="preview-evidence-grid">{preview.evidence?.map((item) => <figure key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><img src={item.url} alt={`Preview ${item.route} em ${item.viewport}`} loading="lazy" /></a><figcaption><strong>{item.route}</strong><span>{item.viewport === "mobile" ? "Celular" : "Desktop"}</span></figcaption></figure>)}</div>
+          <small className="preview-evidence-footnote">Esta é uma captura do código executado pelo worker. Para navegar na página, o provedor ainda precisa publicar um Pull Request Preview.</small>
+        </div>}
 
         {preview.state === "AVAILABLE" && api && inspection && <div className="api-preview">
           <div className="api-preview-heading"><Braces size={17} /><span><strong>{inspection.title}</strong><small>{inspection.version ? `Versão ${inspection.version}` : "Endpoints detectados automaticamente"}</small></span>{inspection.documentationUrl && <a href={inspection.documentationUrl} target="_blank" rel="noreferrer" referrerPolicy="no-referrer">Abrir OpenAPI</a>}</div>

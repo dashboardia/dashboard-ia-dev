@@ -17,7 +17,7 @@ import {
   runConfiguredCommand,
   runProcess,
 } from "./sandbox.mjs";
-import { runVisualValidation } from "./visual-validation.mjs";
+import { runImplementationPreview, runVisualValidation } from "./visual-validation.mjs";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 import { saveFinancialSnapshot } from "../lib/financial-shadow.js";
 import { settleExecutionCredits } from "../lib/billing.js";
@@ -340,6 +340,22 @@ export async function processExecution(executionId, workerId) {
     } else {
       await runValidations(execution, projectDirectory, settings);
       await assertExecutionActive(executionId);
+      if (execution.demand.project.previewCommand && execution.demand.project.previewPort) {
+        await log(executionId, "visual", "Gerando preview visual automático da implementação");
+        try {
+          visualArtifacts = await runImplementationPreview({
+            execution,
+            projectDirectory,
+            log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
+          });
+          await log(executionId, "visual", "Preview visual automático gerado");
+        } catch (previewError) {
+          await log(executionId, "visual", "Não foi possível gerar o preview visual automático; a revisão do código continuará disponível", "warn", {
+            technical: previewError instanceof Error ? previewError.message : String(previewError),
+          });
+        }
+        await assertExecutionActive(executionId);
+      }
     }
     await cleanValidationArtifacts(projectDirectory);
     await restoreImplementationSnapshot(workspace, implementationHead);

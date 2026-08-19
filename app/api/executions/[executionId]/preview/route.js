@@ -15,7 +15,11 @@ export async function GET(_request, context) {
     const settings = await getGlobalSettings();
     const execution = await db.execution.findUniqueOrThrow({
       where: { id: executionId },
-      include: { pullRequest: true, demand: { include: { project: true } } },
+      include: {
+        pullRequest: true,
+        demand: { include: { project: true } },
+        artifacts: { where: { type: "visual" }, orderBy: { createdAt: "asc" } },
+      },
     });
     const { user } = await requireProjectRole(execution.demand.projectId, "VIEWER");
     if (!execution.headSha || !execution.pullRequest) {
@@ -42,6 +46,33 @@ export async function GET(_request, context) {
     } catch (error) {
       if (!execution.demand.project.githubInstallationId) throw error;
       deployment = await findPreview(await getGitHubAccessToken(user.id));
+    }
+    if (["NOT_FOUND", "FAILED", "UNAVAILABLE"].includes(deployment.state)) {
+      const evidence = execution.artifacts
+        .filter((artifact) => artifact.metadata?.source === "after")
+        .map((artifact) => ({
+          id: artifact.id,
+          url: `/api/artifacts/${artifact.id}`,
+          route: artifact.metadata?.route ?? "/",
+          viewport: artifact.metadata?.viewport ?? "desktop",
+          width: artifact.metadata?.width ?? null,
+          height: artifact.metadata?.height ?? null,
+        }));
+      if (evidence.length) {
+        return NextResponse.json({
+          preview: {
+            state: "EVIDENCE",
+            mode: "EVIDENCE",
+            url: null,
+            provider: "Dashboardia Worker",
+            environment: "Captura da implementação",
+            updatedAt: execution.artifacts.at(-1)?.createdAt ?? null,
+            evidence,
+            message: "O provedor não publicou uma URL navegável, então o Dashboardia recuperou as evidências reais geradas durante a execução.",
+            timeoutMinutes: settings.previewPreparationTimeoutMinutes,
+          },
+        });
+      }
     }
     if (deployment.state === "NOT_FOUND") {
       const registrationGraceMinutes = Math.min(2, settings.previewPreparationTimeoutMinutes);

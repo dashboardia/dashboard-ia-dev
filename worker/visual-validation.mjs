@@ -29,10 +29,10 @@ async function waitForServer(url, process, output, timeoutMs = 90_000) {
   throw new Error("O preview visual não ficou disponível dentro de 90 segundos");
 }
 
-async function captureSet({ browser, executionId, baseUrl, routes, source }) {
+async function captureSet({ browser, executionId, baseUrl, routes, source, selectedViewports = viewports }) {
   const artifacts = [];
   for (const route of routes) {
-    for (const viewport of viewports) {
+    for (const viewport of selectedViewports) {
       const page = await browser.newPage({ viewport });
       page.setDefaultTimeout(30_000);
       try {
@@ -70,10 +70,9 @@ async function stopPreview(preview) {
   }
 }
 
-export async function runVisualValidation({ execution, projectDirectory, log }) {
+async function captureImplementation({ execution, projectDirectory, log, includeProduction, routes, selectedViewports }) {
   const project = execution.demand.project;
-  if (!project.previewCommand || !project.previewPort) throw new Error("A demanda exige validação visual, mas o projeto não possui comando e porta de preview configurados");
-  const routes = Array.isArray(execution.demand.visualPaths) && execution.demand.visualPaths.length ? execution.demand.visualPaths : ["/"];
+  if (!project.previewCommand || !project.previewPort) throw new Error("O projeto não possui comando e porta de preview configurados");
   const localUrl = `http://127.0.0.1:${project.previewPort}`;
   const virtualEnvironment = path.join(projectDirectory, ".forgeboard-venv");
   const output = { stdout: "", stderr: "" };
@@ -107,12 +106,12 @@ export async function runVisualValidation({ execution, projectDirectory, log }) 
       ],
     });
     const artifacts = [];
-    if (project.productionUrl) {
+    if (includeProduction && project.productionUrl) {
       await log("visual", "Capturando referência atual de produção");
-      artifacts.push(...await captureSet({ browser, executionId: execution.id, baseUrl: project.productionUrl, routes, source: "before" }));
+      artifacts.push(...await captureSet({ browser, executionId: execution.id, baseUrl: project.productionUrl, routes, source: "before", selectedViewports }));
     }
     await log("visual", "Capturando resultado da implementação");
-    artifacts.push(...await captureSet({ browser, executionId: execution.id, baseUrl: localUrl, routes, source: "after" }));
+    artifacts.push(...await captureSet({ browser, executionId: execution.id, baseUrl: localUrl, routes, source: "after", selectedViewports }));
     return artifacts;
   } finally {
     if (browser) {
@@ -123,4 +122,20 @@ export async function runVisualValidation({ execution, projectDirectory, log }) 
     }
     await stopPreview(preview);
   }
+}
+
+export async function runVisualValidation({ execution, projectDirectory, log }) {
+  const routes = Array.isArray(execution.demand.visualPaths) && execution.demand.visualPaths.length ? execution.demand.visualPaths : ["/"];
+  return captureImplementation({ execution, projectDirectory, log, includeProduction: true, routes, selectedViewports: viewports });
+}
+
+export async function runImplementationPreview({ execution, projectDirectory, log }) {
+  return captureImplementation({
+    execution,
+    projectDirectory,
+    log,
+    includeProduction: false,
+    routes: ["/"],
+    selectedViewports: [viewports[0]],
+  });
 }
