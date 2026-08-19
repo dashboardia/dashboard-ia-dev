@@ -50,6 +50,10 @@ test("compila e publica o WAR completo quando um projeto Maven tinha fallback es
   assert.match(result, /target\/\*\.war/);
   assert.match(result, /ROOT\.war/);
   assert.match(result, /jar -xf \/tmp\/ROOT\.war/);
+  assert.match(result, /dashboardia-entrypoint/);
+  assert.match(result, /if \[ ! -f/);
+  assert.match(result, /cp \/tmp\/dashboardia-entrypoint\/index\.html/);
+  assert.match(result, /ln -sfn \.\.\/\.\./);
   assert.match(result, /port="3000"/);
   assert.match(result, /CMD \["catalina\.sh","run"\]/);
   assert.doesNotMatch(result, /python3 -m http\.server/);

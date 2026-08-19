@@ -83,12 +83,23 @@ function buildMavenWarDockerfile(configuration) {
       "RUN",
       'war="$(find . -type f -path "*/target/*.war" ! -name "*sources*" ! -name "*javadoc*" | head -n 1)"; test -n "$war"; cp "$war" /tmp/ROOT.war',
     ),
+    // Alguns legados mantêm o index.html de demonstração na raiz do
+    // repositório, fora de src/main/webapp. Ele continua sendo apenas a porta
+    // de entrada: controllers, JSPs e endpoints seguem executando no Tomcat.
+    shellInstruction(
+      "RUN",
+      'mkdir -p /tmp/dashboardia-entrypoint; if [ -f index.html ]; then cp index.html /tmp/dashboardia-entrypoint/index.html; fi',
+    ),
     "",
     "FROM tomcat:9.0-jdk8-temurin",
     "RUN rm -rf /usr/local/tomcat/webapps/*",
     `RUN sed -i 's/port="8080" protocol="HTTP\\/1.1"/port="${port}" protocol="HTTP\\/1.1"/' /usr/local/tomcat/conf/server.xml`,
     "COPY --from=build /tmp/ROOT.war /tmp/ROOT.war",
-    "RUN mkdir -p /usr/local/tomcat/webapps/ROOT && cd /usr/local/tomcat/webapps/ROOT && jar -xf /tmp/ROOT.war && rm /tmp/ROOT.war",
+    "COPY --from=build /tmp/dashboardia-entrypoint/ /tmp/dashboardia-entrypoint/",
+    shellInstruction(
+      "RUN",
+      'root=/usr/local/tomcat/webapps/ROOT; mkdir -p "$root"; cd "$root"; jar -xf /tmp/ROOT.war; rm /tmp/ROOT.war; if [ ! -f "$root/index.html" ] && [ ! -f "$root/index.htm" ] && [ ! -f "$root/index.jsp" ] && [ -f /tmp/dashboardia-entrypoint/index.html ]; then cp /tmp/dashboardia-entrypoint/index.html "$root/index.html"; mkdir -p "$root/src/main"; ln -sfn ../.. "$root/src/main/webapp"; fi; rm -rf /tmp/dashboardia-entrypoint',
+    ),
     'ENV JAVA_OPTS="-Djava.awt.headless=true"',
     `ENV PORT=${port}`,
     "ENV HOST=0.0.0.0",

@@ -150,7 +150,13 @@ async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 1_500));
   }
-  throw new Error("O container não respondeu dentro de 90 segundos");
+  const logs = await docker(["logs", "--tail", "160", previewContainerName(id)]).catch(() => ({ stdout: "", stderr: "" }));
+  const diagnostic = `${logs.stdout || ""}${logs.stderr || ""}`.trim();
+  throw new Error([
+    "O container não publicou uma rota navegável dentro de 90 segundos.",
+    diagnostic ? "Últimos logs do container:" : null,
+    diagnostic || null,
+  ].filter(Boolean).join("\n").slice(-16_000));
 }
 
 async function deployPreview(id, configuration) {
