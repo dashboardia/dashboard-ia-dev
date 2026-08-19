@@ -246,6 +246,7 @@ nav em { margin-left:auto; font-style:normal; background:#6d4aff; color:white; w
 .preview-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:9px; }
 .preview-toolbar>small { color:#858998; font-size:9px; flex:1; }
 .preview-toolbar a,.preview-toolbar button { text-decoration:none; }
+.preview-refresh-button { width:30px; height:30px; padding:0; border:1px solid #e3dff0; border-radius:8px; color:#6850d9; background:#fff; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; transition:border-color .15s ease,background .15s ease,transform .15s ease; }.preview-refresh-button:hover:not(:disabled) { border-color:#bdb1f3; background:#f6f3ff; transform:translateY(-1px); }.preview-refresh-button:disabled { opacity:.6; cursor:wait; }
 .preview-state { min-height:76px; padding:15px; border:1px solid #eceaf3; border-radius:10px; background:#fafafd; display:flex; align-items:center; gap:12px; color:#6d4aff; }
 .preview-state span { display:flex; flex-direction:column; gap:4px; }
 .preview-state strong { color:#3c404d; font-size:10px; }
