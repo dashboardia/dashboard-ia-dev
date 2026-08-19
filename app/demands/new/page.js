@@ -1,5 +1,6 @@
 import AppShell from "../../../components/app-shell";
 import SectionHeader from "../../../components/section-header";
+import { getDemandCopy } from "../../../lib/demand-copy";
 import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
 import DemandForm from "./demand-form";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function NewDemandPage({ searchParams }) {
   const user = await requirePageUser();
   const params = await searchParams;
+  const copy = getDemandCopy(user.locale);
   const projects = await db.project.findMany({
     where: user.globalRole === "ADMIN"
       ? { status: "ACTIVE" }
@@ -20,7 +22,7 @@ export default async function NewDemandPage({ searchParams }) {
   return (
     <AppShell user={user}>
       <div className="section-page narrow-page">
-        <SectionHeader backHref="/demands" eyebrow="NOVA DEMANDA" title="Descrever alteração" description="Forneça contexto, resultado esperado e critérios verificáveis. A execução só inicia após aprovação de um Gestor." />
+        <SectionHeader backHref="/demands" backLabel={copy.page.back} eyebrow={copy.page.eyebrow} title={copy.page.title} description={copy.page.description} />
         <DemandForm projects={projects} initialProjectId={params?.projectId ?? ""} />
       </div>
     </AppShell>
