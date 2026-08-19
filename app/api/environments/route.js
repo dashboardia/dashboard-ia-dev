@@ -9,7 +9,7 @@ import { ACTIVE_ENVIRONMENT_STATUSES, environmentExpirationDate } from "../../..
 import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../lib/github";
 import { getGlobalSettings } from "../../../lib/global-settings";
 import { createDashboardiaPreview, dashboardiaPreviewConfigured } from "../../../lib/preview-host-client";
-import { applyDetectedRuntime, applyWorkingDirectory, detectGitHubProjectRuntime } from "../../../lib/project-runtime";
+import { applyDetectedRuntime, applyWorkingDirectory, detectGitHubProjectRuntime, mavenBuildCommandInRepository } from "../../../lib/project-runtime";
 import { devEnvironmentInputSchema } from "../../../lib/validation";
 
 export async function POST(request) {
@@ -36,6 +36,9 @@ export async function POST(request) {
     const detected = await detectGitHubProjectRuntime(token, project.repositoryFullName, input.branchName);
     const workingDirectory = project.workingDirectory !== "." ? project.workingDirectory : detected.workingDirectory ?? ".";
     const configuration = applyDetectedRuntime(applyWorkingDirectory(project, workingDirectory), detected);
+    if (detected.runtime === "JAVA_MAVEN") {
+      configuration.buildCommand = mavenBuildCommandInRepository(configuration.buildCommand, workingDirectory);
+    }
     if (!configuration.previewCommand || !configuration.previewPort) {
       return NextResponse.json({ error: `A stack ${detected.runtime} foi detectada, mas não há comando de inicialização. Configure o projeto antes de subir o ambiente.` }, { status: 422 });
     }

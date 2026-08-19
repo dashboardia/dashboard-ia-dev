@@ -68,9 +68,25 @@ test("compila Maven no diretório detectado sem perder a publicação do WAR", (
     port: 8080,
   });
 
-  assert.match(result, /cd sistema-web && mvn -B -DskipTests package/);
+  assert.match(result, /project_dir='sistema-web'/);
+  assert.match(result, /find \. -type f -name pom\.xml/);
+  assert.match(result, /mvn -B -DskipTests package/);
   assert.match(result, /^FROM tomcat:9\.0-jdk8-temurin/m);
   assert.match(result, /find \. -type f -path/);
+});
+
+test("o próprio Dockerfile localiza um pom aninhado quando recebe Maven na raiz", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "JAVA_MAVEN",
+    workingDirectory: ".",
+    buildCommand: "mvn -B -DskipTests package",
+    previewCommand: "python3 -m http.server $PORT --bind 127.0.0.1",
+    port: 8080,
+  });
+
+  assert.match(result, /find \. -type f -name pom\.xml/);
+  assert.match(result, /cd \\"\$project_dir\\"/);
+  assert.match(result, /mvn -B -DskipTests package/);
 });
 
 test("não considera 404 como preview pronto", () => {

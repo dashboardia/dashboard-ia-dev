@@ -70,9 +70,27 @@ function isStaticHttpServer(command) {
   return /^(?:\(cd\s+[^&]+\s+&&\s+)?python3?\s+-m\s+http\.server(?:\s|$)/i.test(String(command || "").trim());
 }
 
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'"'"'`)}'`;
+}
+
+function mavenBuildCommandInRepository(command, workingDirectory = ".") {
+  const configured = String(command || "mvn -B -DskipTests package").trim();
+  const scoped = configured.match(/^\(cd\s+.+?\s+&&\s+((?:\.\/)?mvn(?:w)?\s+.+)\)$/s);
+  const invocation = scoped?.[1] ?? configured;
+  if (!/^(?:\.\/)?mvn(?:w)?(?:\s|$)/.test(invocation) || /(?:^|\s)(?:-f|--file)(?:\s|=)/.test(invocation)) return configured;
+  return [
+    `project_dir=${shellQuote(workingDirectory || ".")}`,
+    'if [ ! -f "$project_dir/pom.xml" ]; then pom="$(find . -type f -name pom.xml -not -path "*/target/*" -printf \'%d %p\\n\' | sort -n | head -n 1 | cut -d\' \' -f2-)"; project_dir="$(dirname "$pom")"; fi',
+    'test -f "$project_dir/pom.xml"',
+    'cd "$project_dir"',
+    invocation,
+  ].join("; ");
+}
+
 function buildMavenWarDockerfile(configuration) {
   const port = Number(configuration.port) || 8080;
-  const buildCommand = configuration.buildCommand?.trim() || "mvn -B -DskipTests package";
+  const buildCommand = mavenBuildCommandInRepository(configuration.buildCommand, configuration.workingDirectory);
 
   return [
     "FROM maven:3.8.8-eclipse-temurin-8 AS build",
