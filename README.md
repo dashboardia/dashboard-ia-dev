@@ -122,6 +122,15 @@ Crie um segundo serviço a partir do mesmo repositório:
 - sem domínio público;
 - variáveis obrigatórias: `DATABASE_URL`, `OPENAI_API_KEY` e `OPENAI_MODEL`.
 
+## Ambiente secundário no Render
+
+O arquivo `render.yaml` provisiona dois serviços na região de Oregon:
+
+- `dashboard-ia-standby`: aplicação Next.js com health check em `/api/health`;
+- `dashboard-ia-worker-standby`: worker Docker com 2 GB de memória para Playwright e execuções de IA.
+
+O Blueprint solicita os segredos durante a criação e nunca os mantém no repositório. Os serviços acompanham a branch `main-render`, isolada da `main` usada pelo Railway, preservando no Render uma versão atualizada para contingência. O PostgreSQL deve ser acessível externamente pelos dois provedores; não use o endereço privado interno do Railway no Render.
+
 ## Permissões
 
 | Papel | Consultar | Criar demanda | Executar | Aprovar / abrir PR | Gerenciar membros |
