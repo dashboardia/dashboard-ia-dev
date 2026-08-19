@@ -8,6 +8,7 @@ import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import {
   buildPreviewDockerfile,
+  isTransientDockerError,
   isPreviewReadyStatus,
   previewContainerName,
   previewImageName,
@@ -84,6 +85,28 @@ async function docker(args, timeout = 120_000) {
   return execFile("docker", args, { timeout, maxBuffer: 4 * 1024 * 1024 });
 }
 
+function dockerErrorText(error) {
+  return [error?.stderr, error?.stdout, error?.message].filter(Boolean).join("\n");
+}
+
+async function buildPreviewImage(id, generatedDockerfile, sourceDirectory) {
+  const maximumAttempts = 3;
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    try {
+      await patchState(id, { buildAttempt: attempt });
+      await docker(["build", "--file", generatedDockerfile, "--tag", previewImageName(id), sourceDirectory], buildTimeoutMs);
+      return;
+    } catch (error) {
+      if (attempt === maximumAttempts || !isTransientDockerError(error)) throw error;
+      await patchState(id, {
+        status: "BUILDING",
+        error: `Falha transitória no Docker; nova tentativa ${attempt + 1} de ${maximumAttempts}.`,
+      });
+      await new Promise((resolve) => setTimeout(resolve, attempt * 5_000));
+    }
+  }
+}
+
 function parseConfiguration(request) {
   const encoded = request.headers["x-dashboardia-preview"];
   if (!encoded || Array.isArray(encoded)) throw new Error("Metadados do preview ausentes");
@@ -142,7 +165,7 @@ async function deployPreview(id, configuration) {
     const generatedDockerfile = path.join(directory, "Dockerfile");
     await writeFile(generatedDockerfile, buildPreviewDockerfile(configuration), { mode: 0o600 });
     await removeRuntime(id);
-    await docker(["build", "--file", generatedDockerfile, "--tag", previewImageName(id), sourceDirectory], buildTimeoutMs);
+    await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
     const afterBuild = await readState(id).catch(() => null);
     if (!afterBuild || afterBuild.status !== "BUILDING" || new Date(afterBuild.expiresAt).getTime() <= Date.now()) {
       await removeRuntime(id);
@@ -171,7 +194,7 @@ async function deployPreview(id, configuration) {
     });
     await rm(directory, { recursive: true, force: true });
   } catch (error) {
-    const buildOutput = [error?.stderr, error?.stdout, error?.message].filter(Boolean).join("\n").slice(-16_000);
+    const buildOutput = dockerErrorText(error).slice(-16_000);
     await removeRuntime(id);
     await patchState(id, { status: "FAILED", error: buildOutput || "Falha desconhecida ao publicar o preview" }).catch(() => null);
     await rm(directory, { recursive: true, force: true }).catch(() => null);

@@ -6,6 +6,25 @@ const RUNTIME_IMAGES = {
   STATIC: "python:3.12-slim",
 };
 
+const TRANSIENT_DOCKER_ERRORS = [
+  /temporary failure in name resolution/i,
+  /tls handshake timeout/i,
+  /i\/o timeout/i,
+  /connection reset by peer/i,
+  /connection refused/i,
+  /unexpected eof/i,
+  /too many requests/i,
+  /toomanyrequests/i,
+  /service unavailable/i,
+];
+
+export function isTransientDockerError(error) {
+  const output = typeof error === "string"
+    ? error
+    : [error?.stderr, error?.stdout, error?.message].filter(Boolean).join("\n");
+  return TRANSIENT_DOCKER_ERRORS.some((pattern) => pattern.test(output));
+}
+
 export function validPreviewId(value) {
   return /^[a-zA-Z0-9_-]{8,80}$/.test(String(value || ""));
 }

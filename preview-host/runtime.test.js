@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
   buildPreviewDockerfile,
+  isTransientDockerError,
   isPreviewReadyStatus,
   previewContainerName,
   previewNetworkName,
@@ -79,4 +80,9 @@ test("restringe identificadores usados em nomes do Docker", () => {
   assert.equal(validPreviewId("../../root"), false);
   assert.throws(() => previewContainerName("bad id"));
   assert.equal(previewNetworkName("cm1234567890"), "dashboardia-preview-cm1234567890");
+});
+
+test("reconhece falhas transitórias do registry para permitir nova tentativa", () => {
+  assert.equal(isTransientDockerError('lookup auth.docker.io: Temporary failure in name resolution'), true);
+  assert.equal(isTransientDockerError('failed to compile: package com.exemplo does not exist'), false);
 });

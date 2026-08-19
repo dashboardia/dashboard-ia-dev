@@ -89,7 +89,10 @@ export default function PreviewCard({ executionId, executionStatus, headSha }) {
 
         {preview.state === "NOT_READY" && <div className="list-empty">{preview.message}</div>}
         {preview.state === "PREPARING" && <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Preparando o ambiente de preview</strong><small>{preview.message ?? "O Dashboardia está construindo e iniciando o container temporário."}</small></span></div>}
-        {preview.state === "FAILED" && <div className="form-error">{preview.message ?? "O deployment de preview não ficou disponível."}</div>}
+        {preview.state === "FAILED" && <div className="preview-failed">
+          <div className="form-error"><strong>O ambiente navegável falhou</strong><span>{preview.message ?? "O deployment de preview não ficou disponível."}</span></div>
+          {preview.evidence?.length > 0 && <div className="preview-evidence-grid">{preview.evidence.map((item) => <figure key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><img src={item.url} alt={`Evidência ${item.route} em ${item.viewport}`} loading="lazy" /></a><figcaption><strong>{item.route}</strong><span>{item.viewport === "mobile" ? "Celular" : "Desktop"}</span></figcaption></figure>)}</div>}
+        </div>}
         {preview.state === "UNAVAILABLE" && <div className="preview-unavailable"><strong>O código está pronto, mas o ambiente temporário não está disponível</strong><p>{preview.message}</p><small>As evidências visuais continuam disponíveis para revisão quando o container não puder ser iniciado.</small></div>}
         {preview.state === "EVIDENCE" && <div className="preview-evidence">
           <div className="preview-evidence-heading"><Images size={17} /><span><strong>Resultado visual da implementação</strong><small>{preview.message}</small></span></div>

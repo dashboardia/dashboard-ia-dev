@@ -77,6 +77,18 @@ export async function GET(_request, context) {
           height: artifact.metadata?.height ?? null,
         }));
       if (evidence.length) {
+        if (deployment.state === "FAILED") {
+          return NextResponse.json({
+            preview: {
+              ...deployment,
+              mode: null,
+              inspection: null,
+              evidence,
+              message: "O container temporário não pôde ser publicado. As evidências visuais foram preservadas para revisão.",
+              timeoutMinutes: settings.previewPreparationTimeoutMinutes,
+            },
+          });
+        }
         return NextResponse.json({
           preview: {
             state: "EVIDENCE",
