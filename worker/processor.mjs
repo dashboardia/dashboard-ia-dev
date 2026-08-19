@@ -88,6 +88,18 @@ async function log(executionId, scope, message, level = "info", metadata) {
   await db.executionLog.create({ data: { executionId, scope, message, level, metadata } });
 }
 
+async function saveReviewDiff(database, executionId, diffContent) {
+  await database.executionArtifact.deleteMany({ where: { executionId, type: "diff" } });
+  await database.executionArtifact.create({
+    data: {
+      executionId,
+      type: "diff",
+      name: "changes.diff",
+      content: String(diffContent ?? "").slice(0, 200_000),
+    },
+  });
+}
+
 async function assertExecutionActive(executionId) {
   const current = await db.execution.findUnique({ where: { id: executionId }, select: { cancelRequestedAt: true, stopRequestedAt: true } });
   if (current?.stopRequestedAt) throw new ExecutionStoppedError();
@@ -499,6 +511,11 @@ export async function processExecution(executionId, workerId) {
       where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
       data: { branchName, baseSha: base, headSha: implementationHead },
     });
+    await saveReviewDiff(db, executionId, diffResult.stdout);
+    await log(executionId, "publish", "Branch e diff disponíveis para revisão enquanto o preview é preparado", "info", {
+      branchName,
+      headSha: implementationHead,
+    });
 
     if (!documentationOnly) {
       if (!validationResult.passed) {
@@ -558,19 +575,31 @@ export async function processExecution(executionId, workerId) {
             creditBudgetContext,
             creditCostPolicy,
           });
-          const previewRepairTimeout = setTimeout(() => previewRepairAgent.abort(), previewRepairPolicy.timeoutMinutes * 60_000);
-          previewRepairTimeout.unref();
+          await log(executionId, "preview", "Correção automática do ambiente navegável iniciada; branch e diff continuam disponíveis para revisão");
+          const previewRepairTimeoutMs = previewRepairPolicy.timeoutMinutes * 60_000;
+          let previewRepairTimeout;
+          const previewRepairDeadline = new Promise((_, reject) => {
+            previewRepairTimeout = setTimeout(() => {
+              previewRepairAgent.abort();
+              const timeoutError = new Error(`A correção automática excedeu ${previewRepairPolicy.timeoutMinutes} minuto(s)`);
+              timeoutError.code = "PREVIEW_REPAIR_TIMEOUT";
+              reject(timeoutError);
+            }, previewRepairTimeoutMs);
+            previewRepairTimeout.unref();
+          });
           let previewRepairCompleted = false;
           try {
-            const repairResult = await previewRepairAgent.promise;
+            const repairResult = await Promise.race([previewRepairAgent.promise, previewRepairDeadline]);
             inputTokens = (inputTokens ?? 0) + (repairResult.inputTokens ?? 0);
             outputTokens = (outputTokens ?? 0) + (repairResult.outputTokens ?? 0);
             measuredUsage = { inputTokens, outputTokens };
             previewRepairCompleted = true;
           } catch (repairError) {
+            previewRepairAgent.abort();
             await restoreImplementationSnapshot(workspace, implementationHead);
-            await log(executionId, "preview", "A correção automática do preview não foi concluída; as evidências visuais foram preservadas", "warn", {
+            await log(executionId, "preview", "A correção automática do preview não foi concluída; a branch, o diff e as evidências visuais foram preservados", "warn", {
               technical: repairError instanceof Error ? repairError.message : String(repairError),
+              timedOut: repairError?.code === "PREVIEW_REPAIR_TIMEOUT",
             });
           } finally {
             clearTimeout(previewRepairTimeout);
@@ -594,7 +623,8 @@ export async function processExecution(executionId, workerId) {
               where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
               data: { headSha: implementationHead },
             });
-            await log(executionId, "preview", "Correção automática aplicada; reconstruindo o ambiente temporário");
+            await saveReviewDiff(db, executionId, diffResult.stdout);
+            await log(executionId, "preview", "Correção automática aplicada; diff atualizado e ambiente temporário em reconstrução");
             remotePreview = await publishDashboardiaPreview({
               database: db,
               execution,
@@ -646,7 +676,7 @@ export async function processExecution(executionId, workerId) {
       if (updated.count !== 1) throw new ExecutionCancelledError();
       const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage });
       await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
-      await transaction.executionArtifact.create({ data: { executionId, type: "diff", name: "changes.diff", content: diffResult.stdout.slice(0, 200_000) } });
+      await saveReviewDiff(transaction, executionId, diffResult.stdout);
       if (visualArtifacts.length) await transaction.executionArtifact.createMany({ data: visualArtifacts.map((artifact) => ({ executionId, ...artifact })) });
       await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "REVIEW" } });
     });

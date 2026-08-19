@@ -70,6 +70,8 @@ export default function PreviewCard({ executionId, executionStatus, headSha }) {
 
   const inspection = preview?.inspection;
   const api = preview?.mode === "API";
+  const repairingPreview = preview?.state === "FAILED" && ["PREPARING", "RUNNING", "VALIDATING"].includes(executionStatus);
+  const previewLabel = repairingPreview ? "Corrigindo preview" : stateLabels[preview?.state] ?? preview?.state;
   return (
     <section className="form-card detail-card full-card interactive-preview-card">
       <div className="card-heading">
@@ -81,7 +83,7 @@ export default function PreviewCard({ executionId, executionStatus, headSha }) {
       {error ? <div className="form-error">{error}</div> : null}
       {preview && <div className="preview-content">
         <div className="preview-toolbar">
-          <span className={`status-pill preview-${preview.state?.toLowerCase()}`}>{stateLabels[preview.state] ?? preview.state}</span>
+          <span className={`status-pill preview-${repairingPreview ? "preparing" : preview.state?.toLowerCase()}`}>{previewLabel}</span>
           {preview.provider && <small>{preview.environment ?? "Preview"} · {preview.provider}</small>}
           <button className="preview-refresh-button" disabled={loading} onClick={load} type="button">{loading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}<span>{loading ? "Consultando" : "Sincronizar"}</span></button>
           {preview.url && <a className="primary compact" href={preview.url} target="_blank" rel="noreferrer" referrerPolicy="no-referrer"><ExternalLink size={14} />{api ? "Abrir API" : "Navegar no preview"}</a>}
@@ -90,8 +92,10 @@ export default function PreviewCard({ executionId, executionStatus, headSha }) {
         {preview.state === "NOT_READY" && <div className="list-empty">{preview.message}</div>}
         {preview.state === "PREPARING" && <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Preparando o ambiente de preview</strong><small>{preview.message ?? "O Dashboardia está construindo e iniciando o container temporário."}</small></span></div>}
         {preview.state === "FAILED" && <div className="preview-failed">
-          <div className="form-error"><strong>O ambiente navegável falhou</strong><span>{preview.message ?? "O deployment de preview não ficou disponível."}</span></div>
-          {preview.technicalError && <details className="api-endpoints preview-technical-error"><summary>Ver detalhes técnicos</summary><pre>{preview.technicalError}</pre></details>}
+          {repairingPreview
+            ? <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Corrigindo o ambiente navegável</strong><small>O código e o diff já estão disponíveis para revisão. O agente está tratando a falha real do container.</small></span></div>
+            : <div className="form-error"><strong>O ambiente navegável falhou</strong><span>{preview.message ?? "O deployment de preview não ficou disponível."}</span></div>}
+          {preview.technicalError?.trim() && <details className="api-endpoints preview-technical-error"><summary>Ver detalhes técnicos</summary><pre>{preview.technicalError}</pre></details>}
           {preview.evidence?.length > 0 && <div className="preview-evidence-grid">{preview.evidence.map((item) => <figure key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><img src={item.url} alt={`Evidência ${item.route} em ${item.viewport}`} loading="lazy" /></a><figcaption><strong>{item.route}</strong><span>{item.viewport === "mobile" ? "Celular" : "Desktop"}</span></figcaption></figure>)}</div>}
         </div>}
         {preview.state === "UNAVAILABLE" && <div className="preview-unavailable"><strong>O código está pronto, mas o ambiente temporário não está disponível</strong><p>{preview.message}</p><small>As evidências visuais continuam disponíveis para revisão quando o container não puder ser iniciado.</small></div>}
