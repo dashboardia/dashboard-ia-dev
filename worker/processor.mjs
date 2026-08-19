@@ -20,7 +20,7 @@ import {
 import { runImplementationPreview, runVisualValidation } from "./visual-validation.mjs";
 import { publishDashboardiaPreview } from "./preview-publisher.mjs";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
-import { saveFinancialSnapshot } from "../lib/financial-shadow.js";
+import { calculateLiveUsageCredits, saveFinancialSnapshot } from "../lib/financial-shadow.js";
 import { getExecutionCreditBudget, settleExecutionCredits } from "../lib/billing.js";
 import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
 
@@ -214,6 +214,13 @@ export async function processExecution(executionId, workerId) {
       maxTurns: agentPolicy.maxTurns,
       timeoutMinutes: agentPolicy.timeoutMinutes,
     });
+    const creditCostPolicy = creditBudget ? {
+      model: selectedModel,
+      usdToBrlCents: settings.usdToBrlCents,
+      aiSafetyPercent: settings.aiSafetyPercent,
+      creditValueCents: settings.creditValueCents,
+      targetGrossMarginPercent: settings.targetGrossMarginPercent,
+    } : null;
     const implementationAgent = startImplementationAgent({
       projectDirectory,
       prompt: buildAgentPrompt(execution.demand, agentPolicy.scope),
@@ -221,13 +228,7 @@ export async function processExecution(executionId, workerId) {
       policy: agentPolicy,
       creditBudget,
       creditBudgetContext,
-      creditCostPolicy: creditBudget ? {
-        model: selectedModel,
-        usdToBrlCents: settings.usdToBrlCents,
-        aiSafetyPercent: settings.aiSafetyPercent,
-        creditValueCents: settings.creditValueCents,
-        targetGrossMarginPercent: settings.targetGrossMarginPercent,
-      } : null,
+      creditCostPolicy,
     });
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
@@ -300,7 +301,7 @@ export async function processExecution(executionId, workerId) {
     // possam alterar arquivos versionados ou criar artefatos no repositório.
     await runProcess("git", ["add", "-A"], { cwd: workspace });
     await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "-m", `forgeboard: ${execution.demand.title.slice(0, 120)}`], { cwd: workspace });
-    const implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+    let implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
     const base = (await runProcess("git", ["rev-parse", execution.demand.project.defaultBranch], { cwd: workspace })).stdout.trim();
 
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
@@ -320,11 +321,76 @@ export async function processExecution(executionId, workerId) {
       await log(executionId, "validation", `Configuração ${detectedRuntime.runtime} detectada após a implementação`, "info", detectedConfiguration);
     }
     execution.demand.project = { ...savedProject, ...detectedConfiguration };
+    let validationResult = await runValidations(execution, projectDirectory, settings);
+    if (!validationResult.passed) {
+      const consumedBeforeRepair = creditCostPolicy && measuredUsage
+        ? calculateLiveUsageCredits({ ...creditCostPolicy, ...measuredUsage })
+        : 0;
+      const remainingCreditBudget = creditBudget == null ? null : Math.max(0, creditBudget - consumedBeforeRepair);
+      if (remainingCreditBudget == null || remainingCreditBudget > 0) {
+        await cleanValidationArtifacts(projectDirectory);
+        await restoreImplementationSnapshot(workspace, implementationHead);
+        await log(executionId, "validation", "Agente de correção automática iniciado com o erro real da validação", "warn", {
+          failedScope: validationResult.failedScope,
+        });
+        const repairPolicy = {
+          ...agentPolicy,
+          maxTurns: Math.min(agentPolicy.maxTurns, 24),
+          maxTokens: Math.min(agentPolicy.maxTokens, 20_000),
+          timeoutMinutes: Math.min(agentPolicy.timeoutMinutes, 10),
+        };
+        const repairAgent = startImplementationAgent({
+          projectDirectory,
+          prompt: [
+            "A implementação abaixo já foi realizada, mas a validação automática falhou.",
+            "Inspecione os arquivos relacionados ao erro e aplique somente as correções necessárias para a validação passar, sem remover funcionalidades nem alterar o escopo aprovado.",
+            "Use exclusivamente apply_patch. Não execute build, lint, instalação ou testes; o worker validará novamente.",
+            `Etapa que falhou: ${validationResult.failedScope}`,
+            `Saída técnica da validação:\n${validationResult.technical}`,
+            `Demanda original:\n${buildAgentPrompt(execution.demand, agentPolicy.scope)}`,
+          ].join("\n\n"),
+          model: selectedModel,
+          policy: repairPolicy,
+          creditBudget: remainingCreditBudget,
+          creditBudgetContext,
+          creditCostPolicy,
+        });
+        const repairTimeout = setTimeout(() => repairAgent.abort(), repairPolicy.timeoutMinutes * 60_000);
+        repairTimeout.unref();
+        let repairCompleted = false;
+        try {
+          const repairResult = await repairAgent.promise;
+          inputTokens = (inputTokens ?? 0) + (repairResult.inputTokens ?? 0);
+          outputTokens = (outputTokens ?? 0) + (repairResult.outputTokens ?? 0);
+          measuredUsage = { inputTokens, outputTokens };
+          repairCompleted = true;
+        } catch (repairError) {
+          await cleanValidationArtifacts(projectDirectory);
+          await restoreImplementationSnapshot(workspace, implementationHead);
+          await log(executionId, "validation", "A correção automática não foi concluída; a implementação original continuará disponível para revisão", "warn", {
+            technical: repairError instanceof Error ? repairError.message : String(repairError),
+          });
+        } finally {
+          clearTimeout(repairTimeout);
+        }
+        await assertExecutionActive(executionId);
+        const repairStatus = repairCompleted
+          ? await runProcess("git", ["status", "--porcelain"], { cwd: workspace })
+          : { stdout: "" };
+        if (repairCompleted && repairStatus.stdout.trim()) {
+          await runProcess("git", ["add", "-A"], { cwd: workspace });
+          await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "--amend", "--no-edit"], { cwd: workspace });
+          implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+          await log(executionId, "validation", "Correção automática aplicada; executando a validação novamente");
+          validationResult = await runValidations(execution, projectDirectory, settings);
+        } else if (repairCompleted) {
+          await log(executionId, "validation", "O agente não encontrou uma correção aplicável para a falha", "warn");
+        }
+      }
+    }
+
     let visualArtifacts = [];
     if (execution.demand.visualValidation) {
-      // O build aquece as transformações e o cache de arquivos usados pelo Vite.
-      // Mesmo quando falha, o processo é encerrado antes de iniciar o Chromium.
-      await runValidations(execution, projectDirectory, settings);
       await assertExecutionActive(executionId);
       await log(executionId, "visual", "Validação visual iniciada");
       try {
@@ -340,8 +406,6 @@ export async function processExecution(executionId, workerId) {
       }
       await assertExecutionActive(executionId);
     } else {
-      await runValidations(execution, projectDirectory, settings);
-      await assertExecutionActive(executionId);
       if (execution.demand.project.previewCommand && execution.demand.project.previewPort) {
         await log(executionId, "visual", "Gerando preview visual automático da implementação");
         try {
@@ -363,13 +427,20 @@ export async function processExecution(executionId, workerId) {
     await restoreImplementationSnapshot(workspace, implementationHead);
     const diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
     await runProcess("git", [...authenticationArgs, "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
-    await publishDashboardiaPreview({
-      database: db,
-      execution,
-      projectDirectory,
-      runtime: detectedRuntime.runtime,
-      log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
-    });
+    if (validationResult.passed) {
+      await publishDashboardiaPreview({
+        database: db,
+        execution,
+        projectDirectory,
+        runtime: detectedRuntime.runtime,
+        log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
+      });
+    } else {
+      await log(executionId, "preview", "Preview interativo não publicado porque a implementação ainda não compila", "warn", {
+        failedScope: validationResult.failedScope,
+        technical: validationResult.technical,
+      });
+    }
 
     await db.$transaction(async (transaction) => {
       const updated = await transaction.execution.updateMany({
