@@ -619,10 +619,18 @@ export async function processExecution(executionId, workerId) {
           }
 
           await runProcess("git", ["add", "-A"], { cwd: workspace });
-          await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "--amend", "--no-edit"], { cwd: workspace });
+          // O commit original já foi publicado antes de o preview ser criado.
+          // Criar um novo commit mantém o push como fast-forward e evita que
+          // --force-with-lease falhe quando a referência remota for atualizada
+          // entre a publicação inicial e o término do reparo do container.
+          await runProcess("git", [
+            "-c", "user.name=Forgeboard",
+            "-c", "user.email=forgeboard@users.noreply.github.com",
+            "commit", "-m", `forgeboard: corrige preview (${attempt}/${MAX_PREVIEW_REPAIR_ATTEMPTS})`,
+          ], { cwd: workspace });
           implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
           diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
-          await runProcess("git", [...authenticationArgs, "push", "--force-with-lease", "origin", branchName], {
+          await runProcess("git", [...authenticationArgs, "push", "origin", branchName], {
             cwd: workspace,
             timeout: 5 * 60_000,
             secrets: [token, authenticationArgs[1]],
