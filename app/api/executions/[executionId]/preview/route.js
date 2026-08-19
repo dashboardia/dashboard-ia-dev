@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requireProjectRole } from "../../../../../lib/access";
 import { apiError } from "../../../../../lib/api";
-import { expireStaleDeploymentPreview, findDeploymentPreview, inspectDeploymentPreview } from "../../../../../lib/deployment-preview";
+import { configuredProjectPreview, expireStaleDeploymentPreview, findDeploymentPreview, inspectDeploymentPreview } from "../../../../../lib/deployment-preview";
 import { db } from "../../../../../lib/db";
 import { getGitHubAccessToken, getProjectGitHubAccessToken } from "../../../../../lib/github";
 import { getGlobalSettings } from "../../../../../lib/global-settings";
@@ -46,6 +46,10 @@ export async function GET(_request, context) {
     } catch (error) {
       if (!execution.demand.project.githubInstallationId) throw error;
       deployment = await findPreview(await getGitHubAccessToken(user.id));
+    }
+    if (["NOT_FOUND", "FAILED", "UNAVAILABLE"].includes(deployment.state)) {
+      const configuredPreview = configuredProjectPreview(execution.demand.project.productionUrl);
+      if (configuredPreview) deployment = configuredPreview;
     }
     if (["NOT_FOUND", "FAILED", "UNAVAILABLE"].includes(deployment.state)) {
       const evidence = execution.artifacts
