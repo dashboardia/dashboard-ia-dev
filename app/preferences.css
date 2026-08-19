@@ -34,3 +34,6 @@
 [data-theme="dark"] .visual-validation-option strong { color:#f3f4f8; }
 [data-theme="dark"] .visual-validation-option small { color:#b8bbc6; }
 [data-theme="dark"] .form-card input::placeholder,[data-theme="dark"] .form-card textarea::placeholder { color:#9296a3; opacity:1; }
+.support-chat { position:fixed; inset:auto 22px 22px auto; isolation:isolate; contain:layout paint; }
+.support-chat section { flex:0 0 auto; }
+@media (max-width:760px) { .support-chat { inset:auto 14px 14px auto; }.support-chat.open { left:14px; }.support-chat.open section { width:calc(100vw - 84px); } }
