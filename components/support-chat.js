@@ -50,16 +50,16 @@ function SupportChatSession({ locale, pathname, t }) {
   return (
     <div className={`support-chat ${open ? "open" : ""}`}>
       {open && (
-        <section>
-          <header><span><Bot size={18} /><strong>{t("support")}</strong></span><button onClick={() => setOpen(false)} aria-label={t("close")}><X size={17} /></button></header>
+        <aside className="support-panel" role="dialog" aria-label={t("support")}>
+          <header className="support-panel-header"><span><Bot size={18} /><strong>{t("support")}</strong></span><button onClick={() => setOpen(false)} aria-label={t("close")}><X size={17} /></button></header>
           <div className="support-messages">
             {!messages.length && <div className="assistant-message">{t("supportIntro")}</div>}
             {messages.map((message, index) => <div className={`${message.role}-message`} key={`${message.role}-${index}`}>{message.content}</div>)}
             {loading && <div className="assistant-message typing">•••</div>}
           </div>
-          <form onSubmit={send}><input maxLength={800} value={text} onChange={(event) => setText(event.target.value)} placeholder={t("askPlaceholder")} /><button disabled={loading || !text.trim()} aria-label={t("send")}><Send size={16} /></button></form>
-          <small>{t("assistantDisclaimer")}</small>
-        </section>
+          <form className="support-panel-form" onSubmit={send}><input maxLength={800} value={text} onChange={(event) => setText(event.target.value)} placeholder={t("askPlaceholder")} /><button disabled={loading || !text.trim()} aria-label={t("send")}><Send size={16} /></button></form>
+          <small className="support-panel-disclaimer">{t("assistantDisclaimer")}</small>
+        </aside>
       )}
       <button className="support-launcher" onClick={() => setOpen((value) => !value)} aria-label={t("support")}><MessageCircle size={21} /></button>
     </div>
