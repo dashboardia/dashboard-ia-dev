@@ -23,6 +23,7 @@ import { calculateLiveUsageCredits, saveFinancialSnapshot } from "../lib/financi
 import { getExecutionCreditBudget, settleExecutionCredits } from "../lib/billing.js";
 import { getBusinessKnowledgeContext } from "../lib/business-knowledge.js";
 import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
+import { remoteFetchRefspec, remoteTrackingRef } from "./git-refs.mjs";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 
@@ -222,6 +223,7 @@ export async function processExecution(executionId, workerId) {
       "clone",
       "--depth",
       "50",
+      "--no-single-branch",
       "--branch",
       sourceBranch,
       repositoryUrl,
@@ -232,7 +234,7 @@ export async function processExecution(executionId, workerId) {
     const documentationOnly = execution.demand.type === "DOCUMENTATION";
     const agentLabel = documentationOnly ? "Agente de documentação" : "Agente de implementação";
     if (!isFollowUp) await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
-    await runProcess("git", [...authenticationArgs, "fetch", "origin", execution.demand.project.defaultBranch], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
+    await runProcess("git", [...authenticationArgs, "fetch", "origin", remoteFetchRefspec(execution.demand.project.defaultBranch)], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
     const projectDirectory = resolveWorkspacePath(workspace, execution.demand.project.workingDirectory);
     const selectedModel = execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL;
     execution.model = selectedModel;
@@ -396,7 +398,7 @@ export async function processExecution(executionId, workerId) {
     await runProcess("git", ["add", "-A"], { cwd: workspace });
     await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "-m", `forgeboard: ${execution.demand.title.slice(0, 120)}`], { cwd: workspace });
     let implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
-    const base = (await runProcess("git", ["rev-parse", `origin/${execution.demand.project.defaultBranch}`], { cwd: workspace })).stdout.trim();
+    const base = (await runProcess("git", ["rev-parse", remoteTrackingRef(execution.demand.project.defaultBranch)], { cwd: workspace })).stdout.trim();
 
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
 

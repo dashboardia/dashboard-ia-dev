@@ -1,4 +1,4 @@
-import { Download, FileCode2, Images } from "lucide-react";
+import { ChevronDown, Download, FileCode2, Images } from "lucide-react";
 
 function evidenceLabel(artifact) {
   if (artifact.type === "visual") return "Captura visual";
@@ -9,13 +9,13 @@ function evidenceLabel(artifact) {
 
 export default function EvidenceCard({ artifacts }) {
   const evidence = artifacts.filter((artifact) => artifact.type !== "diff");
-  return <section className="form-card detail-card full-card execution-evidence-card">
-    <div className="card-heading"><div><h2>Evidências de validação</h2><p>Capturas, relatórios e arquivos produzidos quando a stack permite.</p></div><Images size={20} /></div>
-    {evidence.length ? <div className="preview-evidence-grid">{evidence.map((artifact) => {
+  return <details className="form-card detail-card full-card execution-collapsible execution-evidence-card">
+    <summary className="execution-collapsible-header"><Images size={19} /><span><strong>Validações e evidências</strong><small>{evidence.length ? `${evidence.length} arquivo(s) produzido(s) pela execução` : "Nenhum arquivo adicional produzido"}</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+    <div className="execution-collapsible-content">{evidence.length ? <div className="preview-evidence-grid">{evidence.map((artifact) => {
       const href = `/api/artifacts/${artifact.id}`;
       return artifact.type === "visual"
         ? <figure key={artifact.id}><a href={href} target="_blank" rel="noreferrer"><img src={href} alt={artifact.name} loading="lazy" /></a><figcaption><strong>{artifact.metadata?.route ?? artifact.name}</strong><span>{artifact.metadata?.viewport ?? evidenceLabel(artifact)}</span></figcaption></figure>
         : <a className="documentation-download-actions" href={href} key={artifact.id}><FileCode2 size={18} /><span><strong>{artifact.name}</strong><small>{evidenceLabel(artifact)}</small></span><Download size={15} /></a>;
-    })}</div> : <div className="list-empty">Nenhum arquivo adicional foi gerado. Os logs, o diff e o resultado das validações continuam disponíveis.</div>}
-  </section>;
+    })}</div> : <div className="list-empty">Nenhum arquivo adicional foi gerado. Os logs e o resultado das validações continuam disponíveis.</div>}</div>
+  </details>;
 }

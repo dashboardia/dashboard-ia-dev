@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, Clock3, Code2, Coins, Download, FileText, GitBranch, TerminalSquare, Zap } from "lucide-react";
+import { Activity, ArrowLeft, ChevronDown, Clock3, Code2, Coins, Download, FileText, GitBranch, TerminalSquare, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -94,6 +94,8 @@ export default async function ExecutionPage({ params }) {
           </section>
         </div>
 
+        {(execution.pullRequest || execution.messages.length > 0) && <ExecutionConversation executionId={execution.id} status={execution.status} messages={execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} maxAdjustments={settings.executionConversationMaxAdjustments} />}
+
         {user.globalRole === "ADMIN" && execution.financialSnapshot && <section className="form-card detail-card full-card financial-execution-card">
           <div className="card-heading"><div><h2>Simulação financeira</h2><p>Visível somente para administradores. O custo segue silencioso; créditos são liquidados pelo consumo medido.</p></div><div className="shadow-mode-badge"><Coins size={14} />CUSTO SILENCIOSO</div></div>
           <div className="financial-summary-grid">
@@ -117,19 +119,17 @@ export default async function ExecutionPage({ params }) {
           </div>
         </section>}
 
-        <section className="form-card detail-card full-card execution-log-card">
-          <div className="card-heading"><div><h2>Logs da execução</h2><p>{execution.logs.length} eventos registrados em ordem cronológica</p></div><TerminalSquare size={20} /></div>
-          <div className="execution-timeline">{execution.logs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; return <div key={entry.id}><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Ver detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>; })}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div>
-        </section>
+        <details className="form-card detail-card full-card execution-collapsible execution-log-card">
+          <summary className="execution-collapsible-header"><TerminalSquare size={19} /><span><strong>Logs da execução</strong><small>{execution.logs.length} eventos registrados em ordem cronológica</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+          <div className="execution-collapsible-content"><div className="execution-timeline">{execution.logs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; return <div key={entry.id}><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Ver detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>; })}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div></div>
+        </details>
 
         {execution.demand.type !== "DOCUMENTATION" && <EvidenceCard artifacts={execution.artifacts} />}
 
-        {(execution.pullRequest || execution.messages.length > 0) && <ExecutionConversation executionId={execution.id} status={execution.status} messages={execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} maxAdjustments={settings.executionConversationMaxAdjustments} />}
-
-        <section className="form-card detail-card full-card execution-diff-card">
-          <div className="card-heading"><div><h2>Diff para revisão</h2><p>Alterações exatas geradas antes da abertura do Pull Request</p></div><Code2 size={20} /></div>
-          {diff?.content ? <DiffViewer content={diff.content} /> : <div className="list-empty">O diff ficará disponível após as validações.</div>}
-        </section>
+        <details className="form-card detail-card full-card execution-collapsible execution-diff-card">
+          <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Diff para revisão</strong><small>{diff?.content ? "Alterações exatas geradas antes da abertura do Pull Request" : "Disponível após as validações"}</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+          <div className="execution-collapsible-content">{diff?.content ? <DiffViewer content={diff.content} /> : <div className="list-empty">O diff ficará disponível após as validações.</div>}</div>
+        </details>
       </div>
     </AppShell>
   );
