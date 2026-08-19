@@ -10,10 +10,8 @@ services:
     branch: main-render
     autoDeployTrigger: commit
     buildCommand: npm ci && npm run build
-    preDeployCommand: npx prisma migrate deploy
     startCommand: npm start
     healthCheckPath: /api/health
-    maxShutdownDelaySeconds: 60
     envVars:
       - key: NODE_ENV
         value: production
