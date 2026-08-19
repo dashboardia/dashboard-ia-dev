@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { asaasCheckoutLookup } from "../../../../lib/asaas-webhook";
 import { activatePlan, addMonths, grantCredits } from "../../../../lib/billing";
 import { db } from "../../../../lib/db";
 import { env } from "../../../../lib/env";
@@ -13,13 +14,13 @@ function tokenIsValid(received) {
 }
 
 async function processCheckoutEvent(transaction, payload) {
-  const checkoutId = payload.checkout?.id;
-  if (!checkoutId) return;
-  const order = await transaction.billingCheckout.findUnique({
-    where: { providerCheckoutId: checkoutId },
+  const where = asaasCheckoutLookup(payload);
+  if (!where) throw new Error("Evento de checkout do Asaas sem identificadores para conciliacao");
+  const order = await transaction.billingCheckout.findFirst({
+    where,
     include: { account: true },
   });
-  if (!order) return;
+  if (!order) throw new Error(`Checkout do Asaas nao conciliado: ${payload.checkout?.id || "sem-id"}`);
   if (payload.event === "CHECKOUT_CANCELED") {
     await transaction.billingCheckout.update({ where: { id: order.id }, data: { status: "CANCELED" } });
     return;
@@ -101,7 +102,9 @@ export async function POST(request) {
       const existing = await transaction.billingWebhookEvent.findUnique({
         where: { provider_providerEventId: { provider: "ASAAS", providerEventId: payload.id } },
       });
-      if (existing?.processedAt) return;
+      // Eventos de checkout sao idempotentes pelo status do pedido e podem ser
+      // reenviados para recuperar uma conciliacao que ocorreu antes da correcao.
+      if (existing?.processedAt && !payload.event.startsWith("CHECKOUT_")) return;
       const event = existing || await transaction.billingWebhookEvent.create({
         data: { provider: "ASAAS", providerEventId: payload.id, eventType: payload.event, payload },
       });
