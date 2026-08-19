@@ -33,6 +33,7 @@ export async function GET(_request, context) {
       token,
       repositoryFullName: execution.demand.project.repositoryFullName,
       sha: execution.headSha,
+      pullRequestNumber: execution.pullRequest.externalNumber,
     });
     const projectToken = await getProjectGitHubAccessToken(execution.demand.project, user.id);
     let deployment;
@@ -43,20 +44,22 @@ export async function GET(_request, context) {
       deployment = await findPreview(await getGitHubAccessToken(user.id));
     }
     if (deployment.state === "NOT_FOUND") {
-      const recentlyOpened = Date.now() - execution.pullRequest.createdAt.getTime() < settings.previewPreparationTimeoutMinutes * 60_000;
+      const registrationGraceMinutes = Math.min(2, settings.previewPreparationTimeoutMinutes);
+      const recentlyOpened = Date.now() - execution.pullRequest.createdAt.getTime() < registrationGraceMinutes * 60_000;
       return NextResponse.json({
         preview: {
           ...deployment,
           state: recentlyOpened ? "PREPARING" : "UNAVAILABLE",
           message: recentlyOpened
-            ? "Aguardando o provedor registrar o deployment deste Pull Request."
-            : "Nenhum provedor de preview publicou uma URL para este commit.",
+            ? "O Pull Request foi aberto. Aguardando o provedor registrar o deployment."
+            : "Nenhum provedor publicou um preview para este Pull Request. Ative Pull Request Previews no serviço que hospeda o repositório.",
+          timeoutMinutes: settings.previewPreparationTimeoutMinutes,
         },
       });
     }
     deployment = expireStaleDeploymentPreview(deployment, new Date(), settings.previewPreparationTimeoutMinutes);
     if (deployment.state !== "AVAILABLE" || !deployment.url) {
-      return NextResponse.json({ preview: { ...deployment, mode: null, inspection: null } });
+      return NextResponse.json({ preview: { ...deployment, mode: null, inspection: null, timeoutMinutes: settings.previewPreparationTimeoutMinutes } });
     }
 
     const inspection = await inspectDeploymentPreview(deployment.url).catch(() => ({
@@ -67,7 +70,7 @@ export async function GET(_request, context) {
       endpoints: [],
       example: null,
     }));
-    return NextResponse.json({ preview: { ...deployment, mode: inspection.mode, inspection } });
+    return NextResponse.json({ preview: { ...deployment, mode: inspection.mode, inspection, timeoutMinutes: settings.previewPreparationTimeoutMinutes } });
   } catch (error) {
     return apiError(error);
   }
