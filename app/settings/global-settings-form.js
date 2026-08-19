@@ -25,6 +25,11 @@ export default function GlobalSettingsForm({ initialSettings }) {
     healthCheckConcurrency: String(initialSettings.healthCheckConcurrency),
     healthCheckRetentionDays: String(initialSettings.healthCheckRetentionDays),
     previewPreparationTimeoutMinutes: String(initialSettings.previewPreparationTimeoutMinutes),
+    environmentTtlMinutes: String(initialSettings.environmentTtlMinutes),
+    environmentCreditCost: String(initialSettings.environmentCreditCost),
+    environmentMaxPerUser: String(initialSettings.environmentMaxPerUser),
+    executionConversationTimeoutMinutes: String(initialSettings.executionConversationTimeoutMinutes),
+    executionConversationMaxAdjustments: String(initialSettings.executionConversationMaxAdjustments),
     financialShadowEnabled: initialSettings.financialShadowEnabled,
     usdToBrlCents: String(initialSettings.usdToBrlCents),
     aiSafetyPercent: String(initialSettings.aiSafetyPercent),
@@ -132,13 +137,18 @@ export default function GlobalSettingsForm({ initialSettings }) {
         <label><span>Execução travada após</span><input name="staleExecutionMinutes" type="number" min="5" max="180" value={form.staleExecutionMinutes} onChange={change} /><small>Minutos sem progresso antes de liberar ou encerrar uma execução órfã.</small></label>
       </div>
       <div className="financial-settings">
-        <div className="card-heading"><div><h3>Monitoramento e previews</h3><p>Parâmetros operacionais aplicados em tempo real pelo worker.</p></div></div>
+        <div className="card-heading"><div><h3>Monitoramento, ambientes e interação</h3><p>Parâmetros operacionais aplicados em tempo real.</p></div></div>
         <div className="form-grid three-columns">
           <label><span>Intervalo de saúde (min)</span><input name="healthCheckIntervalMinutes" type="number" min="1" max="60" value={form.healthCheckIntervalMinutes} onChange={change} /><small>Frequência de verificação das URLs de produção.</small></label>
           <label><span>Timeout de saúde (s)</span><input name="healthCheckTimeoutSeconds" type="number" min="2" max="60" value={form.healthCheckTimeoutSeconds} onChange={change} /><small>Tempo máximo por projeto monitorado.</small></label>
           <label><span>Checagens simultâneas</span><input name="healthCheckConcurrency" type="number" min="1" max="25" value={form.healthCheckConcurrency} onChange={change} /><small>Projetos verificados em paralelo.</small></label>
           <label><span>Retenção da saúde (dias)</span><input name="healthCheckRetentionDays" type="number" min="1" max="365" value={form.healthCheckRetentionDays} onChange={change} /><small>Histórico mantido no banco.</small></label>
-          <label><span>Espera do preview (min)</span><input name="previewPreparationTimeoutMinutes" type="number" min="1" max="60" value={form.previewPreparationTimeoutMinutes} onChange={change} /><small>Quando um preview preso em preparação passa a ser considerado falho.</small></label>
+          <label><span>Espera do ambiente (min)</span><input name="previewPreparationTimeoutMinutes" type="number" min="1" max="60" value={form.previewPreparationTimeoutMinutes} onChange={change} /><small>Quando uma subida presa em preparação passa a ser considerada falha.</small></label>
+          <label><span>Duração do ambiente (min)</span><input name="environmentTtlMinutes" type="number" min="15" max="1440" value={form.environmentTtlMinutes} onChange={change} /><small>Tempo de vida do container antes da expiração automática.</small></label>
+          <label><span>Custo por ambiente (créditos)</span><input name="environmentCreditCost" type="number" min="0" max="100000" value={form.environmentCreditCost} onChange={change} /><small>Valor fixo cobrado ao aceitar uma nova subida.</small></label>
+          <label><span>Ambientes por usuário</span><input name="environmentMaxPerUser" type="number" min="1" max="20" value={form.environmentMaxPerUser} onChange={change} /><small>Quantidade máxima de ambientes ativos por usuário.</small></label>
+          <label><span>Inatividade da execução (min)</span><input name="executionConversationTimeoutMinutes" type="number" min="15" max="10080" value={form.executionConversationTimeoutMinutes} onChange={change} /><small>Padrão: 180 minutos antes do encerramento automático.</small></label>
+          <label><span>Máximo de ajustes</span><input name="executionConversationMaxAdjustments" type="number" min="1" max="100" value={form.executionConversationMaxAdjustments} onChange={change} /><small>Limite de respostas do cliente dentro da mesma execução.</small></label>
         </div>
       </div>
       <div className="financial-settings">

@@ -114,6 +114,7 @@ function parseConfiguration(request) {
   if (!configuration.previewCommand?.trim()) throw new Error("Comando de preview ausente");
   if (!Number.isInteger(configuration.port) || configuration.port < 1 || configuration.port > 65535) throw new Error("Porta do preview inválida");
   if (!Number.isInteger(configuration.ttlMinutes) || configuration.ttlMinutes < 5 || configuration.ttlMinutes > 1440) throw new Error("TTL do preview inválido");
+  if (![0, 1].includes(configuration.stripComponents ?? 0)) throw new Error("Formato do arquivo compactado inválido");
   return configuration;
 }
 
@@ -167,7 +168,9 @@ async function deployPreview(id, configuration) {
     if (queuedState?.status !== "QUEUED" || new Date(queuedState.expiresAt).getTime() <= Date.now()) return;
     await patchState(id, { status: "BUILDING", startedAt: new Date().toISOString(), error: null });
     await mkdir(sourceDirectory, { recursive: true });
-    await execFile("tar", ["-xzf", path.join(directory, "source.tar.gz"), "-C", sourceDirectory, "--no-same-owner", "--no-same-permissions"], { timeout: 90_000 });
+    const extractArguments = ["-xzf", path.join(directory, "source.tar.gz"), "-C", sourceDirectory, "--no-same-owner", "--no-same-permissions"];
+    if (configuration.stripComponents === 1) extractArguments.push("--strip-components=1");
+    await execFile("tar", extractArguments, { timeout: 90_000 });
     const generatedDockerfile = path.join(directory, "Dockerfile");
     await writeFile(generatedDockerfile, buildPreviewDockerfile(configuration), { mode: 0o600 });
     await removeRuntime(id);

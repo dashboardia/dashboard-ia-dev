@@ -69,10 +69,17 @@ enum ExecutionStatus {
   RUNNING
   VALIDATING
   WAITING_APPROVAL
+  AWAITING_CLIENT
   SUCCEEDED
   FAILED
   CANCELLED
   STOPPED
+}
+
+enum ExecutionMessageRole {
+  USER
+  AGENT
+  SYSTEM
 }
 
 enum ExecutionStage {
@@ -83,6 +90,16 @@ enum ExecutionStage {
 }
 
 enum PreviewEnvironmentStatus {
+  QUEUED
+  BUILDING
+  DEPLOYING
+  READY
+  FAILED
+  STOPPING
+  EXPIRED
+}
+
+enum DevEnvironmentStatus {
   QUEUED
   BUILDING
   DEPLOYING
@@ -195,6 +212,8 @@ model User {
   businessKnowledgeOwned    BusinessKnowledge[] @relation("BusinessKnowledgeOwner")
   businessKnowledgeCreated  BusinessKnowledge[] @relation("BusinessKnowledgeCreator")
   businessKnowledgeApproved BusinessKnowledge[] @relation("BusinessKnowledgeApprover")
+  devEnvironmentsRequested  DevEnvironment[]    @relation("DevEnvironmentRequester")
+  executionMessages         ExecutionMessage[]
   createdAt                 DateTime            @default(now())
   updatedAt                 DateTime            @updatedAt
 }
@@ -269,6 +288,7 @@ model Project {
   auditLogs            AuditLog[]
   webhookEvents        WebhookEvent[]
   businessKnowledge    BusinessKnowledge[]
+  devEnvironments      DevEnvironment[]
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
@@ -343,42 +363,61 @@ model Demand {
 }
 
 model Execution {
-  id                 String                      @id @default(cuid())
-  demandId           String
-  requestedById      String
-  approvedById       String?
-  status             ExecutionStatus             @default(QUEUED)
-  stage              ExecutionStage              @default(ANALYSIS)
-  branchName         String?
-  baseSha            String?
-  headSha            String?
-  model              String?
-  summary            String?                     @db.Text
-  error              String?                     @db.Text
-  inputTokens        Int?
-  outputTokens       Int?
-  attempts           Int                         @default(0)
-  cancelRequestedAt  DateTime?
-  stopRequestedAt    DateTime?
-  lockedAt           DateTime?
-  lockedBy           String?
-  startedAt          DateTime?
-  finishedAt         DateTime?
-  demand             Demand                      @relation(fields: [demandId], references: [id], onDelete: Cascade)
-  requestedBy        User                        @relation("ExecutionRequester", fields: [requestedById], references: [id], onDelete: Restrict)
-  approvedBy         User?                       @relation("ExecutionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  logs               ExecutionLog[]
-  artifacts          ExecutionArtifact[]
-  pullRequest        PullRequest?
-  financialSnapshot  ExecutionFinancialSnapshot?
-  creditReservation  ExecutionCreditReservation?
-  creditTransactions CreditTransaction[]
-  previewEnvironment PreviewEnvironment?
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @updatedAt
+  id                    String                      @id @default(cuid())
+  demandId              String
+  requestedById         String
+  approvedById          String?
+  status                ExecutionStatus             @default(QUEUED)
+  stage                 ExecutionStage              @default(ANALYSIS)
+  branchName            String?
+  baseSha               String?
+  headSha               String?
+  model                 String?
+  summary               String?                     @db.Text
+  error                 String?                     @db.Text
+  inputTokens           Int?
+  outputTokens          Int?
+  attempts              Int                         @default(0)
+  cancelRequestedAt     DateTime?
+  stopRequestedAt       DateTime?
+  lockedAt              DateTime?
+  lockedBy              String?
+  startedAt             DateTime?
+  finishedAt            DateTime?
+  conversationExpiresAt DateTime?
+  lastInteractionAt     DateTime?
+  closedAt              DateTime?
+  closedReason          String?
+  adjustmentCount       Int                         @default(0)
+  demand                Demand                      @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  requestedBy           User                        @relation("ExecutionRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy            User?                       @relation("ExecutionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  logs                  ExecutionLog[]
+  artifacts             ExecutionArtifact[]
+  pullRequest           PullRequest?
+  financialSnapshot     ExecutionFinancialSnapshot?
+  creditReservation     ExecutionCreditReservation?
+  creditTransactions    CreditTransaction[]
+  previewEnvironment    PreviewEnvironment?
+  messages              ExecutionMessage[]
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
 
   @@index([status, createdAt])
   @@index([demandId])
+}
+
+model ExecutionMessage {
+  id          String               @id @default(cuid())
+  executionId String
+  authorId    String?
+  role        ExecutionMessageRole
+  content     String               @db.Text
+  execution   Execution            @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  author      User?                @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt   DateTime             @default(now())
+
+  @@index([executionId, createdAt])
 }
 
 model PreviewEnvironment {
@@ -405,6 +444,37 @@ model PreviewEnvironment {
 
   @@index([status, expiresAt])
   @@index([provider, externalId])
+}
+
+model DevEnvironment {
+  id              String               @id @default(cuid())
+  projectId       String
+  requestedById   String
+  branchName      String
+  status          DevEnvironmentStatus @default(QUEUED)
+  provider        String               @default("DASHBOARDIA")
+  externalId      String?              @unique
+  url             String?
+  runtime         String?
+  imageReference  String?
+  port            Int?
+  creditCost      Int                  @default(0)
+  creditCharge    Json?
+  error           String?              @db.Text
+  requestedAt     DateTime             @default(now())
+  startedAt       DateTime?
+  readyAt         DateTime?
+  expiresAt       DateTime
+  stoppedAt       DateTime?
+  lastHeartbeatAt DateTime?
+  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requestedBy     User                 @relation("DevEnvironmentRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([projectId, status])
+  @@index([status, expiresAt])
+  @@index([requestedById, createdAt])
 }
 
 model BillingAccount {
@@ -673,29 +743,34 @@ model WorkerHeartbeat {
 }
 
 model GlobalSettings {
-  id                               String   @id
-  timeZone                         String   @default("America/Sao_Paulo")
-  nodeMemoryMb                     Int      @default(384)
-  commandTimeoutMinutes            Int      @default(10)
-  agentTimeoutMinutes              Int      @default(5)
-  parallelExecutions               Int      @default(2)
-  executionProcessingEnabled       Boolean  @default(true)
-  agentPowerMode                   String   @default("BALANCED")
-  executionMaxAttempts             Int      @default(3)
-  staleExecutionMinutes            Int      @default(30)
-  healthCheckIntervalMinutes       Int      @default(5)
-  healthCheckTimeoutSeconds        Int      @default(10)
-  healthCheckConcurrency           Int      @default(10)
-  healthCheckRetentionDays         Int      @default(30)
-  previewPreparationTimeoutMinutes Int      @default(15)
-  financialShadowEnabled           Boolean  @default(true)
-  usdToBrlCents                    Int      @default(600)
-  aiSafetyPercent                  Int      @default(15)
-  targetGrossMarginPercent         Int      @default(80)
-  creditValueCents                 Int      @default(10)
-  reservationBufferPercent         Int      @default(20)
-  creditBalanceSafetyMarginPercent Int      @default(20)
-  workerCostCentsPerHour           Int      @default(100)
-  visualValidationCostCents        Int      @default(10)
-  updatedAt                        DateTime @updatedAt
+  id                                  String   @id
+  timeZone                            String   @default("America/Sao_Paulo")
+  nodeMemoryMb                        Int      @default(384)
+  commandTimeoutMinutes               Int      @default(10)
+  agentTimeoutMinutes                 Int      @default(5)
+  parallelExecutions                  Int      @default(2)
+  executionProcessingEnabled          Boolean  @default(true)
+  agentPowerMode                      String   @default("BALANCED")
+  executionMaxAttempts                Int      @default(3)
+  staleExecutionMinutes               Int      @default(30)
+  healthCheckIntervalMinutes          Int      @default(5)
+  healthCheckTimeoutSeconds           Int      @default(10)
+  healthCheckConcurrency              Int      @default(10)
+  healthCheckRetentionDays            Int      @default(30)
+  previewPreparationTimeoutMinutes    Int      @default(15)
+  environmentTtlMinutes               Int      @default(240)
+  environmentCreditCost               Int      @default(300)
+  environmentMaxPerUser               Int      @default(2)
+  executionConversationTimeoutMinutes Int      @default(180)
+  executionConversationMaxAdjustments Int      @default(10)
+  financialShadowEnabled              Boolean  @default(true)
+  usdToBrlCents                       Int      @default(600)
+  aiSafetyPercent                     Int      @default(15)
+  targetGrossMarginPercent            Int      @default(80)
+  creditValueCents                    Int      @default(10)
+  reservationBufferPercent            Int      @default(20)
+  creditBalanceSafetyMarginPercent    Int      @default(20)
+  workerCostCentsPerHour              Int      @default(100)
+  visualValidationCostCents           Int      @default(10)
+  updatedAt                           DateTime @updatedAt
 }

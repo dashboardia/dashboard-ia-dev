@@ -1,0 +1,88 @@
+import { NextResponse } from "next/server";
+
+import { requireProjectRole } from "../../../lib/access";
+import { apiError, assertSameOrigin } from "../../../lib/api";
+import { auditData } from "../../../lib/audit";
+import { chargeFixedProjectCredits, refundFixedCredits } from "../../../lib/billing";
+import { db } from "../../../lib/db";
+import { ACTIVE_ENVIRONMENT_STATUSES, environmentExpirationDate } from "../../../lib/dev-environments";
+import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../lib/github";
+import { getGlobalSettings } from "../../../lib/global-settings";
+import { createDashboardiaPreview, dashboardiaPreviewConfigured } from "../../../lib/preview-host-client";
+import { applyDetectedRuntime, detectGitHubProjectRuntime } from "../../../lib/project-runtime";
+import { devEnvironmentInputSchema } from "../../../lib/validation";
+
+export async function POST(request) {
+  let environment = null;
+  let charge = null;
+  try {
+    assertSameOrigin(request);
+    if (!dashboardiaPreviewConfigured()) return NextResponse.json({ error: "O host Docker de ambientes ainda não está configurado" }, { status: 503 });
+    const input = devEnvironmentInputSchema.parse(await request.json());
+    const { user } = await requireProjectRole(input.projectId, "MANAGER");
+    const [project, settings] = await Promise.all([
+      db.project.findUniqueOrThrow({ where: { id: input.projectId } }),
+      getGlobalSettings(),
+    ]);
+    const activeCount = await db.devEnvironment.count({
+      where: { requestedById: user.id, status: { in: ACTIVE_ENVIRONMENT_STATUSES }, expiresAt: { gt: new Date() } },
+    });
+    if (activeCount >= settings.environmentMaxPerUser) {
+      return NextResponse.json({ error: `Você já possui ${activeCount} ambiente(s) ativo(s). Encerre um deles antes de criar outro.` }, { status: 409 });
+    }
+
+    const token = await getProjectGitHubAccessToken(project, user.id);
+    await verifyRepositoryBranch(token, project.repositoryFullName, input.branchName);
+    const detected = await detectGitHubProjectRuntime(token, project.repositoryFullName, input.branchName);
+    const configuration = applyDetectedRuntime(project, detected);
+    if (!configuration.previewCommand || !configuration.previewPort) {
+      return NextResponse.json({ error: `A stack ${detected.runtime} foi detectada, mas não há comando de inicialização. Configure o projeto antes de subir o ambiente.` }, { status: 422 });
+    }
+
+    environment = await db.devEnvironment.create({
+      data: {
+        projectId: project.id,
+        requestedById: user.id,
+        branchName: input.branchName,
+        runtime: detected.runtime,
+        port: configuration.previewPort,
+        creditCost: settings.environmentCreditCost,
+        expiresAt: environmentExpirationDate(settings.environmentTtlMinutes),
+      },
+    });
+    charge = await chargeFixedProjectCredits({
+      projectId: project.id,
+      credits: settings.environmentCreditCost,
+      description: `Subida do ambiente ${project.name} · ${input.branchName}`,
+      metadata: { environmentId: environment.id, projectId: project.id, branchName: input.branchName },
+    });
+    await db.devEnvironment.update({ where: { id: environment.id }, data: { creditCharge: charge } });
+
+    const archive = await downloadGitHubArchive(token, project.repositoryFullName, input.branchName);
+    const remote = await createDashboardiaPreview({
+      previewId: environment.id,
+      archive,
+      configuration: {
+        runtime: detected.runtime,
+        installCommand: configuration.installCommand,
+        buildCommand: configuration.buildCommand,
+        previewCommand: configuration.previewCommand,
+        port: configuration.previewPort,
+        ttlMinutes: settings.environmentTtlMinutes,
+        stripComponents: 1,
+      },
+    });
+    environment = await db.devEnvironment.update({
+      where: { id: environment.id },
+      data: { externalId: remote.id, status: remote.status, requestedAt: new Date() },
+    });
+    await db.auditLog.create({
+      data: auditData({ actorId: user.id, projectId: project.id, action: "environment.create", entityType: "DevEnvironment", entityId: environment.id, metadata: { branchName: input.branchName, runtime: detected.runtime, creditCost: settings.environmentCreditCost }, request }),
+    });
+    return NextResponse.json({ environment }, { status: 202 });
+  } catch (error) {
+    if (charge) await refundFixedCredits(charge, "Estorno: ambiente não enviado ao host Docker").catch(() => null);
+    if (environment) await db.devEnvironment.update({ where: { id: environment.id }, data: { status: "FAILED", error: error instanceof Error ? error.message : String(error) } }).catch(() => null);
+    return apiError(error);
+  }
+}

@@ -15,6 +15,7 @@ import {
   LogOut,
   Logs,
   Menu,
+  ServerCog,
   Settings,
   WalletCards,
   Users,
@@ -34,6 +35,7 @@ import LocalizedContent from "./localized-content";
 const navigation = [
   { href: "/", label: "overview", icon: LayoutDashboard },
   { href: "/projects", label: "projects", icon: Boxes },
+  { href: "/environments", label: "environments", icon: ServerCog },
   { href: "/demands", label: "demands", icon: ListChecks },
   { href: "/executions", label: "executions", icon: Code2 },
   { href: "/pull-requests", label: "pullRequests", icon: GitBranch },

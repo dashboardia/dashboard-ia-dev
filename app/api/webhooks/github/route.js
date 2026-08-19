@@ -70,6 +70,11 @@ export async function POST(request) {
     }
 
     const state = githubPullRequestState(payload.pull_request);
+    const terminalExecutionUpdate = state.pullRequestStatus === "MERGED"
+      ? db.execution.update({ where: { id: pullRequest.executionId }, data: { status: "SUCCEEDED", closedAt: new Date(), closedReason: "PULL_REQUEST_MERGED", finishedAt: new Date() } })
+      : state.pullRequestStatus === "CLOSED"
+        ? db.execution.update({ where: { id: pullRequest.executionId }, data: { status: "CANCELLED", closedAt: new Date(), closedReason: "PULL_REQUEST_CLOSED", finishedAt: new Date() } })
+        : null;
     await db.$transaction([
       db.pullRequest.update({
         where: { id: pullRequest.id },
@@ -93,6 +98,7 @@ export async function POST(request) {
         },
       }),
       db.webhookEvent.update({ where: { id: event.id }, data: { processedAt: new Date() } }),
+      ...(terminalExecutionUpdate ? [terminalExecutionUpdate] : []),
     ]);
     return deliveryResponse("Pull Request sincronizado");
   } catch (error) {

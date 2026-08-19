@@ -7,6 +7,7 @@ import { apiError, assertSameOrigin } from "../../../../../lib/api";
 import { auditData } from "../../../../../lib/audit";
 import { db } from "../../../../../lib/db";
 import { createGitHubPullRequest, findOpenGitHubPullRequest, getProjectGitHubAccessToken } from "../../../../../lib/github";
+import { getGlobalSettings } from "../../../../../lib/global-settings";
 
 export async function POST(request, context) {
   try {
@@ -41,6 +42,7 @@ export async function POST(request, context) {
 
     let completed = false;
     try {
+      const settings = await getGlobalSettings();
       const token = await getProjectGitHubAccessToken(execution.demand.project, user.id);
       const existingPullRequest = await findOpenGitHubPullRequest(
         token,
@@ -78,9 +80,19 @@ export async function POST(request, context) {
         });
         const updated = await transaction.execution.updateMany({
           where: { id: executionId, lockedBy: lockId },
-          data: { status: "SUCCEEDED", stage: "PUBLISH", approvedById: user.id, lockedAt: null, lockedBy: null, finishedAt: new Date() },
+          data: {
+            status: "AWAITING_CLIENT",
+            stage: "PUBLISH",
+            approvedById: user.id,
+            lockedAt: null,
+            lockedBy: null,
+            finishedAt: null,
+            lastInteractionAt: new Date(),
+            conversationExpiresAt: new Date(Date.now() + settings.executionConversationTimeoutMinutes * 60_000),
+          },
         });
         if (updated.count !== 1) throw new Error("A trava da abertura do Pull Request expirou");
+        await transaction.executionMessage.create({ data: { executionId, role: "SYSTEM", content: `Pull Request #${created.externalNumber} aberto. A execução continuará disponível para ajustes até ser concluída pelo cliente ou expirar por inatividade.` } });
         await transaction.auditLog.create({
           data: auditData({
             actorId: user.id,

@@ -18,19 +18,11 @@ import {
   runProcess,
 } from "./sandbox.mjs";
 import { runImplementationPreview, runVisualValidation } from "./visual-validation.mjs";
-import { publishDashboardiaPreview } from "./preview-publisher.mjs";
-import { getDashboardiaPreview } from "../lib/preview-host-client.js";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 import { calculateLiveUsageCredits, saveFinancialSnapshot } from "../lib/financial-shadow.js";
 import { getExecutionCreditBudget, settleExecutionCredits } from "../lib/billing.js";
 import { getBusinessKnowledgeContext } from "../lib/business-knowledge.js";
 import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
-import {
-  buildPreviewRepairPrompt,
-  canRetryPreviewRepair,
-  describePreviewRepairFailure,
-  MAX_PREVIEW_REPAIR_ATTEMPTS,
-} from "./preview-repair.mjs";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 
@@ -47,8 +39,6 @@ class ExecutionStoppedError extends Error {
     this.name = "ExecutionStoppedError";
   }
 }
-
-const PREVIEW_TERMINAL_STATES = new Set(["READY", "FAILED", "EXPIRED"]);
 
 function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -78,17 +68,6 @@ function isTransientAgentError(error) {
   if (["APIConnectionError", "RateLimitError", "InternalServerError"].includes(name)) return true;
   const message = error instanceof Error ? error.message : String(error ?? "");
   return TRANSIENT_AGENT_ERROR_PATTERNS.some((pattern) => pattern.test(message));
-}
-
-async function waitForPreviewOutcome(previewId, timeoutMs = 210_000) {
-  const deadline = Date.now() + timeoutMs;
-  let latest = null;
-  while (Date.now() < deadline) {
-    latest = await getDashboardiaPreview(previewId);
-    if (PREVIEW_TERMINAL_STATES.has(latest?.status)) return latest;
-    await wait(3_000);
-  }
-  return latest;
 }
 
 async function log(executionId, scope, message, level = "info", metadata) {
@@ -225,7 +204,7 @@ export async function processExecution(executionId, workerId) {
     settings = await getGlobalSettings();
     execution = await db.execution.findUniqueOrThrow({
       where: { id: executionId },
-      include: { demand: { include: { project: true } } },
+      include: { demand: { include: { project: true } }, pullRequest: true, messages: { orderBy: { createdAt: "asc" } } },
     });
     if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada no worker");
     await mkdir(workspaceRoot, { recursive: true });
@@ -236,22 +215,24 @@ export async function processExecution(executionId, workerId) {
     const token = await getProjectGitHubAccessToken(execution.demand.project, execution.requestedById);
     const repositoryUrl = `https://github.com/${execution.demand.project.repositoryFullName}.git`;
     const authenticationArgs = gitAuthenticationArgs(token);
+    const isFollowUp = Boolean(execution.pullRequest && execution.branchName && execution.messages.some((message) => message.role === "USER"));
+    const sourceBranch = isFollowUp ? execution.branchName : execution.demand.project.defaultBranch;
     await runProcess("git", [
       ...authenticationArgs,
       "clone",
       "--depth",
       "50",
-      "--single-branch",
       "--branch",
-      execution.demand.project.defaultBranch,
+      sourceBranch,
       repositoryUrl,
       workspace,
     ], { cwd: workspaceRoot, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
 
-    const branchName = `forgeboard/demand-${execution.demandId.slice(-8)}-${execution.id.slice(-6)}`;
+    const branchName = isFollowUp ? execution.branchName : `forgeboard/demand-${execution.demandId.slice(-8)}-${execution.id.slice(-6)}`;
     const documentationOnly = execution.demand.type === "DOCUMENTATION";
     const agentLabel = documentationOnly ? "Agente de documentação" : "Agente de implementação";
-    await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
+    if (!isFollowUp) await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
+    await runProcess("git", [...authenticationArgs, "fetch", "origin", execution.demand.project.defaultBranch], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
     const projectDirectory = resolveWorkspacePath(workspace, execution.demand.project.workingDirectory);
     const selectedModel = execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL;
     execution.model = selectedModel;
@@ -292,9 +273,21 @@ export async function processExecution(executionId, workerId) {
       creditValueCents: settings.creditValueCents,
       targetGrossMarginPercent: settings.targetGrossMarginPercent,
     } : null;
+    const conversationContext = isFollowUp
+      ? execution.messages.map((message) => `${message.role === "USER" ? "Cliente" : message.role === "AGENT" ? "Agente" : "Sistema"}: ${message.content}`).join("\n\n")
+      : "";
+    const agentPrompt = isFollowUp
+      ? [
+          "Continue a execução já entregue na branch atual e no mesmo Pull Request.",
+          "Aplique o ajuste solicitado pelo cliente preservando todas as decisões e alterações anteriores.",
+          "Não recrie o projeto nem reverta trabalho válido. Inspecione o estado atual antes de editar.",
+          buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions),
+          `Interações desta execução:\n${conversationContext}`,
+        ].join("\n\n")
+      : buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions);
     const createImplementationAgent = () => startImplementationAgent({
       projectDirectory,
-      prompt: buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions),
+      prompt: agentPrompt,
       model: selectedModel,
       policy: agentPolicy,
       creditBudget,
@@ -374,6 +367,15 @@ export async function processExecution(executionId, workerId) {
 
     const statusResult = await runProcess("git", ["status", "--porcelain"], { cwd: workspace });
     if (!statusResult.stdout.trim()) {
+      if (isFollowUp) {
+        const expiresAt = new Date(Date.now() + settings.executionConversationTimeoutMinutes * 60_000);
+        await db.$transaction(async (transaction) => {
+          await transaction.execution.update({ where: { id: executionId }, data: { status: "AWAITING_CLIENT", stage: "PUBLISH", summary, lockedAt: null, lockedBy: null, conversationExpiresAt: expiresAt, lastInteractionAt: new Date() } });
+          await transaction.executionMessage.create({ data: { executionId, role: "AGENT", content: summary || "Revisei o pedido, mas ele não exigiu alterações adicionais no código." } });
+        });
+        await log(executionId, "agent", "Interação concluída sem novas alterações no código");
+        return;
+      }
       if (!["INVESTIGATION", "DOCUMENTATION"].includes(execution.demand.type)) throw new Error("A IA não produziu alterações no repositório");
       const finishedAt = new Date();
       await db.$transaction(async (transaction) => {
@@ -394,7 +396,7 @@ export async function processExecution(executionId, workerId) {
     await runProcess("git", ["add", "-A"], { cwd: workspace });
     await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "-m", `forgeboard: ${execution.demand.title.slice(0, 120)}`], { cwd: workspace });
     let implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
-    const base = (await runProcess("git", ["rev-parse", execution.demand.project.defaultBranch], { cwd: workspace })).stdout.trim();
+    const base = (await runProcess("git", ["rev-parse", `origin/${execution.demand.project.defaultBranch}`], { cwd: workspace })).stdout.trim();
 
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
 
@@ -519,197 +521,21 @@ export async function processExecution(executionId, workerId) {
     await restoreImplementationSnapshot(workspace, implementationHead);
     let diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
     await runProcess("git", [...authenticationArgs, "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
-    // A API de preview precisa conhecer a branch e o commit assim que eles
-    // existem. A liquidação e a transição para revisão continuam atômicas no
-    // encerramento, mas o ambiente navegável não deve depender desse passo.
     await db.execution.updateMany({
       where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
       data: { branchName, baseSha: base, headSha: implementationHead },
     });
     await saveReviewDiff(db, executionId, diffResult.stdout);
-    await log(executionId, "publish", "Branch e diff disponíveis para revisão enquanto o preview é preparado", "info", {
+    await log(executionId, "publish", "Branch, diff e evidências disponíveis para revisão", "info", {
       branchName,
       headSha: implementationHead,
     });
-
-    if (!documentationOnly) {
-      if (!validationResult.passed) {
-        await log(executionId, "preview", "A validação local falhou; o host de preview tentará compilar o projeto em seu ambiente isolado", "warn", {
-          failedScope: validationResult.failedScope,
-          technical: validationResult.technical,
-        });
-      }
-      let remotePreview = await publishDashboardiaPreview({
-        database: db,
-        execution,
-        projectDirectory,
-        runtime: detectedRuntime.runtime,
-        log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
-      });
-      let previewOutcome = remotePreview
-        ? await waitForPreviewOutcome(remotePreview.id).catch((error) => ({ status: "FAILED", error: error instanceof Error ? error.message : String(error) }))
-        : null;
-
-      if (previewOutcome?.status === "READY") {
-        await log(executionId, "preview", "Ambiente temporário iniciado e validado com sucesso", "info", {
-          previewId: previewOutcome.id,
-          url: previewOutcome.url,
-        });
-      } else if (previewOutcome?.status === "FAILED") {
-        const previewErrors = [];
-        let previewRepairAttempts = 0;
-        const previewRepairPolicy = {
-          ...agentPolicy,
-          maxTurns: Math.min(agentPolicy.maxTurns, 24),
-          maxTokens: Math.min(agentPolicy.maxTokens, 20_000),
-          timeoutMinutes: Math.min(agentPolicy.timeoutMinutes, 10),
-        };
-
-        for (let attempt = 1; attempt <= MAX_PREVIEW_REPAIR_ATTEMPTS && previewOutcome?.status === "FAILED"; attempt += 1) {
-          previewRepairAttempts = attempt;
-          const consumedBeforePreviewRepair = creditCostPolicy && measuredUsage
-            ? calculateLiveUsageCredits({ ...creditCostPolicy, ...measuredUsage })
-            : 0;
-          const remainingCreditBudget = creditBudget == null ? null : Math.max(0, creditBudget - consumedBeforePreviewRepair);
-          if (remainingCreditBudget != null && remainingCreditBudget <= 0) {
-            await log(executionId, "preview", "O limite de créditos disponível foi atingido antes da próxima correção automática", "warn");
-            break;
-          }
-
-          const previewTechnical = String(previewOutcome.error || "O container falhou durante a inicialização").slice(-20_000);
-          await log(executionId, "preview", `Falha ${attempt}/${MAX_PREVIEW_REPAIR_ATTEMPTS}: o agente recebeu a causa real do container`, "warn", {
-            previewId: previewOutcome.id,
-            technical: previewTechnical,
-          });
-          const previewRepairAgent = startImplementationAgent({
-            projectDirectory,
-            prompt: buildPreviewRepairPrompt({
-              technical: previewTechnical,
-              demandPrompt: buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions),
-              attempt,
-              previousErrors: previewErrors,
-            }),
-            model: selectedModel,
-            policy: previewRepairPolicy,
-            creditBudget: remainingCreditBudget,
-            creditBudgetContext,
-            creditCostPolicy,
-          });
-          await log(executionId, "preview", `Correção automática ${attempt}/${MAX_PREVIEW_REPAIR_ATTEMPTS} iniciada; branch e diff continuam disponíveis para revisão`);
-          const previewRepairTimeoutMs = previewRepairPolicy.timeoutMinutes * 60_000;
-          let previewRepairTimeout;
-          const previewRepairDeadline = new Promise((_, reject) => {
-            previewRepairTimeout = setTimeout(() => {
-              previewRepairAgent.abort();
-              const timeoutError = new Error(`A correção automática excedeu ${previewRepairPolicy.timeoutMinutes} minuto(s)`);
-              timeoutError.code = "PREVIEW_REPAIR_TIMEOUT";
-              reject(timeoutError);
-            }, previewRepairTimeoutMs);
-            previewRepairTimeout.unref();
-          });
-          let previewRepairCompleted = false;
-          try {
-            const repairResult = await Promise.race([previewRepairAgent.promise, previewRepairDeadline]);
-            inputTokens = (inputTokens ?? 0) + (repairResult.inputTokens ?? 0);
-            outputTokens = (outputTokens ?? 0) + (repairResult.outputTokens ?? 0);
-            measuredUsage = { inputTokens, outputTokens };
-            previewRepairCompleted = true;
-          } catch (repairError) {
-            previewRepairAgent.abort();
-            await restoreImplementationSnapshot(workspace, implementationHead);
-            const repairFailure = describePreviewRepairFailure(repairError);
-            previewErrors.push(`Tentativa ${attempt}: ${repairFailure}`);
-            await log(executionId, "preview", "A correção automática do preview não foi concluída; a branch, o diff e as evidências visuais foram preservados", "warn", {
-              technical: repairFailure,
-              timedOut: repairError?.code === "PREVIEW_REPAIR_TIMEOUT",
-              retrying: canRetryPreviewRepair(attempt),
-            });
-          } finally {
-            clearTimeout(previewRepairTimeout);
-          }
-
-          await assertExecutionActive(executionId);
-          const previewRepairStatus = previewRepairCompleted
-            ? await runProcess("git", ["status", "--porcelain"], { cwd: workspace })
-            : { stdout: "" };
-          if (!previewRepairCompleted) {
-            if (canRetryPreviewRepair(attempt)) {
-              await log(executionId, "preview", `A tentativa ${attempt} falhou antes de alterar o código; iniciando uma nova tentativa independente`, "warn");
-              continue;
-            }
-            break;
-          }
-          if (!previewRepairStatus.stdout.trim()) {
-            const noChangesMessage = `Tentativa ${attempt}: o agente concluiu sem produzir uma correção no código`;
-            previewErrors.push(noChangesMessage);
-            await log(executionId, "preview", "O agente não encontrou uma nova correção aplicável para a falha de inicialização", "warn", {
-              retrying: canRetryPreviewRepair(attempt),
-            });
-            if (canRetryPreviewRepair(attempt)) continue;
-            break;
-          }
-
-          await runProcess("git", ["add", "-A"], { cwd: workspace });
-          // O commit original já foi publicado antes de o preview ser criado.
-          // Criar um novo commit mantém o push como fast-forward e evita que
-          // --force-with-lease falhe quando a referência remota for atualizada
-          // entre a publicação inicial e o término do reparo do container.
-          await runProcess("git", [
-            "-c", "user.name=Forgeboard",
-            "-c", "user.email=forgeboard@users.noreply.github.com",
-            "commit", "-m", `forgeboard: corrige preview (${attempt}/${MAX_PREVIEW_REPAIR_ATTEMPTS})`,
-          ], { cwd: workspace });
-          implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
-          diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
-          await runProcess("git", [...authenticationArgs, "push", "origin", branchName], {
-            cwd: workspace,
-            timeout: 5 * 60_000,
-            secrets: [token, authenticationArgs[1]],
-          });
-          await db.execution.updateMany({
-            where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
-            data: { headSha: implementationHead },
-          });
-          await saveReviewDiff(db, executionId, diffResult.stdout);
-          await log(executionId, "preview", `Correção ${attempt}/${MAX_PREVIEW_REPAIR_ATTEMPTS} aplicada; validando uma nova reconstrução do ambiente`);
-          previewErrors.push(previewTechnical);
-          remotePreview = await publishDashboardiaPreview({
-            database: db,
-            execution,
-            projectDirectory,
-            runtime: detectedRuntime.runtime,
-            log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
-          });
-          previewOutcome = remotePreview
-            ? await waitForPreviewOutcome(remotePreview.id).catch((error) => ({ status: "FAILED", error: error instanceof Error ? error.message : String(error) }))
-            : null;
-        }
-
-        if (previewOutcome?.status === "READY") {
-          await log(executionId, "preview", "Ambiente temporário corrigido e validado com sucesso", "info", {
-            previewId: previewOutcome.id,
-            url: previewOutcome.url,
-          });
-        } else if (previewOutcome?.status === "FAILED") {
-          await log(executionId, "preview", "O ambiente continuou indisponível após as correções automáticas; as evidências visuais foram preservadas", "warn", {
-            previewId: previewOutcome?.id ?? remotePreview?.id,
-            attempts: previewRepairAttempts,
-            technical: String(previewOutcome?.error || "O host não confirmou a inicialização").slice(-20_000),
-          });
-        }
-      } else if (remotePreview) {
-        await log(executionId, "preview", "O host ainda não confirmou a inicialização; a sincronização continuará pela tela", "warn", {
-          previewId: remotePreview.id,
-          status: previewOutcome?.status ?? "UNKNOWN",
-        });
-      }
-    }
 
     await db.$transaction(async (transaction) => {
       const updated = await transaction.execution.updateMany({
         where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
         data: {
-          status: "WAITING_APPROVAL",
+          status: execution.pullRequest ? "AWAITING_CLIENT" : "WAITING_APPROVAL",
           stage: "PUBLISH",
           summary,
           baseSha: base,
@@ -718,16 +544,35 @@ export async function processExecution(executionId, workerId) {
           outputTokens,
           lockedAt: null,
           lockedBy: null,
+          ...(execution.pullRequest ? {
+            conversationExpiresAt: new Date(Date.now() + settings.executionConversationTimeoutMinutes * 60_000),
+            lastInteractionAt: new Date(),
+          } : {}),
         },
       });
       if (updated.count !== 1) throw new ExecutionCancelledError();
       const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage });
       await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
       await saveReviewDiff(transaction, executionId, diffResult.stdout);
+      await transaction.executionArtifact.deleteMany({ where: { executionId, type: "validation" } });
+      await transaction.executionArtifact.create({
+        data: {
+          executionId,
+          type: "validation",
+          name: "validation-summary.json",
+          content: JSON.stringify({
+            passed: validationResult.passed,
+            failedScope: validationResult.failedScope ?? null,
+            technical: validationResult.technical ?? null,
+            generatedAt: new Date().toISOString(),
+          }, null, 2),
+        },
+      });
       if (visualArtifacts.length) await transaction.executionArtifact.createMany({ data: visualArtifacts.map((artifact) => ({ executionId, ...artifact })) });
+      if (isFollowUp) await transaction.executionMessage.create({ data: { executionId, role: "AGENT", content: summary || "Ajuste aplicado na mesma branch e no Pull Request existente." } });
       await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "REVIEW" } });
     });
-    await log(executionId, "publish", `Branch ${branchName} enviada; aguardando aprovação para abrir Pull Request`);
+    await log(executionId, "publish", execution.pullRequest ? `Ajuste enviado para o Pull Request #${execution.pullRequest.externalNumber}; aguardando o cliente` : `Branch ${branchName} enviada; aguardando aprovação para abrir Pull Request`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha desconhecida na execução";
     const cancelled = error instanceof ExecutionCancelledError;

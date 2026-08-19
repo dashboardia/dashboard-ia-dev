@@ -3,7 +3,7 @@ import process from "node:process";
 
 import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
-import { claimNextExecution, recoverStaleExecutions } from "../lib/executions.js";
+import { claimNextExecution, expireInactiveExecutionConversations, recoverStaleExecutions } from "../lib/executions.js";
 import { getGlobalSettings } from "../lib/global-settings.js";
 import { pruneWorkerHeartbeats, recordWorkerHeartbeat, removeWorkerHeartbeat } from "../lib/worker-heartbeat.js";
 import { checkProjectHealth, pruneHealthChecks } from "./health.mjs";
@@ -14,6 +14,7 @@ let stopping = false;
 let lastHealthCheck = 0;
 let lastHealthPrune = 0;
 let lastStaleRecovery = 0;
+let lastConversationExpiration = 0;
 const workerStartedAt = new Date();
 let heartbeatTimer = null;
 let heartbeatPromise = null;
@@ -91,6 +92,10 @@ async function main() {
         maxAttempts: runtimeSettings.executionMaxAttempts,
       }).catch((error) => console.error(`[worker:${workerId}] recuperação de execuções travadas falhou`, error));
       lastStaleRecovery = Date.now();
+    }
+    if (Date.now() - lastConversationExpiration >= 60_000) {
+      await expireInactiveExecutionConversations(db).catch((error) => console.error(`[worker:${workerId}] expiração de conversas falhou`, error));
+      lastConversationExpiration = Date.now();
     }
     if (Date.now() - lastHealthCheck >= runtimeSettings.healthCheckIntervalMinutes * 60_000) {
       await checkProjectHealth({

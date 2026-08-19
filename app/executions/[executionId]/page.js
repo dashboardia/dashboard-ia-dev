@@ -15,8 +15,9 @@ import { formatBrlCents } from "../../../lib/financial-shadow";
 import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings";
 import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-button";
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
-import PreviewCard from "./preview-card";
+import EvidenceCard from "./evidence-card";
 import DiffViewer from "./diff-viewer";
+import ExecutionConversation from "./execution-conversation";
 
 const cancellableStatuses = ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"];
 
@@ -47,6 +48,7 @@ export default async function ExecutionPage({ params }) {
       pullRequest: true,
       financialSnapshot: true,
       creditReservation: true,
+      messages: { orderBy: { createdAt: "asc" } },
     },
   });
   if (!execution) notFound();
@@ -120,7 +122,9 @@ export default async function ExecutionPage({ params }) {
           <div className="execution-timeline">{execution.logs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; return <div key={entry.id}><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Ver detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>; })}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div>
         </section>
 
-        {execution.demand.type !== "DOCUMENTATION" && <PreviewCard executionId={execution.id} executionStatus={execution.status} headSha={execution.headSha} />}
+        {execution.demand.type !== "DOCUMENTATION" && <EvidenceCard artifacts={execution.artifacts} />}
+
+        {(execution.pullRequest || execution.messages.length > 0) && <ExecutionConversation executionId={execution.id} status={execution.status} messages={execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} maxAdjustments={settings.executionConversationMaxAdjustments} />}
 
         <section className="form-card detail-card full-card execution-diff-card">
           <div className="card-heading"><div><h2>Diff para revisão</h2><p>Alterações exatas geradas antes da abertura do Pull Request</p></div><Code2 size={20} /></div>
