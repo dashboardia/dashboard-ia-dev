@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, Clock3, Code2, Coins, Download, FileText, GitBranch, Images, TerminalSquare, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Clock3, Code2, Coins, Download, FileText, GitBranch, TerminalSquare, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -16,8 +16,6 @@ import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-but
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
 import PreviewCard from "./preview-card";
 import DiffViewer from "./diff-viewer";
-
-/* eslint-disable @next/next/no-img-element -- imagens privadas e de altura variável servidas por rota autenticada */
 
 const cancellableStatuses = ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"];
 
@@ -54,7 +52,6 @@ export default async function ExecutionPage({ params }) {
   const role = await getProjectRole(user, execution.demand.projectId);
   if (!role) redirect("/executions");
   const diff = execution.artifacts.find((artifact) => artifact.type === "diff");
-  const visualArtifacts = execution.artifacts.filter((artifact) => artifact.type === "visual");
   const canCancel = role === "MANAGER" && cancellableStatuses.includes(execution.status) && !execution.cancelRequestedAt;
   const canOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.cancelRequestedAt;
   const interrupted = ["CANCELLED", "STOPPED"].includes(execution.status) || Boolean(execution.cancelRequestedAt);
@@ -121,11 +118,6 @@ export default async function ExecutionPage({ params }) {
           <div className="card-heading"><div><h2>Logs da execução</h2><p>{execution.logs.length} eventos registrados em ordem cronológica</p></div><TerminalSquare size={20} /></div>
           <div className="execution-timeline">{execution.logs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; return <div key={entry.id}><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Ver detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>; })}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div>
         </section>
-
-        {execution.demand.visualValidation && <section className="form-card detail-card full-card">
-          <div className="card-heading"><div><h2>Validação visual</h2><p>Evidências opcionais da interface; a aprovação do código permanece separada.</p></div><Images size={20} /></div>
-          {visualArtifacts.length ? <div className="visual-evidence-grid">{visualArtifacts.map((artifact) => <figure className="visual-evidence" key={artifact.id}><img src={`/api/artifacts/${artifact.id}`} alt={`${artifact.metadata?.source === "before" ? "Antes" : "Depois"} — ${artifact.metadata?.route ?? "/"} — ${artifact.metadata?.viewport ?? "tela"}`} loading="lazy" /><figcaption><strong>{artifact.metadata?.source === "before" ? "Antes" : "Depois"}</strong><span>{artifact.metadata?.route ?? "/"} · {artifact.metadata?.viewport === "mobile" ? "Celular" : "Desktop"}</span></figcaption></figure>)}</div> : <div className="list-empty">As evidências aparecerão após a etapa de validação.</div>}
-        </section>}
 
         {execution.demand.type !== "DOCUMENTATION" && <PreviewCard executionId={execution.id} />}
 
