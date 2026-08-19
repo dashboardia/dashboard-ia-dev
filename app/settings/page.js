@@ -29,6 +29,7 @@ export default async function SettingsPage() {
   const items = [
     ["PostgreSQL", configuration.database, "DATABASE_URL"],
     ["GitHub OAuth", configuration.githubAuth, "GITHUB_ID, GITHUB_SECRET e NEXTAUTH_SECRET"],
+    ["Proteção dos tokens OAuth", configuration.tokenEncryption, "TOKEN_ENCRYPTION_KEY"],
     ["Webhook GitHub", configuration.githubWebhook, "GITHUB_WEBHOOK_SECRET e NEXTAUTH_URL"],
     ["OpenAI", configuration.openai, "OPENAI_API_KEY"],
     ["Asaas", configuration.asaas, "ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN e NEXTAUTH_URL"],
