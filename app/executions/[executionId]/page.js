@@ -56,7 +56,7 @@ export default async function ExecutionPage({ params }) {
   const visualArtifacts = execution.artifacts.filter((artifact) => artifact.type === "visual");
   const canCancel = role === "MANAGER" && cancellableStatuses.includes(execution.status) && !execution.cancelRequestedAt;
   const canOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.cancelRequestedAt;
-  const cancelled = execution.status === "CANCELLED" || Boolean(execution.cancelRequestedAt);
+  const interrupted = ["CANCELLED", "STOPPED"].includes(execution.status) || Boolean(execution.cancelRequestedAt);
   const live = cancellableStatuses.includes(execution.status) && !execution.cancelRequestedAt;
   const explainedError = execution.error ? explainError(execution.error) : null;
 
@@ -69,7 +69,7 @@ export default async function ExecutionPage({ params }) {
           eyebrow={`${execution.demand.project.name} · ${execution.stage}`}
           title={execution.demand.title}
           description={`Execução ${execution.id.slice(-10)} · solicitada por ${execution.requestedBy.name ?? execution.requestedBy.githubLogin}`}
-          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : canOpenPullRequest ? <OpenPullRequestButton executionId={execution.id} /> : cancelled ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar para a demanda original</Link></div> : null}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
+          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : canOpenPullRequest ? <OpenPullRequestButton executionId={execution.id} /> : interrupted ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar a demanda</Link></div> : null}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
         />
 
         <section className="execution-metrics">

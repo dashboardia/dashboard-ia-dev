@@ -258,6 +258,7 @@ nav em { margin-left:auto; font-style:normal; background:#6d4aff; color:white; w
 .status-pill.preview-failed { background:#fff0f0; color:#b94b4b; }
 .status-pill.preview-unavailable { background:#f4f2f8; color:#6f6b79; }
 .status-pill.preview-not_ready { background:#f4f2f8; color:#6f6b79; }
+.status-pill.stopped { color:#8b5a14; background:#fff4dc; }
 .api-preview { display:flex; flex-direction:column; gap:12px; }
 .api-preview-heading { display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid #e7e5ef; border-radius:10px; }
 .api-preview-heading>span { flex:1; display:flex; flex-direction:column; gap:3px; }

@@ -18,6 +18,15 @@ describe("agent policy", () => {
       .toMatchObject({ scope: "COMPLEX", maxTurns: 64, timeoutMinutes: 15, reasoningEffort: "high" });
   });
 
+  it("permite ao administrador reduzir ou ampliar o orçamento do agente", () => {
+    const demand = { project, title: "Projeto completo", description: "Criar persistência, banco, controllers, services e repositories.", acceptanceCriteria: "Aplicação completa em vários módulos." };
+    const economy = resolveAgentRunPolicy({ demand, model: "gpt-5.6-terra", configuredTimeoutMinutes: 5, powerMode: "ECONOMY" });
+    const maximum = resolveAgentRunPolicy({ demand, model: "gpt-5.6-terra", configuredTimeoutMinutes: 5, powerMode: "MAXIMUM" });
+
+    expect(economy).toMatchObject({ maxTurns: 40, maxTokens: 24_000, timeoutMinutes: 10 });
+    expect(maximum).toMatchObject({ maxTurns: 96, maxTokens: 48_000, timeoutMinutes: 30 });
+  });
+
   it("mantém orçamento menor para uma correção pontual", () => {
     const demand = { project, title: "Corrigir rótulo", description: "Corrija o texto do botão de salvar.", acceptanceCriteria: "Exibir Salvar alterações." };
 

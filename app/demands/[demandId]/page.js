@@ -16,7 +16,7 @@ import OpenPullRequestButton from "./open-pull-request-button";
 import StartAnalysisButton from "./start-analysis-button";
 
 const typeLabels = { BUG: "Correção", FEATURE: "Nova funcionalidade", REFACTOR: "Refatoração", TEST: "Testes", INVESTIGATION: "Investigação", DOCUMENTATION: "Documentação de negócio" };
-const statusLabels = { DRAFT: "Rascunho", PENDING_APPROVAL: "Aguardando aprovação", APPROVED: "Aprovada", QUEUED: "Na fila", RUNNING: "Em execução", REVIEW: "Em revisão", SUCCEEDED: "Concluída", FAILED: "Falhou", CANCELLED: "Cancelada" };
+const statusLabels = { DRAFT: "Rascunho", PENDING_APPROVAL: "Aguardando aprovação", APPROVED: "Aprovada", QUEUED: "Na fila", RUNNING: "Em execução", REVIEW: "Em revisão", SUCCEEDED: "Concluída", FAILED: "Falhou", CANCELLED: "Cancelada", STOPPED: "Parada pelo administrador" };
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,7 @@ export default async function DemandPage({ params }) {
     <AppShell user={user}>
       <div className="section-page">
         <AutoRefresh active={live} />
-        <SectionHeader backHref="/demands" eyebrow={`${demand.project.name} · ${typeLabels[demand.type]}`} title={demand.title} description={`Criada por ${demand.createdBy.name ?? demand.createdBy.githubLogin}`} action={role === "MANAGER" && demand.status === "PENDING_APPROVAL" ? <ApproveButton demandId={demand.id} /> : role === "MANAGER" && ["APPROVED", "FAILED"].includes(demand.status) ? <StartAnalysisButton demandId={demand.id} /> : null} />
+        <SectionHeader backHref="/demands" eyebrow={`${demand.project.name} · ${typeLabels[demand.type]}`} title={demand.title} description={`Criada por ${demand.createdBy.name ?? demand.createdBy.githubLogin}`} action={role === "MANAGER" && demand.status === "PENDING_APPROVAL" ? <ApproveButton demandId={demand.id} /> : role === "MANAGER" && ["APPROVED", "FAILED", "STOPPED"].includes(demand.status) ? <StartAnalysisButton demandId={demand.id} /> : null} />
         <div className="detail-grid demand-detail-grid">
           <DemandEditCard demand={{ id: demand.id, title: demand.title, description: demand.description, acceptanceCriteria: demand.acceptanceCriteria, type: demand.type, priority: demand.priority, visualValidation: demand.visualValidation, visualPaths: demand.visualPaths, aiModel: demand.aiModel }} canEdit={canEdit} />
           <section className="form-card detail-card"><h2>Informações</h2><div className="detail-list"><span><Clock3 size={17} /><strong>Status</strong><em>{statusLabels[demand.status]}</em></span><span><GitBranch size={17} /><strong>Branch base</strong><em>{demand.project.defaultBranch}</em></span><span><User size={17} /><strong>Aprovador</strong><em>{demand.approvedBy?.name ?? demand.approvedBy?.githubLogin ?? "Pendente"}</em></span><span><CheckCircle2 size={17} /><strong>Prioridade</strong><em>{demand.priority}</em></span></div></section>

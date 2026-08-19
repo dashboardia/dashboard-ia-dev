@@ -16,6 +16,15 @@ export default function GlobalSettingsForm({ initialSettings }) {
     commandTimeoutMinutes: String(initialSettings.commandTimeoutMinutes),
     agentTimeoutMinutes: String(initialSettings.agentTimeoutMinutes),
     parallelExecutions: String(initialSettings.parallelExecutions),
+    executionProcessingEnabled: initialSettings.executionProcessingEnabled,
+    agentPowerMode: initialSettings.agentPowerMode,
+    executionMaxAttempts: String(initialSettings.executionMaxAttempts),
+    staleExecutionMinutes: String(initialSettings.staleExecutionMinutes),
+    healthCheckIntervalMinutes: String(initialSettings.healthCheckIntervalMinutes),
+    healthCheckTimeoutSeconds: String(initialSettings.healthCheckTimeoutSeconds),
+    healthCheckConcurrency: String(initialSettings.healthCheckConcurrency),
+    healthCheckRetentionDays: String(initialSettings.healthCheckRetentionDays),
+    previewPreparationTimeoutMinutes: String(initialSettings.previewPreparationTimeoutMinutes),
     financialShadowEnabled: initialSettings.financialShadowEnabled,
     usdToBrlCents: String(initialSettings.usdToBrlCents),
     aiSafetyPercent: String(initialSettings.aiSafetyPercent),
@@ -69,7 +78,12 @@ export default function GlobalSettingsForm({ initialSettings }) {
           <h2>Execução global</h2>
           <p>Padrões aplicados pelo worker a todos os projetos</p>
         </div>
+        <label className="financial-shadow-toggle">
+          <input name="executionProcessingEnabled" type="checkbox" checked={form.executionProcessingEnabled} onChange={change} />
+          <span>{form.executionProcessingEnabled ? "Processamentos ligados" : "Processamentos pausados"}</span>
+        </label>
       </div>
+      {!form.executionProcessingEnabled && <div className="form-error"><TriangleAlert size={16} />Novas execuções serão bloqueadas. Execuções na fila serão paradas imediatamente e trabalhos ativos serão interrompidos com segurança. Ao religar, cada cliente deverá reprocessar manualmente as demandas paradas.</div>}
       <div className="form-grid">
         <label>
           <span>Fuso horário</span>
@@ -77,6 +91,15 @@ export default function GlobalSettingsForm({ initialSettings }) {
             <option value="America/Sao_Paulo">Brasil — São Paulo</option>
             <option value="UTC">UTC</option>
           </select>
+        </label>
+        <label>
+          <span>Potência global do agente</span>
+          <select name="agentPowerMode" value={form.agentPowerMode} onChange={change}>
+            <option value="ECONOMY">Econômica</option>
+            <option value="BALANCED">Equilibrada</option>
+            <option value="MAXIMUM">Máxima</option>
+          </select>
+          <small>Controla raciocínio, quantidade de interações, tokens de saída e tempo mínimo conforme o escopo.</small>
         </label>
         <label>
           <span>Memória máxima do Node por execução</span>
@@ -101,9 +124,21 @@ export default function GlobalSettingsForm({ initialSettings }) {
         </label>
         <label>
           <span>Timeout do agente</span>
-          <input name="agentTimeoutMinutes" type="number" min="1" max="15" value={form.agentTimeoutMinutes} onChange={change} />
+          <input name="agentTimeoutMinutes" type="number" min="1" max="30" value={form.agentTimeoutMinutes} onChange={change} />
           <small>Minutos máximos para implementação.</small>
         </label>
+        <label><span>Máximo de tentativas</span><input name="executionMaxAttempts" type="number" min="1" max="10" value={form.executionMaxAttempts} onChange={change} /><small>Quantidade máxima de retomadas automáticas após interrupção do worker.</small></label>
+        <label><span>Execução travada após</span><input name="staleExecutionMinutes" type="number" min="5" max="180" value={form.staleExecutionMinutes} onChange={change} /><small>Minutos sem progresso antes de liberar ou encerrar uma execução órfã.</small></label>
+      </div>
+      <div className="financial-settings">
+        <div className="card-heading"><div><h3>Monitoramento e previews</h3><p>Parâmetros operacionais aplicados em tempo real pelo worker.</p></div></div>
+        <div className="form-grid three-columns">
+          <label><span>Intervalo de saúde (min)</span><input name="healthCheckIntervalMinutes" type="number" min="1" max="60" value={form.healthCheckIntervalMinutes} onChange={change} /><small>Frequência de verificação das URLs de produção.</small></label>
+          <label><span>Timeout de saúde (s)</span><input name="healthCheckTimeoutSeconds" type="number" min="2" max="60" value={form.healthCheckTimeoutSeconds} onChange={change} /><small>Tempo máximo por projeto monitorado.</small></label>
+          <label><span>Checagens simultâneas</span><input name="healthCheckConcurrency" type="number" min="1" max="25" value={form.healthCheckConcurrency} onChange={change} /><small>Projetos verificados em paralelo.</small></label>
+          <label><span>Retenção da saúde (dias)</span><input name="healthCheckRetentionDays" type="number" min="1" max="365" value={form.healthCheckRetentionDays} onChange={change} /><small>Histórico mantido no banco.</small></label>
+          <label><span>Espera do preview (min)</span><input name="previewPreparationTimeoutMinutes" type="number" min="1" max="60" value={form.previewPreparationTimeoutMinutes} onChange={change} /><small>Quando um preview preso em preparação passa a ser considerado falho.</small></label>
+        </div>
       </div>
       <div className="financial-settings">
         <div className="card-heading">

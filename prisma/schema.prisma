@@ -60,6 +60,7 @@ enum DemandStatus {
   SUCCEEDED
   FAILED
   CANCELLED
+  STOPPED
 }
 
 enum ExecutionStatus {
@@ -71,6 +72,7 @@ enum ExecutionStatus {
   SUCCEEDED
   FAILED
   CANCELLED
+  STOPPED
 }
 
 enum ExecutionStage {
@@ -304,6 +306,7 @@ model Execution {
   outputTokens       Int?
   attempts           Int                         @default(0)
   cancelRequestedAt  DateTime?
+  stopRequestedAt    DateTime?
   lockedAt           DateTime?
   lockedBy           String?
   startedAt          DateTime?
@@ -590,19 +593,28 @@ model WorkerHeartbeat {
 }
 
 model GlobalSettings {
-  id                        String   @id
-  timeZone                  String   @default("America/Sao_Paulo")
-  nodeMemoryMb              Int      @default(384)
-  commandTimeoutMinutes     Int      @default(10)
-  agentTimeoutMinutes       Int      @default(5)
-  parallelExecutions        Int      @default(2)
-  financialShadowEnabled    Boolean  @default(true)
-  usdToBrlCents             Int      @default(600)
-  aiSafetyPercent           Int      @default(15)
-  targetGrossMarginPercent  Int      @default(80)
-  creditValueCents          Int      @default(10)
-  reservationBufferPercent  Int      @default(20)
-  workerCostCentsPerHour    Int      @default(100)
-  visualValidationCostCents Int      @default(10)
-  updatedAt                 DateTime @updatedAt
+  id                               String   @id
+  timeZone                         String   @default("America/Sao_Paulo")
+  nodeMemoryMb                     Int      @default(384)
+  commandTimeoutMinutes            Int      @default(10)
+  agentTimeoutMinutes              Int      @default(5)
+  parallelExecutions               Int      @default(2)
+  executionProcessingEnabled       Boolean  @default(true)
+  agentPowerMode                   String   @default("BALANCED")
+  executionMaxAttempts             Int      @default(3)
+  staleExecutionMinutes            Int      @default(30)
+  healthCheckIntervalMinutes       Int      @default(5)
+  healthCheckTimeoutSeconds        Int      @default(10)
+  healthCheckConcurrency           Int      @default(10)
+  healthCheckRetentionDays         Int      @default(30)
+  previewPreparationTimeoutMinutes Int      @default(15)
+  financialShadowEnabled           Boolean  @default(true)
+  usdToBrlCents                    Int      @default(600)
+  aiSafetyPercent                  Int      @default(15)
+  targetGrossMarginPercent         Int      @default(80)
+  creditValueCents                 Int      @default(10)
+  reservationBufferPercent         Int      @default(20)
+  workerCostCentsPerHour           Int      @default(100)
+  visualValidationCostCents        Int      @default(10)
+  updatedAt                        DateTime @updatedAt
 }

@@ -8,6 +8,7 @@ import { db } from "../../../../../lib/db";
 import { env } from "../../../../../lib/env";
 import { queueDemandExecution } from "../../../../../lib/executions";
 import { getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../../../lib/github";
+import { assertPlatformProcessingEnabled } from "../../../../../lib/platform-processing";
 
 export async function POST(request, context) {
   try {
@@ -15,6 +16,7 @@ export async function POST(request, context) {
     if (!env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "Configure OPENAI_API_KEY antes de executar" }, { status: 503 });
     }
+    await assertPlatformProcessingEnabled(db);
 
     const { demandId } = await context.params;
     const demand = await db.demand.findUniqueOrThrow({
@@ -22,7 +24,7 @@ export async function POST(request, context) {
       include: { project: { select: { repositoryFullName: true, defaultBranch: true, githubInstallationId: true } } },
     });
     const { user } = await requireProjectRole(demand.projectId, "MANAGER");
-    if (!["APPROVED", "FAILED"].includes(demand.status)) {
+    if (!["APPROVED", "FAILED", "STOPPED"].includes(demand.status)) {
       return NextResponse.json({ error: "A demanda precisa estar aprovada para entrar na fila" }, { status: 409 });
     }
 
