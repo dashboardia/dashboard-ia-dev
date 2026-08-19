@@ -128,7 +128,7 @@ O arquivo `render.yaml` provisiona a aplicação web de contingência na região
 
 - `dashboard-ia-standby`: aplicação Next.js gratuita com health check em `/api/health`.
 
-O Blueprint solicita os segredos durante a criação e nunca os mantém no repositório. O serviço acompanha a branch `main-render`, isolada da `main` usada pelo Railway, preservando no Render uma versão atualizada para contingência sem custo fixo. O worker continua exclusivamente no Railway e pode ser provisionado temporariamente no Render durante uma indisponibilidade prolongada. O PostgreSQL deve ser acessível externamente pelos dois provedores; não use o endereço privado interno do Railway no Render.
+O Blueprint solicita somente os segredos necessários ao standby durante a criação e nunca os mantém no repositório. O serviço acompanha a branch `main-render`, isolada da `main` usada pelo Railway, preservando no Render uma versão atualizada para contingência sem custo fixo. O worker continua exclusivamente no Railway e pode ser provisionado temporariamente no Render durante uma indisponibilidade prolongada. Integrações opcionais de contato, API Railway e armazenamento visual podem ser adicionadas depois. O PostgreSQL deve ser acessível externamente pelos dois provedores; não use o endereço privado interno do Railway no Render.
 
 ## Permissões
 
