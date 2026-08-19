@@ -4,20 +4,38 @@ import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export default function AutoRefresh({ active, interval = 3000 }) {
+export default function AutoRefresh({ active, interval = 3000, revisionUrl = null, revision = null }) {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const lastRefreshAt = useRef(0);
   const indicatorTimer = useRef(null);
+  const inFlight = useRef(false);
+  const currentRevision = useRef(revision);
 
-  const refresh = useCallback(() => {
-    if (!active || document.visibilityState === "hidden") return;
+  const refresh = useCallback(async () => {
+    if (!active || document.visibilityState === "hidden" || inFlight.current) return;
+    inFlight.current = true;
     lastRefreshAt.current = Date.now();
     setRefreshing(true);
-    router.refresh();
-    window.clearTimeout(indicatorTimer.current);
-    indicatorTimer.current = window.setTimeout(() => setRefreshing(false), 700);
-  }, [active, router]);
+    try {
+      if (revisionUrl) {
+        const separator = revisionUrl.includes("?") ? "&" : "?";
+        const response = await fetch(`${revisionUrl}${separator}t=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const result = await response.json();
+        if (result.revision === currentRevision.current) return;
+      }
+      router.refresh();
+    } finally {
+      inFlight.current = false;
+      window.clearTimeout(indicatorTimer.current);
+      indicatorTimer.current = window.setTimeout(() => setRefreshing(false), 700);
+    }
+  }, [active, revisionUrl, router]);
+
+  useEffect(() => {
+    currentRevision.current = revision;
+  }, [revision]);
 
   useEffect(() => {
     if (!active) return undefined;

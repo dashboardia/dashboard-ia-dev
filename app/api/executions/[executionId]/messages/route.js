@@ -3,11 +3,14 @@ import { NextResponse } from "next/server";
 import { requireProjectRole } from "../../../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../../../lib/api";
 import { auditData } from "../../../../../lib/audit";
+import { chargeFixedProjectCredits, refundFixedCredits } from "../../../../../lib/billing";
 import { db } from "../../../../../lib/db";
 import { getGlobalSettings } from "../../../../../lib/global-settings";
 import { executionMessageInputSchema } from "../../../../../lib/validation";
 
 export async function POST(request, context) {
+  let charge = null;
+  let accepted = false;
   try {
     assertSameOrigin(request);
     const { executionId } = await context.params;
@@ -25,6 +28,14 @@ export async function POST(request, context) {
       return NextResponse.json({ error: "O limite de ajustes desta execução foi atingido. Conclua a execução e abra uma nova demanda." }, { status: 409 });
     }
 
+    charge = await chargeFixedProjectCredits({
+      projectId: execution.demand.projectId,
+      executionId,
+      credits: settings.executionConversationCreditCost,
+      description: `Interação na execução · ${execution.demand.title}`,
+      metadata: { kind: "execution_interaction", executionId, adjustment: execution.adjustmentCount + 1 },
+    });
+
     const result = await db.$transaction(async (transaction) => {
       const message = await transaction.executionMessage.create({ data: { executionId, authorId: user.id, role: "USER", content: input.content } });
       const updated = await transaction.execution.updateMany({
@@ -40,11 +51,13 @@ export async function POST(request, context) {
         },
       });
       if (updated.count !== 1) throw new Error("A execução mudou de estado enquanto o ajuste era enviado");
-      await transaction.auditLog.create({ data: auditData({ actorId: user.id, projectId: execution.demand.projectId, action: "execution.adjustment.request", entityType: "Execution", entityId: executionId, metadata: { adjustment: execution.adjustmentCount + 1 }, request }) });
+      await transaction.auditLog.create({ data: auditData({ actorId: user.id, projectId: execution.demand.projectId, action: "execution.adjustment.request", entityType: "Execution", entityId: executionId, metadata: { adjustment: execution.adjustmentCount + 1, credits: charge.credits }, request }) });
       return message;
     });
+    accepted = true;
     return NextResponse.json({ message: result }, { status: 202 });
   } catch (error) {
+    if (charge && !accepted) await refundFixedCredits(charge, "Estorno: interação não aceita na execução").catch(() => null);
     return apiError(error);
   }
 }

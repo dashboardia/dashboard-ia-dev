@@ -1,4 +1,4 @@
-import { CalendarDays, Check, Coins, CreditCard, FolderGit2, Gauge, ShieldCheck } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Coins, CreditCard, FolderGit2, Gauge, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 import AppShell from "../../components/app-shell";
@@ -37,7 +37,7 @@ export default async function BillingPage({ searchParams }) {
   ]);
   const account = overview.account;
   const usagePeriodStart = account.plan === "TRIAL" ? account.trialStartedAt : account.cycleStartedAt;
-  const [transactions, reservations] = await Promise.all([
+  const [transactions, reservations, interactionTransactions, consumedSummary] = await Promise.all([
     db.creditTransaction.findMany({
       where: { account: { ownerUserId: user.id } },
       orderBy: { createdAt: "desc" },
@@ -66,13 +66,32 @@ export default async function BillingPage({ searchParams }) {
       orderBy: { settledAt: "desc" },
       take: 200,
     }),
+    db.creditTransaction.findMany({
+      where: {
+        accountId: account.id,
+        type: "CONSUME",
+        executionId: { not: null },
+        description: { startsWith: "Interação na execução" },
+        ...(usagePeriodStart ? { createdAt: { gte: usagePeriodStart } } : {}),
+      },
+      select: {
+        amount: true,
+        execution: { select: { demand: { select: { id: true, title: true, project: { select: { name: true } } } } } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    }),
+    db.creditTransaction.aggregate({
+      where: { accountId: account.id, type: "CONSUME", ...(usagePeriodStart ? { createdAt: { gte: usagePeriodStart } } : {}) },
+      _sum: { amount: true },
+    }),
   ]);
   const configuration = getConfigurationStatus();
   const endDate = account.plan === "TRIAL" ? account.trialEndsAt : account.cycleEndsAt;
   const remainingDays = daysRemaining(endDate);
   const awaitingCheckoutConfirmation = params?.checkout === "success"
     && !(account.status === "ACTIVE" && ["STUDIO", "AGENCY"].includes(account.plan));
-  const usageByDemand = Array.from(reservations.reduce((usage, reservation) => {
+  const usageByDemand = reservations.reduce((usage, reservation) => {
     const demand = reservation.execution.demand;
     const current = usage.get(demand.id) ?? {
       id: demand.id,
@@ -80,13 +99,23 @@ export default async function BillingPage({ searchParams }) {
       projectName: demand.project.name,
       consumedCredits: 0,
       executions: 0,
+      interactions: 0,
     };
     current.consumedCredits += reservation.consumedCredits;
     current.executions += 1;
     usage.set(demand.id, current);
     return usage;
-  }, new Map()).values()).sort((left, right) => right.consumedCredits - left.consumedCredits);
-  const consumedCredits = usageByDemand.reduce((total, demand) => total + demand.consumedCredits, 0);
+  }, new Map());
+  for (const transaction of interactionTransactions) {
+    const demand = transaction.execution?.demand;
+    if (!demand) continue;
+    const current = usageByDemand.get(demand.id) ?? { id: demand.id, title: demand.title, projectName: demand.project.name, consumedCredits: 0, executions: 0, interactions: 0 };
+    current.consumedCredits += Math.abs(transaction.amount);
+    current.interactions += 1;
+    usageByDemand.set(demand.id, current);
+  }
+  const demandUsage = Array.from(usageByDemand.values()).sort((left, right) => right.consumedCredits - left.consumedCredits);
+  const consumedCredits = Math.abs(consumedSummary._sum.amount ?? 0);
 
   return <AppShell user={user}><div className="section-page billing-page">
     <SectionHeader eyebrow="ASSINATURA" title="Plano e créditos" description="Controle de acesso, saldo de créditos e cobrança do Dashboard IA." />
@@ -103,7 +132,7 @@ export default async function BillingPage({ searchParams }) {
       <div><small>{account.plan === "TRIAL" ? "Teste" : "Ciclo atual"}</small><strong>{remainingDays == null ? "Contínuo" : `${remainingDays} dia(s)`}</strong><span>{endDate ? `até ${formatDateTime(endDate, settings.timeZone)}` : "sem vencimento"}</span></div>
     </section>
 
-    <section className="billing-section billing-usage"><div className="card-heading"><div><h2>Uso de créditos</h2><p>Saldo e consumo por demanda no ciclo atual.</p></div><Coins size={20} /></div><div className="billing-usage-summary"><span><small>Disponíveis</small><strong>{overview.availableCredits == null ? "Ilimitados" : overview.availableCredits.toLocaleString("pt-BR")}</strong></span><span><small>Consumidos</small><strong>{consumedCredits.toLocaleString("pt-BR")}</strong></span><span><small>Reservados</small><strong>{overview.reservedCredits.toLocaleString("pt-BR")}</strong></span></div><div className="billing-demand-usage">{usageByDemand.map((demand) => <Link href={`/demands/${demand.id}`} key={demand.id}><span><strong>{demand.title}</strong><small>{demand.projectName} · {demand.executions} execução(ões)</small></span><em>{demand.consumedCredits.toLocaleString("pt-BR")} créditos</em></Link>)}{!usageByDemand.length && <p className="list-empty">Nenhum crédito foi consumido neste ciclo.</p>}</div></section>
+    <details className="billing-section billing-collapsible billing-usage"><summary className="billing-collapsible-header"><span><Coins size={20} /></span><div><h2>Uso de créditos</h2><p>Saldo e consumo no ciclo atual.</p></div><ChevronDown size={18} /></summary><div className="billing-collapsible-content"><div className="billing-usage-summary"><span><small>Disponíveis</small><strong>{overview.availableCredits == null ? "Ilimitados" : overview.availableCredits.toLocaleString("pt-BR")}</strong></span><span><small>Consumidos</small><strong>{consumedCredits.toLocaleString("pt-BR")}</strong></span><span><small>Reservados</small><strong>{overview.reservedCredits.toLocaleString("pt-BR")}</strong></span></div><div className="billing-demand-usage">{demandUsage.map((demand) => <Link href={`/demands/${demand.id}`} key={demand.id}><span><strong>{demand.title}</strong><small>{demand.projectName} · {demand.executions} execução(ões){demand.interactions ? ` · ${demand.interactions} ajuste(s)` : ""}</small></span><em>{demand.consumedCredits.toLocaleString("pt-BR")} créditos</em></Link>)}{!demandUsage.length && <p className="list-empty">Nenhum crédito foi consumido neste ciclo.</p>}</div></div></details>
 
     <section className="billing-section"><div className="card-heading"><div><h2>Planos</h2><p>Escolha conforme a quantidade de projetos e execuções simultâneas.</p></div><CreditCard size={20} /></div><div className="billing-plan-grid">
       {[BILLING_PLANS.STUDIO, BILLING_PLANS.AGENCY].map((plan) => <article className={`billing-plan ${account.plan === plan.code ? "current" : ""}`} key={plan.code}><span className="plan-name">{plan.name}</span><strong>{formatPlanPrice(plan.priceCents)}<small>/mês</small></strong><ul><li><Coins size={15} />{plan.includedCredits.toLocaleString("pt-BR")} créditos mensais</li><li><FolderGit2 size={15} />Até {plan.projectLimit} projetos</li><li><Gauge size={15} />{plan.parallelExecutionLimit} execuções simultâneas</li><li><Check size={15} />Usuários ilimitados</li></ul>{account.plan === plan.code && account.status === "ACTIVE" ? <span className="current-plan-label">Plano atual</span> : account.status === "ACTIVE" && ["STUDIO", "AGENCY"].includes(account.plan) ? <ChangePlanButton plan={plan.code} /> : <CheckoutButton kind="PLAN" value={plan.code} disabled={!configuration.asaas || user.globalRole === "ADMIN"}>Assinar {plan.name}</CheckoutButton>}</article>)}
@@ -112,7 +141,7 @@ export default async function BillingPage({ searchParams }) {
 
     {account.status === "ACTIVE" && ["STUDIO", "AGENCY"].includes(account.plan) && <section className="billing-section"><div className="card-heading"><div><h2>Créditos adicionais</h2><p>Mesmo valor unitário de R$ 0,10; validade de 12 meses e assinatura ativa obrigatória.</p></div><Coins size={20} /></div><div className="credit-pack-grid">{CREDIT_PACKS.map((pack) => <article key={pack.code}><strong>{pack.credits.toLocaleString("pt-BR")}</strong><span>créditos</span><em>{formatPlanPrice(pack.priceCents)}</em><CheckoutButton kind="CREDIT_PACK" value={pack.code} disabled={!configuration.asaas}>Comprar</CheckoutButton></article>)}</div></section>}
 
-    <section className="billing-section billing-history"><div className="card-heading"><div><h2>Movimentações</h2><p>Histórico auditável de concessões, reservas, consumo e devoluções.</p></div><CalendarDays size={20} /></div><div>{transactions.map((transaction) => <span key={transaction.id}><time>{formatDateTime(transaction.createdAt, settings.timeZone)}</time><strong>{transaction.description || transaction.type}</strong><em className={transaction.amount < 0 ? "negative" : "positive"}>{transaction.amount > 0 ? "+" : ""}{transaction.amount} créditos</em></span>)}{!transactions.length && <p className="list-empty">Nenhuma movimentação registrada.</p>}</div></section>
+    <details className="billing-section billing-collapsible billing-history"><summary className="billing-collapsible-header"><span><CalendarDays size={20} /></span><div><h2>Movimentações</h2><p>Histórico auditável de concessões, reservas, consumo e devoluções.</p></div><ChevronDown size={18} /></summary><div className="billing-collapsible-content">{transactions.map((transaction) => <span key={transaction.id}><time>{formatDateTime(transaction.createdAt, settings.timeZone)}</time><strong>{transaction.description || transaction.type}</strong><em className={transaction.amount < 0 ? "negative" : "positive"}>{transaction.amount > 0 ? "+" : ""}{transaction.amount} créditos</em></span>)}{!transactions.length && <p className="list-empty">Nenhuma movimentação registrada.</p>}</div></details>
 
     {account.status === "ACTIVE" && ["STUDIO", "AGENCY"].includes(account.plan) && <section className="billing-cancel"><p>Ao cancelar, novas cobranças são interrompidas. Histórico e downloads permanecem disponíveis; execuções ficam bloqueadas após o fim do ciclo.</p><CancelSubscriptionButton /></section>}
   </div></AppShell>;

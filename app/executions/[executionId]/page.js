@@ -64,7 +64,22 @@ export default async function ExecutionPage({ params }) {
   return (
     <AppShell user={user}>
       <div className="section-page execution-detail-page">
-        <AutoRefresh active={live} />
+        <AutoRefresh active={live} revisionUrl={`/api/executions/${execution.id}/refresh`} revision={[
+          execution.updatedAt,
+          execution.status,
+          execution.stage,
+          execution.branchName,
+          execution.baseSha,
+          execution.headSha,
+          execution.inputTokens,
+          execution.outputTokens,
+          execution.adjustmentCount,
+          execution.logs.at(-1)?.id,
+          execution.artifacts.at(-1)?.id,
+          execution.messages.at(-1)?.id,
+          execution.pullRequest?.updatedAt,
+          execution.creditReservation?.updatedAt,
+        ].map((value) => value instanceof Date ? value.toISOString() : String(value ?? "")).join("|")} />
         <SectionHeader
           backHref="/executions"
           eyebrow={`${execution.demand.project.name} · ${execution.stage}`}
@@ -94,7 +109,7 @@ export default async function ExecutionPage({ params }) {
           </section>
         </div>
 
-        {(execution.pullRequest || execution.messages.length > 0) && <ExecutionConversation executionId={execution.id} status={execution.status} messages={execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} maxAdjustments={settings.executionConversationMaxAdjustments} />}
+        {(execution.pullRequest || execution.messages.length > 0) && <ExecutionConversation executionId={execution.id} status={execution.status} messages={execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} maxAdjustments={settings.executionConversationMaxAdjustments} interactionCreditCost={settings.executionConversationCreditCost} />}
 
         {user.globalRole === "ADMIN" && execution.financialSnapshot && <section className="form-card detail-card full-card financial-execution-card">
           <div className="card-heading"><div><h2>Simulação financeira</h2><p>Visível somente para administradores. O custo segue silencioso; créditos são liquidados pelo consumo medido.</p></div><div className="shadow-mode-badge"><Coins size={14} />CUSTO SILENCIOSO</div></div>
