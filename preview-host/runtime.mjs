@@ -1,6 +1,6 @@
 const RUNTIME_IMAGES = {
   NODE: "node:22-bookworm-slim",
-  JAVA_MAVEN: "maven:3.9.9-eclipse-temurin-17",
+  JAVA_MAVEN: "maven:3-eclipse-temurin-8",
   JAVA_GRADLE: "gradle:8.10-jdk17",
   PHP: "php:8.3-cli",
   STATIC: "python:3.12-slim",
@@ -43,10 +43,19 @@ function normalizePreviewCommand(command) {
     .replaceAll("localhost", "0.0.0.0");
 }
 
+function needsPython(configuration, runtime) {
+  if (runtime.startsWith("MONOREPO_")) return true;
+  return [
+    configuration.installCommand,
+    configuration.buildCommand,
+    configuration.previewCommand,
+  ].some((command) => /(^|[\s;&|])python3?(?=\s|$)/.test(String(command || "")));
+}
+
 export function buildPreviewDockerfile(configuration) {
   const runtime = String(configuration.runtime || "UNKNOWN");
   const lines = [`FROM ${runtimeImage(runtime)}`];
-  if (runtime.startsWith("MONOREPO_")) {
+  if (needsPython(configuration, runtime)) {
     lines.push("RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && rm -rf /var/lib/apt/lists/*");
   }
   lines.push("WORKDIR /app", "COPY . .");

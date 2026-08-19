@@ -32,6 +32,19 @@ test("mantém comandos não confiáveis dentro do JSON da instrução", () => {
   assert.match(result, /npm ci\\nFROM alpine/);
 });
 
+test("gera preview estático para projeto Maven legado", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "JAVA_MAVEN",
+    installCommand: null,
+    buildCommand: "mvn -B -DskipTests package",
+    previewCommand: "python3 -m http.server $PORT --bind 127.0.0.1",
+    port: 3000,
+  });
+  assert.match(result, /^FROM maven:3-eclipse-temurin-8/m);
+  assert.match(result, /apt-get install[^\n]*python3/);
+  assert.match(result, /python3 -m http\.server \$PORT --bind 0\.0\.0\.0/);
+});
+
 test("restringe identificadores usados em nomes do Docker", () => {
   assert.equal(validPreviewId("cm1234567890"), true);
   assert.equal(validPreviewId("../../root"), false);
