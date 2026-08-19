@@ -56,12 +56,12 @@ export default function PreviewCard({ executionId }) {
         <div className="preview-toolbar">
           <span className={`status-pill preview-${preview.state?.toLowerCase()}`}>{stateLabels[preview.state] ?? preview.state}</span>
           {preview.provider && <small>{preview.environment ?? "Preview"} · {preview.provider}</small>}
-          <button className="secondary compact" disabled={loading} onClick={load} type="button">{loading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}Atualizar</button>
+          <button className="preview-refresh-button" disabled={loading} onClick={load} type="button" aria-label="Atualizar preview" title="Atualizar preview">{loading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}</button>
           {preview.url && <a className="primary compact" href={preview.url} target="_blank" rel="noreferrer" referrerPolicy="no-referrer"><ExternalLink size={14} />{api ? "Abrir API" : "Navegar no preview"}</a>}
         </div>
 
         {preview.state === "NOT_READY" && <div className="list-empty">{preview.message}</div>}
-        {preview.state === "PREPARING" && <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>O provedor ainda está preparando o ambiente</strong><small>Esta tela será atualizada automaticamente.</small></span></div>}
+        {preview.state === "PREPARING" && <div className="preview-state"><LoaderCircle className="spin" size={18} /><span><strong>Preparando o ambiente de preview</strong><small>Atualização automática ativa. A espera será encerrada se o provedor não avançar em 15 minutos.</small></span></div>}
         {preview.state === "FAILED" && <div className="form-error">{preview.message ?? "O deployment de preview não ficou disponível."}</div>}
         {preview.state === "UNAVAILABLE" && <div className="list-empty">{preview.message ?? "O projeto não possui um provedor de preview conectado ao GitHub."}</div>}
 
