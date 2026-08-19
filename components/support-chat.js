@@ -1,12 +1,14 @@
 "use client";
 
 import { Bot, MessageCircle, Send, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { usePreferences } from "./preferences-provider";
 
 export default function SupportChat({ disabled = false }) {
   const { locale, t } = usePreferences();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,7 +24,7 @@ export default function SupportChat({ disabled = false }) {
     setText("");
     setLoading(true);
     try {
-      const response = await fetch("/api/support/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ locale, messages: next.slice(-8) }) });
+      const response = await fetch("/api/support/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ locale, currentPath: pathname, messages: next.slice(-12) }) });
       const payload = await response.json();
       setMessages((current) => [...current, { role: "assistant", content: payload.answer ?? "Não foi possível responder agora." }]);
     } catch {
