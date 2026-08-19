@@ -25,14 +25,18 @@ process.on("message", async (message) => {
     const agent = new Agent({
       name: "Forgeboard Coding Agent",
       model: message.model,
-      modelSettings: { reasoning: { effort: "medium", summary: "concise" }, maxTokens: 24_000, store: false },
+      modelSettings: {
+        reasoning: { effort: message.policy?.reasoningEffort ?? "medium", summary: "concise" },
+        maxTokens: message.policy?.maxTokens ?? 24_000,
+        store: false,
+      },
       instructions: "Você é um engenheiro de software sênior. Trabalhe apenas na demanda aprovada e respeite rigorosamente as ferramentas e os limites do workspace.",
       tools: [
         shellTool({ shell: readOnlyShell, needsApproval: false }),
         applyPatchTool({ editor, needsApproval: false }),
       ],
     });
-    const result = await run(agent, message.prompt, { maxTurns: 24, signal: controller.signal });
+    const result = await run(agent, message.prompt, { maxTurns: message.policy?.maxTurns ?? 36, signal: controller.signal });
     finish({
       type: "result",
       result: {

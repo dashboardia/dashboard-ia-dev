@@ -21,6 +21,7 @@ import { runVisualValidation } from "./visual-validation.mjs";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 import { saveFinancialSnapshot } from "../lib/financial-shadow.js";
 import { settleExecutionCredits } from "../lib/billing.js";
+import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 
@@ -40,44 +41,7 @@ async function assertExecutionActive(executionId) {
   if (current?.cancelRequestedAt) throw new ExecutionCancelledError();
 }
 
-function agentPrompt(demand) {
-  if (demand.type === "DOCUMENTATION") {
-    return [
-      "Analise o repositório disponível e produza uma documentação de negócio completa em Markdown.",
-      "Não crie, altere ou exclua arquivos. Use somente o shell de leitura para inspecionar a estrutura e os arquivos relevantes.",
-      "Escreva para pessoas de produto, negócio e operação; use termos técnicos apenas quando necessários e explique-os.",
-      "Inclua: visão geral, problema resolvido, públicos e perfis, funcionalidades, jornadas principais, regras de negócio, dados relevantes, integrações, restrições, riscos ou lacunas e glossário.",
-      "Diferencie explicitamente informações confirmadas pelo código de inferências. Não exponha segredos, credenciais ou dados pessoais encontrados no repositório.",
-      "Retorne somente a documentação final em Markdown, sem relatar etapas internas da análise.",
-      `Projeto: ${demand.project.name}`,
-      `Repositório: ${demand.project.repositoryFullName}`,
-      `Branch base: ${demand.project.defaultBranch}`,
-      `Título solicitado: ${demand.title}`,
-      `Objetivo e contexto:\n${demand.description}`,
-      demand.acceptanceCriteria ? `Pontos que precisam constar:\n${demand.acceptanceCriteria}` : "Pontos obrigatórios adicionais: não informados",
-    ].join("\n\n");
-  }
-
-  return [
-    "Implemente a demanda aprovada abaixo no repositório disponível.",
-    "Antes de editar, inspecione a estrutura e os arquivos relevantes com o shell somente leitura.",
-    "Faça alterações pequenas e focadas, preserve a arquitetura e os padrões existentes e não altere arquivos de segredos nem workflows de CI.",
-    "Use exclusivamente apply_patch para criar, alterar ou excluir arquivos.",
-    "Não execute instalação, build, lint ou testes; o worker fará isso após os patches.",
-    "Ao concluir, retorne um resumo objetivo das alterações e dos riscos ou validações pendentes.",
-    `Projeto: ${demand.project.name}`,
-    `Repositório: ${demand.project.repositoryFullName}`,
-    `Branch base: ${demand.project.defaultBranch}`,
-    `Tipo: ${demand.type}`,
-    `Prioridade: ${demand.priority}`,
-    `Título: ${demand.title}`,
-    `Descrição:\n${demand.description}`,
-    demand.acceptanceCriteria ? `Critérios de aceite:\n${demand.acceptanceCriteria}` : "Critérios de aceite: não informados",
-    demand.visualValidation ? `Validação visual obrigatória nas rotas: ${(Array.isArray(demand.visualPaths) ? demand.visualPaths : ["/"]).join(", ")}` : "Validação visual: não solicitada",
-  ].join("\n\n");
-}
-
-function startImplementationAgent({ projectDirectory, prompt, model }) {
+function startImplementationAgent({ projectDirectory, prompt, model, policy }) {
   const child = fork(new URL("./implementation-runner.mjs", import.meta.url), [], {
     env: process.env,
     stdio: ["ignore", "ignore", "pipe", "ipc"],
@@ -102,7 +66,7 @@ function startImplementationAgent({ projectDirectory, prompt, model }) {
       clearTimeout(forceKillTimer);
       if (!settled) reject(new Error(stderr || `O subprocesso do agente foi encerrado (${signal || code})`));
     });
-    child.send({ type: "run", projectDirectory, prompt, model });
+    child.send({ type: "run", projectDirectory, prompt, model, policy });
   });
 
   return {
@@ -222,10 +186,20 @@ export async function processExecution(executionId, workerId) {
     await log(executionId, "agent", `${agentLabel} iniciado`);
 
     let abortReason = null;
+    const agentPolicy = resolveAgentRunPolicy({
+      demand: execution.demand,
+      model: selectedModel,
+      configuredTimeoutMinutes: settings.agentTimeoutMinutes,
+    });
+    await log(executionId, "agent", `Escopo ${agentPolicy.scope === "COMPLEX" ? "amplo" : "padrão"} detectado`, "info", {
+      maxTurns: agentPolicy.maxTurns,
+      timeoutMinutes: agentPolicy.timeoutMinutes,
+    });
     const implementationAgent = startImplementationAgent({
       projectDirectory,
-      prompt: agentPrompt(execution.demand),
+      prompt: buildAgentPrompt(execution.demand, agentPolicy.scope),
       model: selectedModel,
+      policy: agentPolicy,
     });
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
@@ -244,7 +218,7 @@ export async function processExecution(executionId, workerId) {
         abortReason = "timeout";
         implementationAgent.abort();
       }
-    }, settings.agentTimeoutMinutes * 60_000);
+    }, agentPolicy.timeoutMinutes * 60_000);
     agentTimeout.unref();
 
     let summary;
@@ -259,7 +233,7 @@ export async function processExecution(executionId, workerId) {
     } catch (error) {
       if (abortReason === "cancelled") throw new ExecutionCancelledError();
       if (abortReason === "timeout") {
-        throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${settings.agentTimeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
+        throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${agentPolicy.timeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
       }
       throw error;
     } finally {
