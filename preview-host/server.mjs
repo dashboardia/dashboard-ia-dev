@@ -15,6 +15,7 @@ import {
   previewNetworkName,
   validPreviewId,
 } from "./runtime.mjs";
+import { applyKnownBuildRepairs } from "./build-repairs.mjs";
 
 const execFile = promisify(execFileCallback);
 const port = Number(process.env.PORT || 8080);
@@ -177,7 +178,21 @@ async function deployPreview(id, configuration) {
     const generatedDockerfile = path.join(directory, "Dockerfile");
     await writeFile(generatedDockerfile, buildPreviewDockerfile(configuration), { mode: 0o600 });
     await removeRuntime(id);
-    await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
+    try {
+      await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
+    } catch (firstBuildError) {
+      const adjustments = await applyKnownBuildRepairs({
+        sourceDirectory,
+        buildOutput: dockerErrorText(firstBuildError),
+      });
+      if (!adjustments.length) throw firstBuildError;
+      await patchState(id, {
+        status: "BUILDING",
+        adjustments,
+        error: null,
+      });
+      await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
+    }
     const afterBuild = await readState(id).catch(() => null);
     if (!afterBuild || afterBuild.status !== "BUILDING" || new Date(afterBuild.expiresAt).getTime() <= Date.now()) {
       await removeRuntime(id);
@@ -295,6 +310,7 @@ async function handleApi(request, response, url) {
     imageReference: null,
     url: null,
     error: null,
+    adjustments: [],
     requestedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + configuration.ttlMinutes * 60_000).toISOString(),
   });

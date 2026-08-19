@@ -460,6 +460,7 @@ model DevEnvironment {
   port            Int?
   creditCost      Int                  @default(0)
   creditCharge    Json?
+  adjustments     Json?
   error           String?              @db.Text
   requestedAt     DateTime             @default(now())
   startedAt       DateTime?

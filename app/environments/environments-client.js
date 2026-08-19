@@ -69,6 +69,11 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
         <div className="resource-title"><strong>{environment.project.name}</strong><em className={`status-pill ${environment.status.toLowerCase()}`}>{labels[environment.status] ?? environment.status}</em></div>
         <p>{environment.project.repositoryFullName}</p>
         <div className="resource-meta"><span><GitBranch size={13} />{environment.branchName}</span><span>{environment.runtime ?? "Detectando stack"}</span><span>{environment.creditCost} créditos</span></div>
+        {Array.isArray(environment.adjustments) && environment.adjustments.length > 0 && <details className="environment-adjustments" open>
+          <summary>Ajustes aplicados para subir o ambiente ({environment.adjustments.length})</summary>
+          <ul>{environment.adjustments.map((adjustment, index) => <li key={`${adjustment.code ?? "adjustment"}-${adjustment.file ?? index}`}><strong>{adjustment.file ?? "Projeto"}</strong><span>{adjustment.summary}</span></li>)}</ul>
+          <small>Essas alterações existem somente neste ambiente temporário e não modificaram a branch do cliente.</small>
+        </details>}
         {environment.error && <details className="environment-error"><summary>Ver falha técnica</summary><pre>{environment.error}</pre></details>}
         <div className="environment-actions">{environment.url && <a className="primary compact" href={environment.url} target="_blank" rel="noreferrer"><ExternalLink size={14} />Abrir ambiente</a>}{ACTIVE.has(environment.status) && <button type="button" onClick={() => stopEnvironment(environment.id)}><Square size={14} />Encerrar</button>}</div>
       </article>)}
