@@ -5,12 +5,14 @@ import { apiError } from "../../../../../lib/api";
 import { expireStaleDeploymentPreview, findDeploymentPreview, inspectDeploymentPreview } from "../../../../../lib/deployment-preview";
 import { db } from "../../../../../lib/db";
 import { getGitHubAccessToken, getProjectGitHubAccessToken } from "../../../../../lib/github";
+import { getGlobalSettings } from "../../../../../lib/global-settings";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_request, context) {
   try {
     const { executionId } = await context.params;
+    const settings = await getGlobalSettings();
     const execution = await db.execution.findUniqueOrThrow({
       where: { id: executionId },
       include: { pullRequest: true, demand: { include: { project: true } } },
@@ -41,7 +43,7 @@ export async function GET(_request, context) {
       deployment = await findPreview(await getGitHubAccessToken(user.id));
     }
     if (deployment.state === "NOT_FOUND") {
-      const recentlyOpened = Date.now() - execution.pullRequest.createdAt.getTime() < 15 * 60_000;
+      const recentlyOpened = Date.now() - execution.pullRequest.createdAt.getTime() < settings.previewPreparationTimeoutMinutes * 60_000;
       return NextResponse.json({
         preview: {
           ...deployment,
@@ -52,7 +54,7 @@ export async function GET(_request, context) {
         },
       });
     }
-    deployment = expireStaleDeploymentPreview(deployment);
+    deployment = expireStaleDeploymentPreview(deployment, new Date(), settings.previewPreparationTimeoutMinutes);
     if (deployment.state !== "AVAILABLE" || !deployment.url) {
       return NextResponse.json({ preview: { ...deployment, mode: null, inspection: null } });
     }

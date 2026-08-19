@@ -13,11 +13,13 @@ const workerId = `${os.hostname()}:${process.pid}`;
 let stopping = false;
 let lastHealthCheck = 0;
 let lastHealthPrune = 0;
+let lastStaleRecovery = 0;
 const workerStartedAt = new Date();
 let heartbeatTimer = null;
 let heartbeatPromise = null;
 let concurrencyLimit = 2;
 let lastConcurrencyRefresh = 0;
+let runtimeSettings = null;
 const activeExecutions = new Set();
 
 function delay(milliseconds) {
@@ -44,10 +46,11 @@ async function stopHeartbeat() {
 async function refreshConcurrencyLimit() {
   if (Date.now() - lastConcurrencyRefresh < 5_000) return;
   const settings = await getGlobalSettings();
-  const nextLimit = Math.max(1, Math.min(5, settings.parallelExecutions));
+  runtimeSettings = settings;
+  const nextLimit = settings.executionProcessingEnabled ? Math.max(1, Math.min(5, settings.parallelExecutions)) : 0;
   if (nextLimit !== concurrencyLimit) {
     concurrencyLimit = nextLimit;
-    console.log(`[worker:${workerId}] limite atualizado para ${concurrencyLimit} execuções paralelas`);
+    console.log(`[worker:${workerId}] ${nextLimit ? `limite atualizado para ${nextLimit} execuções paralelas` : "processamento global pausado"}`);
   }
   lastConcurrencyRefresh = Date.now();
 }
@@ -74,23 +77,36 @@ async function main() {
   await recordWorkerHeartbeat({ workerId, host: os.hostname(), processId: process.pid, startedAt: workerStartedAt });
   await pruneWorkerHeartbeats();
   startHeartbeat();
-  await recoverStaleExecutions();
   await refreshConcurrencyLimit();
+  await recoverStaleExecutions(db, {
+    staleMinutes: runtimeSettings.staleExecutionMinutes,
+    maxAttempts: runtimeSettings.executionMaxAttempts,
+  });
 
   while (!stopping) {
     await refreshConcurrencyLimit().catch((error) => console.error(`[worker:${workerId}] configuração de concorrência falhou`, error));
-    if (Date.now() - lastHealthCheck >= env.HEALTH_CHECK_INTERVAL_MS) {
-      await checkProjectHealth().catch((error) => console.error(`[worker:${workerId}] monitoramento falhou`, error));
+    if (Date.now() - lastStaleRecovery >= 60_000) {
+      await recoverStaleExecutions(db, {
+        staleMinutes: runtimeSettings.staleExecutionMinutes,
+        maxAttempts: runtimeSettings.executionMaxAttempts,
+      }).catch((error) => console.error(`[worker:${workerId}] recuperação de execuções travadas falhou`, error));
+      lastStaleRecovery = Date.now();
+    }
+    if (Date.now() - lastHealthCheck >= runtimeSettings.healthCheckIntervalMinutes * 60_000) {
+      await checkProjectHealth({
+        concurrency: runtimeSettings.healthCheckConcurrency,
+        timeoutMs: runtimeSettings.healthCheckTimeoutSeconds * 1_000,
+      }).catch((error) => console.error(`[worker:${workerId}] monitoramento falhou`, error));
       lastHealthCheck = Date.now();
     }
 
     if (Date.now() - lastHealthPrune >= 24 * 60 * 60 * 1000) {
-      await pruneHealthChecks(env.HEALTH_CHECK_RETENTION_DAYS).catch((error) => console.error(`[worker:${workerId}] retenção de saúde falhou`, error));
+      await pruneHealthChecks(runtimeSettings.healthCheckRetentionDays).catch((error) => console.error(`[worker:${workerId}] retenção de saúde falhou`, error));
       lastHealthPrune = Date.now();
     }
 
     while (!stopping && activeExecutions.size < concurrencyLimit) {
-      const executionId = await claimNextExecution(workerId);
+      const executionId = await claimNextExecution(workerId, db, runtimeSettings.executionMaxAttempts);
       if (!executionId) break;
       startExecution(executionId);
     }

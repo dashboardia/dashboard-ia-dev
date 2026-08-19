@@ -32,12 +32,20 @@ class ExecutionCancelledError extends Error {
   }
 }
 
+class ExecutionStoppedError extends Error {
+  constructor() {
+    super("Execução interrompida pela pausa global da plataforma");
+    this.name = "ExecutionStoppedError";
+  }
+}
+
 async function log(executionId, scope, message, level = "info", metadata) {
   await db.executionLog.create({ data: { executionId, scope, message, level, metadata } });
 }
 
 async function assertExecutionActive(executionId) {
-  const current = await db.execution.findUnique({ where: { id: executionId }, select: { cancelRequestedAt: true } });
+  const current = await db.execution.findUnique({ where: { id: executionId }, select: { cancelRequestedAt: true, stopRequestedAt: true } });
+  if (current?.stopRequestedAt) throw new ExecutionStoppedError();
   if (current?.cancelRequestedAt) throw new ExecutionCancelledError();
 }
 
@@ -100,9 +108,9 @@ async function runValidations(execution, projectDirectory, settings, scopes = ["
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
         where: { id: execution.id },
-        select: { cancelRequestedAt: true },
+        select: { cancelRequestedAt: true, stopRequestedAt: true },
       }).catch(() => null);
-      if (current?.cancelRequestedAt && !commandController.signal.aborted) {
+      if ((current?.cancelRequestedAt || current?.stopRequestedAt) && !commandController.signal.aborted) {
         commandController.abort();
       }
     }, 2_000);
@@ -115,6 +123,8 @@ async function runValidations(execution, projectDirectory, settings, scopes = ["
         stderr: result.stderr.slice(-6_000),
       });
     } catch (error) {
+      const current = await db.execution.findUnique({ where: { id: execution.id }, select: { stopRequestedAt: true } }).catch(() => null);
+      if (current?.stopRequestedAt) throw new ExecutionStoppedError();
       await assertExecutionActive(execution.id);
       const stdout = String(error?.stdout ?? "").slice(-12_000);
       const stderr = String(error?.stderr ?? "").slice(-12_000);
@@ -190,6 +200,7 @@ export async function processExecution(executionId, workerId) {
       demand: execution.demand,
       model: selectedModel,
       configuredTimeoutMinutes: settings.agentTimeoutMinutes,
+      powerMode: settings.agentPowerMode,
     });
     await log(executionId, "agent", `Escopo ${agentPolicy.scope === "COMPLEX" ? "amplo" : "padrão"} detectado`, "info", {
       maxTurns: agentPolicy.maxTurns,
@@ -204,9 +215,12 @@ export async function processExecution(executionId, workerId) {
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
         where: { id: executionId },
-        select: { cancelRequestedAt: true },
+        select: { cancelRequestedAt: true, stopRequestedAt: true },
       }).catch(() => null);
-      if (current?.cancelRequestedAt && !abortReason) {
+      if (current?.stopRequestedAt && !abortReason) {
+        abortReason = "stopped";
+        implementationAgent.abort();
+      } else if (current?.cancelRequestedAt && !abortReason) {
         abortReason = "cancelled";
         implementationAgent.abort();
       }
@@ -231,6 +245,7 @@ export async function processExecution(executionId, workerId) {
       outputTokens = result.outputTokens;
       measuredUsage = { inputTokens, outputTokens };
     } catch (error) {
+      if (abortReason === "stopped") throw new ExecutionStoppedError();
       if (abortReason === "cancelled") throw new ExecutionCancelledError();
       if (abortReason === "timeout") {
         throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${agentPolicy.timeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
@@ -250,7 +265,7 @@ export async function processExecution(executionId, workerId) {
       const finishedAt = new Date();
       await db.$transaction(async (transaction) => {
         const updated = await transaction.execution.updateMany({
-          where: { id: executionId, cancelRequestedAt: null },
+          where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
           data: { status: "SUCCEEDED", stage: "ANALYSIS", summary, inputTokens, outputTokens, lockedAt: null, lockedBy: null, finishedAt },
         });
         if (updated.count !== 1) throw new ExecutionCancelledError();
@@ -315,7 +330,7 @@ export async function processExecution(executionId, workerId) {
 
     await db.$transaction(async (transaction) => {
       const updated = await transaction.execution.updateMany({
-        where: { id: executionId, cancelRequestedAt: null },
+        where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
         data: {
           status: "WAITING_APPROVAL",
           stage: "PUBLISH",
@@ -339,21 +354,25 @@ export async function processExecution(executionId, workerId) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha desconhecida na execução";
     const cancelled = error instanceof ExecutionCancelledError;
+    const stopped = error instanceof ExecutionStoppedError;
     const finishedAt = new Date();
     await db.$transaction(async (transaction) => {
-      await transaction.execution.update({ where: { id: executionId }, data: { status: cancelled ? "CANCELLED" : "FAILED", error: cancelled ? null : message, lockedAt: null, lockedBy: null, finishedAt } });
+      await transaction.execution.update({ where: { id: executionId }, data: { status: stopped ? "STOPPED" : cancelled ? "CANCELLED" : "FAILED", error: stopped || cancelled ? null : message, lockedAt: null, lockedBy: null, finishedAt } });
       if (execution && settings) {
-        const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt });
-        await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
+        if (stopped) await settleExecutionCredits(transaction, { executionId, consumedCredits: 0 });
+        else {
+          const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt });
+          await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
+        }
       }
     }).catch(() => null);
-    if (execution?.demandId) await db.demand.update({ where: { id: execution.demandId }, data: { status: cancelled ? "APPROVED" : "FAILED" } }).catch(() => null);
-    await log(executionId, "worker", message, cancelled ? "warn" : "error", cancelled ? undefined : {
+    if (execution?.demandId) await db.demand.update({ where: { id: execution.demandId }, data: { status: stopped ? "STOPPED" : cancelled ? "APPROVED" : "FAILED" } }).catch(() => null);
+    await log(executionId, "worker", message, stopped || cancelled ? "warn" : "error", stopped || cancelled ? undefined : {
       code: error?.code ?? null,
       stdout: String(error?.stdout ?? "").slice(-12_000) || "(sem saída padrão)",
       stderr: String(error?.stderr ?? "").slice(-12_000) || message,
     }).catch(() => null);
-    if (!cancelled) throw error;
+    if (!cancelled && !stopped) throw error;
   } finally {
     await cleanWorkspace(workspace).catch(() => null);
     console.log(`[worker:${workerId}] execução ${executionId} finalizada`);

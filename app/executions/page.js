@@ -11,7 +11,7 @@ import { projectAccessWhere } from "../../lib/projects";
 
 export const dynamic = "force-dynamic";
 
-const statusLabels = { QUEUED: "Na fila", PREPARING: "Preparando", RUNNING: "Em execução", VALIDATING: "Validando", WAITING_APPROVAL: "Aguardando aprovação", SUCCEEDED: "Concluída", FAILED: "Falhou", CANCELLED: "Cancelada" };
+const statusLabels = { QUEUED: "Na fila", PREPARING: "Preparando", RUNNING: "Em execução", VALIDATING: "Validando", WAITING_APPROVAL: "Aguardando aprovação", SUCCEEDED: "Concluída", FAILED: "Falhou", CANCELLED: "Cancelada", STOPPED: "Parada pelo administrador" };
 const stageLabels = { ANALYSIS: "Análise", IMPLEMENTATION: "Implementação", VALIDATION: "Validação", PUBLISH: "Publicação" };
 const validStatuses = new Set(Object.keys(statusLabels));
 const PAGE_SIZE = 25;

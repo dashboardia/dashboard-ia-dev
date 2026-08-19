@@ -31,24 +31,31 @@ export function classifyImplementationScope(demand) {
   return matchedSignals >= 4 || requestedLayers >= 4 || text.length >= 4_000 ? "COMPLEX" : "STANDARD";
 }
 
-export function resolveAgentRunPolicy({ demand, model, configuredTimeoutMinutes }) {
-  const scope = classifyImplementationScope(demand);
-  if (scope === "COMPLEX") {
-    return {
-      scope,
-      maxTurns: model === "gpt-5.6-sol" ? 80 : 64,
-      maxTokens: 32_000,
-      reasoningEffort: "high",
-      timeoutMinutes: Math.max(configuredTimeoutMinutes, 15),
-    };
-  }
+const POWER_PROFILES = {
+  ECONOMY: {
+    standard: { maxTurns: 20, maxTokens: 16_000, reasoningEffort: "low", minimumTimeoutMinutes: 5 },
+    complex: { maxTurns: 40, maxTokens: 24_000, reasoningEffort: "medium", minimumTimeoutMinutes: 10 },
+  },
+  BALANCED: {
+    standard: { maxTurns: 36, maxTokens: 24_000, reasoningEffort: "medium", minimumTimeoutMinutes: 5 },
+    complex: { maxTurns: 64, maxTokens: 32_000, reasoningEffort: "high", minimumTimeoutMinutes: 15 },
+  },
+  MAXIMUM: {
+    standard: { maxTurns: 48, maxTokens: 32_000, reasoningEffort: "high", minimumTimeoutMinutes: 10 },
+    complex: { maxTurns: 96, maxTokens: 48_000, reasoningEffort: "high", minimumTimeoutMinutes: 30 },
+  },
+};
 
+export function resolveAgentRunPolicy({ demand, model, configuredTimeoutMinutes, powerMode = "BALANCED" }) {
+  const scope = classifyImplementationScope(demand);
+  const profile = POWER_PROFILES[powerMode] ?? POWER_PROFILES.BALANCED;
+  const budget = scope === "COMPLEX" ? profile.complex : profile.standard;
   return {
     scope,
-    maxTurns: model === "gpt-5.6-luna" ? 24 : 36,
-    maxTokens: 24_000,
-    reasoningEffort: "medium",
-    timeoutMinutes: configuredTimeoutMinutes,
+    powerMode: POWER_PROFILES[powerMode] ? powerMode : "BALANCED",
+    ...budget,
+    maxTurns: model === "gpt-5.6-sol" && scope === "COMPLEX" ? Math.max(budget.maxTurns, 80) : budget.maxTurns,
+    timeoutMinutes: Math.max(configuredTimeoutMinutes, budget.minimumTimeoutMinutes),
   };
 }
 

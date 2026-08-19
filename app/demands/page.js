@@ -10,7 +10,7 @@ import { requirePageUser } from "../../lib/page-access";
 import { projectAccessWhere } from "../../lib/projects";
 
 const typeLabels = { BUG: "Correção", FEATURE: "Funcionalidade", REFACTOR: "Refatoração", TEST: "Testes", INVESTIGATION: "Investigação", DOCUMENTATION: "Documentação de negócio" };
-const statusLabels = { DRAFT: "Rascunho", PENDING_APPROVAL: "Aguardando aprovação", APPROVED: "Aprovada", QUEUED: "Na fila", RUNNING: "Em execução", REVIEW: "Em revisão", SUCCEEDED: "Concluída", FAILED: "Falhou", CANCELLED: "Cancelada" };
+const statusLabels = { DRAFT: "Rascunho", PENDING_APPROVAL: "Aguardando aprovação", APPROVED: "Aprovada", QUEUED: "Na fila", RUNNING: "Em execução", REVIEW: "Em revisão", SUCCEEDED: "Concluída", FAILED: "Falhou", CANCELLED: "Cancelada", STOPPED: "Parada pelo administrador" };
 const validStatuses = new Set(Object.keys(statusLabels));
 const PAGE_SIZE = 25;
 
