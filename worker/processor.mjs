@@ -19,6 +19,7 @@ import {
 } from "./sandbox.mjs";
 import { runImplementationPreview, runVisualValidation } from "./visual-validation.mjs";
 import { publishDashboardiaPreview } from "./preview-publisher.mjs";
+import { getDashboardiaPreview } from "../lib/preview-host-client.js";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 import { calculateLiveUsageCredits, saveFinancialSnapshot } from "../lib/financial-shadow.js";
 import { getExecutionCreditBudget, settleExecutionCredits } from "../lib/billing.js";
@@ -38,6 +39,23 @@ class ExecutionStoppedError extends Error {
     super("Execução interrompida pela pausa global da plataforma");
     this.name = "ExecutionStoppedError";
   }
+}
+
+const PREVIEW_TERMINAL_STATES = new Set(["READY", "FAILED", "EXPIRED"]);
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForPreviewOutcome(previewId, timeoutMs = 210_000) {
+  const deadline = Date.now() + timeoutMs;
+  let latest = null;
+  while (Date.now() < deadline) {
+    latest = await getDashboardiaPreview(previewId);
+    if (PREVIEW_TERMINAL_STATES.has(latest?.status)) return latest;
+    await wait(3_000);
+  }
+  return latest;
 }
 
 async function log(executionId, scope, message, level = "info", metadata) {
@@ -425,7 +443,7 @@ export async function processExecution(executionId, workerId) {
     }
     await cleanValidationArtifacts(projectDirectory);
     await restoreImplementationSnapshot(workspace, implementationHead);
-    const diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
+    let diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
     await runProcess("git", [...authenticationArgs, "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
     // A API de preview precisa conhecer a branch e o commit assim que eles
     // existem. A liquidação e a transição para revisão continuam atômicas no
@@ -442,13 +460,123 @@ export async function processExecution(executionId, workerId) {
           technical: validationResult.technical,
         });
       }
-      await publishDashboardiaPreview({
+      let remotePreview = await publishDashboardiaPreview({
         database: db,
         execution,
         projectDirectory,
         runtime: detectedRuntime.runtime,
         log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
       });
+      let previewOutcome = remotePreview
+        ? await waitForPreviewOutcome(remotePreview.id).catch((error) => ({ status: "FAILED", error: error instanceof Error ? error.message : String(error) }))
+        : null;
+
+      if (previewOutcome?.status === "READY") {
+        await log(executionId, "preview", "Ambiente temporário iniciado e validado com sucesso", "info", {
+          previewId: previewOutcome.id,
+          url: previewOutcome.url,
+        });
+      } else if (previewOutcome?.status === "FAILED") {
+        const consumedBeforePreviewRepair = creditCostPolicy && measuredUsage
+          ? calculateLiveUsageCredits({ ...creditCostPolicy, ...measuredUsage })
+          : 0;
+        const remainingCreditBudget = creditBudget == null ? null : Math.max(0, creditBudget - consumedBeforePreviewRepair);
+        if (remainingCreditBudget == null || remainingCreditBudget > 0) {
+          const previewTechnical = String(previewOutcome.error || "O container falhou durante a inicialização").slice(-20_000);
+          await log(executionId, "preview", "O container falhou ao iniciar; o agente recebeu o erro real para uma correção automática", "warn", {
+            previewId: previewOutcome.id,
+            technical: previewTechnical,
+          });
+          const previewRepairPolicy = {
+            ...agentPolicy,
+            maxTurns: Math.min(agentPolicy.maxTurns, 24),
+            maxTokens: Math.min(agentPolicy.maxTokens, 20_000),
+            timeoutMinutes: Math.min(agentPolicy.timeoutMinutes, 10),
+          };
+          const previewRepairAgent = startImplementationAgent({
+            projectDirectory,
+            prompt: [
+              "A implementação já foi concluída, mas a aplicação falhou ao iniciar no container temporário de preview.",
+              "Investigue a saída real de inicialização abaixo e aplique somente as correções necessárias para a aplicação compilar, iniciar e responder pela porta configurada.",
+              "Preserve integralmente o escopo aprovado. Corrija também dados de demonstração, migrações ou configuração quando forem a causa da falha.",
+              "Use exclusivamente apply_patch. Não execute build, instalação, testes, servidor ou Docker; o host de preview fará a validação novamente.",
+              `Saída técnica do container:\n${previewTechnical}`,
+              `Demanda original:\n${buildAgentPrompt(execution.demand, agentPolicy.scope)}`,
+            ].join("\n\n"),
+            model: selectedModel,
+            policy: previewRepairPolicy,
+            creditBudget: remainingCreditBudget,
+            creditBudgetContext,
+            creditCostPolicy,
+          });
+          const previewRepairTimeout = setTimeout(() => previewRepairAgent.abort(), previewRepairPolicy.timeoutMinutes * 60_000);
+          previewRepairTimeout.unref();
+          let previewRepairCompleted = false;
+          try {
+            const repairResult = await previewRepairAgent.promise;
+            inputTokens = (inputTokens ?? 0) + (repairResult.inputTokens ?? 0);
+            outputTokens = (outputTokens ?? 0) + (repairResult.outputTokens ?? 0);
+            measuredUsage = { inputTokens, outputTokens };
+            previewRepairCompleted = true;
+          } catch (repairError) {
+            await restoreImplementationSnapshot(workspace, implementationHead);
+            await log(executionId, "preview", "A correção automática do preview não foi concluída; as evidências visuais foram preservadas", "warn", {
+              technical: repairError instanceof Error ? repairError.message : String(repairError),
+            });
+          } finally {
+            clearTimeout(previewRepairTimeout);
+          }
+
+          await assertExecutionActive(executionId);
+          const previewRepairStatus = previewRepairCompleted
+            ? await runProcess("git", ["status", "--porcelain"], { cwd: workspace })
+            : { stdout: "" };
+          if (previewRepairCompleted && previewRepairStatus.stdout.trim()) {
+            await runProcess("git", ["add", "-A"], { cwd: workspace });
+            await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "--amend", "--no-edit"], { cwd: workspace });
+            implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+            diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
+            await runProcess("git", [...authenticationArgs, "push", "--force-with-lease", "origin", branchName], {
+              cwd: workspace,
+              timeout: 5 * 60_000,
+              secrets: [token, authenticationArgs[1]],
+            });
+            await db.execution.updateMany({
+              where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
+              data: { headSha: implementationHead },
+            });
+            await log(executionId, "preview", "Correção automática aplicada; reconstruindo o ambiente temporário");
+            remotePreview = await publishDashboardiaPreview({
+              database: db,
+              execution,
+              projectDirectory,
+              runtime: detectedRuntime.runtime,
+              log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
+            });
+            previewOutcome = remotePreview
+              ? await waitForPreviewOutcome(remotePreview.id).catch((error) => ({ status: "FAILED", error: error instanceof Error ? error.message : String(error) }))
+              : null;
+            if (previewOutcome?.status === "READY") {
+              await log(executionId, "preview", "Ambiente temporário corrigido e validado com sucesso", "info", {
+                previewId: previewOutcome.id,
+                url: previewOutcome.url,
+              });
+            } else {
+              await log(executionId, "preview", "O ambiente continuou indisponível após a correção automática; as evidências visuais foram preservadas", "warn", {
+                previewId: previewOutcome?.id ?? remotePreview?.id,
+                technical: String(previewOutcome?.error || "O host não confirmou a inicialização").slice(-20_000),
+              });
+            }
+          } else if (previewRepairCompleted) {
+            await log(executionId, "preview", "O agente não encontrou uma correção aplicável para a falha de inicialização", "warn");
+          }
+        }
+      } else if (remotePreview) {
+        await log(executionId, "preview", "O host ainda não confirmou a inicialização; a sincronização continuará pela tela", "warn", {
+          previewId: remotePreview.id,
+          status: previewOutcome?.status ?? "UNKNOWN",
+        });
+      }
     }
 
     await db.$transaction(async (transaction) => {
