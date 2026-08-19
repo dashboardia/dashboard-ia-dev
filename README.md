@@ -31,6 +31,7 @@ Uma execução ativa pode ser cancelada por um Gestor. O worker encerra no próx
 
 - workspace temporário exclusivo por execução;
 - token GitHub não é incluído no ambiente acessível aos comandos da IA;
+- tokens OAuth do GitHub são protegidos no banco com AES-256-GCM e chave externa compartilhada somente entre web e worker;
 - shell da IA aceita apenas comandos de leitura pré-aprovados;
 - paths absolutos, travessia de diretório, arquivos de segredo, `.git` e workflows do GitHub são bloqueados;
 - validações executam com ambiente reduzido, sem as credenciais do serviço;
@@ -75,6 +76,7 @@ npm run build
 | `ADMIN_GITHUB_LOGIN` | Web | Login GitHub promovido a Administrador Global |
 | `NEXTAUTH_SECRET` | Web | Assinatura das sessões |
 | `NEXTAUTH_URL` | Web | URL pública da aplicação |
+| `TOKEN_ENCRYPTION_KEY` | Web e worker | Chave base64url de 32 bytes usada para criptografar tokens OAuth no banco; deve ser idêntica em todos os serviços |
 | `OPENAI_API_KEY` | Web e worker | Autorizar e executar demandas |
 | `ASAAS_ENVIRONMENT` | Web | `sandbox` durante testes e `production` após homologação |
 | `ASAAS_API_KEY` | Web | Criar checkouts e administrar assinaturas no Asaas |
