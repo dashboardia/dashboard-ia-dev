@@ -47,6 +47,32 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+const TRANSIENT_AGENT_ERROR_PATTERNS = [
+  /an error occurred while processing your request/i,
+  /you can retry your request/i,
+  /request id req_/i,
+  /rate.?limit/i,
+  /too many requests/i,
+  /service unavailable/i,
+  /bad gateway/i,
+  /gateway timeout/i,
+  /connection (?:reset|closed|refused)/i,
+  /fetch failed/i,
+  /socket hang up/i,
+  /econnreset/i,
+  /etimedout/i,
+];
+
+function isTransientAgentError(error) {
+  if (error?.code === "CREDIT_BUDGET_EXCEEDED") return false;
+  const status = Number(error?.status ?? error?.statusCode);
+  if ([408, 409, 429, 500, 502, 503, 504].includes(status)) return true;
+  const name = String(error?.name ?? "");
+  if (["APIConnectionError", "RateLimitError", "InternalServerError"].includes(name)) return true;
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return TRANSIENT_AGENT_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
+
 async function waitForPreviewOutcome(previewId, timeoutMs = 210_000) {
   const deadline = Date.now() + timeoutMs;
   let latest = null;
@@ -239,7 +265,7 @@ export async function processExecution(executionId, workerId) {
       creditValueCents: settings.creditValueCents,
       targetGrossMarginPercent: settings.targetGrossMarginPercent,
     } : null;
-    const implementationAgent = startImplementationAgent({
+    const createImplementationAgent = () => startImplementationAgent({
       projectDirectory,
       prompt: buildAgentPrompt(execution.demand, agentPolicy.scope),
       model: selectedModel,
@@ -248,6 +274,7 @@ export async function processExecution(executionId, workerId) {
       creditBudgetContext,
       creditCostPolicy,
     });
+    let implementationAgent = createImplementationAgent();
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
         where: { id: executionId },
@@ -275,21 +302,41 @@ export async function processExecution(executionId, workerId) {
     let inputTokens;
     let outputTokens;
     try {
-      const result = await implementationAgent.promise;
-      summary = result.summary;
-      inputTokens = result.inputTokens;
-      outputTokens = result.outputTokens;
-      measuredUsage = { inputTokens, outputTokens };
-    } catch (error) {
-      if (error?.inputTokens != null && error?.outputTokens != null) {
-        measuredUsage = { inputTokens: error.inputTokens, outputTokens: error.outputTokens };
+      const maxAgentAttempts = 3;
+      for (let attempt = 1; attempt <= maxAgentAttempts; attempt += 1) {
+        try {
+          const result = await implementationAgent.promise;
+          summary = result.summary;
+          inputTokens = result.inputTokens;
+          outputTokens = result.outputTokens;
+          measuredUsage = { inputTokens, outputTokens };
+          break;
+        } catch (error) {
+          if (error?.inputTokens != null && error?.outputTokens != null) {
+            measuredUsage = { inputTokens: error.inputTokens, outputTokens: error.outputTokens };
+          }
+          if (abortReason === "stopped") throw new ExecutionStoppedError();
+          if (abortReason === "cancelled") throw new ExecutionCancelledError();
+          if (abortReason === "timeout") {
+            throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${agentPolicy.timeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
+          }
+          if (attempt >= maxAgentAttempts || !isTransientAgentError(error)) throw error;
+
+          const retryDelayMs = attempt === 1 ? 3_000 : 10_000;
+          await log(executionId, "agent", `Falha temporária no provedor de IA; nova tentativa automática ${attempt + 1}/${maxAgentAttempts}`, "warn", {
+            retryInSeconds: retryDelayMs / 1_000,
+            technical: error instanceof Error ? error.message : String(error),
+          });
+          await wait(retryDelayMs);
+          if (abortReason === "stopped") throw new ExecutionStoppedError();
+          if (abortReason === "cancelled") throw new ExecutionCancelledError();
+          if (abortReason === "timeout") {
+            throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${agentPolicy.timeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
+          }
+          await assertExecutionActive(executionId);
+          implementationAgent = createImplementationAgent();
+        }
       }
-      if (abortReason === "stopped") throw new ExecutionStoppedError();
-      if (abortReason === "cancelled") throw new ExecutionCancelledError();
-      if (abortReason === "timeout") {
-        throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${agentPolicy.timeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
-      }
-      throw error;
     } finally {
       clearInterval(cancellationTimer);
       clearTimeout(agentTimeout);
