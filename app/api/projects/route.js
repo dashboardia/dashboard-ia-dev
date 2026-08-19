@@ -85,10 +85,15 @@ export async function POST(request) {
       await claimTrialOrganization(billing.account, repositoryFullName, transaction);
 
       if (mode === "RESTORE") {
+        // A chave do repositório já identifica exatamente o registro arquivado.
+        // Não a regrave com a capitalização recebida do formulário: versões
+        // anteriores podiam persistir duplicatas lógicas com caixa diferente,
+        // o que faria a restauração colidir com o índice único do PostgreSQL.
         const restored = await transaction.project.update({
           where: { id: existingProject.id },
           data: {
             ...resolvedInput,
+            repositoryFullName: existingProject.repositoryFullName,
             status: "ACTIVE",
             repositoryId: String(githubRepository.id),
             githubInstallationId: githubInstallationId ?? existingProject.githubInstallationId,
