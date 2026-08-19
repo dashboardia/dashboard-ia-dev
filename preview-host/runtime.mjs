@@ -47,9 +47,45 @@ function isStaticHttpServer(command) {
   return /^python3?\s+-m\s+http\.server(?:\s|$)/i.test(String(command || "").trim());
 }
 
+function buildMavenWarDockerfile(configuration) {
+  const port = Number(configuration.port) || 8080;
+  const buildCommand = configuration.buildCommand?.trim() || "mvn -B -DskipTests package";
+
+  return [
+    "FROM maven:3.9.9-eclipse-temurin-17 AS build",
+    "WORKDIR /app",
+    "COPY . .",
+    shellInstruction("RUN", buildCommand),
+    shellInstruction(
+      "RUN",
+      'war="$(find . -type f -path "*/target/*.war" ! -name "*sources*" ! -name "*javadoc*" | head -n 1)"; test -n "$war"; cp "$war" /tmp/ROOT.war',
+    ),
+    "",
+    "FROM tomcat:9.0-jdk17-temurin",
+    "RUN rm -rf /usr/local/tomcat/webapps/*",
+    `RUN sed -i 's/port="8080" protocol="HTTP\\/1.1"/port="${port}" protocol="HTTP\\/1.1"/' /usr/local/tomcat/conf/server.xml`,
+    "COPY --from=build /tmp/ROOT.war /usr/local/tomcat/webapps/ROOT.war",
+    `ENV PORT=${port}`,
+    "ENV HOST=0.0.0.0",
+    "ENV HOSTNAME=0.0.0.0",
+    `EXPOSE ${port}`,
+    'CMD ["catalina.sh","run"]',
+    "",
+  ].join("\n");
+}
+
 export function buildPreviewDockerfile(configuration) {
   const runtime = String(configuration.runtime || "UNKNOWN");
   const staticHttpServer = isStaticHttpServer(configuration.previewCommand);
+
+  // Projetos Maven empacotados como WAR precisam executar a aplicação inteira.
+  // Um comando HTTP estático configurado anteriormente é apenas um fallback de
+  // captura visual e não deve esconder controllers, services, JSPs ou o banco
+  // embarcado da aplicação durante a revisão do cliente.
+  if (runtime === "JAVA_MAVEN" && staticHttpServer) {
+    return buildMavenWarDockerfile(configuration);
+  }
+
   const lines = [`FROM ${runtimeImage(staticHttpServer ? "STATIC" : runtime)}`];
   if (runtime.startsWith("MONOREPO_")) {
     lines.push("RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && rm -rf /var/lib/apt/lists/*");
