@@ -45,15 +45,3 @@ services:
         sync: false
       - key: ASAAS_WEBHOOK_TOKEN
         sync: false
-      - key: BILLING_CONTACT_URL
-        sync: false
-      - key: RAILWAY_API_TOKEN
-        sync: false
-      - key: BUCKET_ENDPOINT
-        sync: false
-      - key: BUCKET_NAME
-        sync: false
-      - key: BUCKET_ACCESS_KEY_ID
-        sync: false
-      - key: BUCKET_SECRET_ACCESS_KEY
-        sync: false
