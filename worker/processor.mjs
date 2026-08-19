@@ -23,6 +23,7 @@ import { getDashboardiaPreview } from "../lib/preview-host-client.js";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 import { calculateLiveUsageCredits, saveFinancialSnapshot } from "../lib/financial-shadow.js";
 import { getExecutionCreditBudget, settleExecutionCredits } from "../lib/billing.js";
+import { getBusinessKnowledgeContext } from "../lib/business-knowledge.js";
 import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
 import {
   buildPreviewRepairPrompt,
@@ -254,11 +255,19 @@ export async function processExecution(executionId, workerId) {
     const projectDirectory = resolveWorkspacePath(workspace, execution.demand.project.workingDirectory);
     const selectedModel = execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL;
     execution.model = selectedModel;
+    const approvedKnowledge = await getBusinessKnowledgeContext(db, {
+      ownerUserId: execution.demand.project.createdById,
+      projectId: execution.demand.project.id,
+    });
+    const promptOptions = { businessKnowledge: approvedKnowledge.context };
     await db.execution.update({
       where: { id: executionId },
       data: { status: "RUNNING", stage: documentationOnly ? "ANALYSIS" : "IMPLEMENTATION", branchName, model: selectedModel },
     });
     await log(executionId, "agent", `${agentLabel} iniciado`);
+    if (approvedKnowledge.entries.length > 0) {
+      await log(executionId, "agent", `${approvedKnowledge.entries.length} regra(s) de negócio aprovada(s) carregada(s) para esta execução`);
+    }
 
     let abortReason = null;
     const agentPolicy = resolveAgentRunPolicy({
@@ -285,7 +294,7 @@ export async function processExecution(executionId, workerId) {
     } : null;
     const createImplementationAgent = () => startImplementationAgent({
       projectDirectory,
-      prompt: buildAgentPrompt(execution.demand, agentPolicy.scope),
+      prompt: buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions),
       model: selectedModel,
       policy: agentPolicy,
       creditBudget,
@@ -430,7 +439,7 @@ export async function processExecution(executionId, workerId) {
             "Use exclusivamente apply_patch. Não execute build, lint, instalação ou testes; o worker validará novamente.",
             `Etapa que falhou: ${validationResult.failedScope}`,
             `Saída técnica da validação:\n${validationResult.technical}`,
-            `Demanda original:\n${buildAgentPrompt(execution.demand, agentPolicy.scope)}`,
+            `Demanda original:\n${buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions)}`,
           ].join("\n\n"),
           model: selectedModel,
           policy: repairPolicy,
@@ -576,7 +585,7 @@ export async function processExecution(executionId, workerId) {
             projectDirectory,
             prompt: buildPreviewRepairPrompt({
               technical: previewTechnical,
-              demandPrompt: buildAgentPrompt(execution.demand, agentPolicy.scope),
+              demandPrompt: buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions),
               attempt,
               previousErrors: previewErrors,
             }),

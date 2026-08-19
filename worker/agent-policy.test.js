@@ -52,4 +52,24 @@ describe("agent policy", () => {
     expect(prompt).toContain("Continue trabalhando enquanto houver requisito obrigatório");
     expect(prompt).not.toContain("alterações pequenas e focadas");
   });
+
+  it("inclui somente o conhecimento de negócio aprovado fornecido pela aplicação", () => {
+    const demand = {
+      project,
+      type: "FEATURE",
+      priority: "NORMAL",
+      title: "Calcular margem industrial",
+      description: "Adicionar o cálculo ao relatório.",
+      acceptanceCriteria: "Exibir a margem consolidada.",
+      visualValidation: false,
+    };
+
+    const prompt = buildAgentPrompt(demand, "STANDARD", {
+      businessKnowledge: "- [Projeto] Margem industrial\nSempre descontar perdas confirmadas.",
+    });
+
+    expect(prompt).toContain("Conhecimento de negócio aprovado pelo cliente");
+    expect(prompt).toContain("Sempre descontar perdas confirmadas");
+    expect(prompt).toContain("A demanda aprovada e o código atual têm precedência");
+  });
 });

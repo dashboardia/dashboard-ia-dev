@@ -12,6 +12,7 @@ import MemberForm from "./member-form";
 import MemberControls from "./member-controls";
 import ProjectSettingsForm from "./project-settings-form";
 import WebhookStatus from "./webhook-status";
+import BusinessKnowledgePanel from "./business-knowledge-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,10 @@ export default async function ProjectPage({ params }) {
       members: { include: { user: { select: { id: true, name: true, email: true, githubLogin: true, image: true } } }, orderBy: { createdAt: "asc" } },
       demands: { orderBy: { updatedAt: "desc" }, take: 8 },
       healthChecks: { orderBy: { checkedAt: "desc" }, take: 1 },
+      businessKnowledge: {
+        include: { approvedBy: { select: { id: true, name: true, email: true, githubLogin: true } } },
+        orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+      },
     },
   });
   if (!project) notFound();
@@ -71,6 +76,12 @@ export default async function ProjectPage({ params }) {
             }} />
           </section>
         )}
+        {role === "MANAGER" && <BusinessKnowledgePanel projectId={project.id} initialEntries={project.businessKnowledge.map((entry) => ({
+          ...entry,
+          createdAt: entry.createdAt.toISOString(),
+          updatedAt: entry.updatedAt.toISOString(),
+          approvedAt: entry.approvedAt?.toISOString() ?? null,
+        }))} />}
         <section className="form-card detail-card full-card">
           <div className="card-heading"><div><h2>Demandas recentes</h2><p>Atividades vinculadas ao projeto</p></div></div>
           <div className="simple-list">{project.demands.map((demand) => <Link href={`/demands/${demand.id}`} key={demand.id}><strong>{demand.title}</strong><span>{demand.type}</span><em>{demand.status}</em></Link>)}{!project.demands.length && <div className="list-empty">Nenhuma demanda criada.</div>}</div>

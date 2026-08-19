@@ -157,29 +157,46 @@ enum BillingCheckoutStatus {
   FAILED
 }
 
+enum BusinessKnowledgeStatus {
+  CANDIDATE
+  APPROVED
+  REJECTED
+}
+
+enum BusinessKnowledgeSource {
+  MANUAL
+  DEMAND
+  REVIEW
+  DOCUMENT
+  SYSTEM
+}
+
 model User {
-  id                  String          @id @default(cuid())
-  name                String?
-  email               String?         @unique
-  emailVerified       DateTime?
-  image               String?
-  githubLogin         String?         @unique
-  globalRole          GlobalRole      @default(USER)
-  status              UserStatus      @default(ACTIVE)
-  theme               String          @default("SYSTEM")
-  locale              String          @default("pt-BR")
-  accounts            Account[]
-  sessions            Session[]
-  projectMemberships  ProjectMember[]
-  projectsCreated     Project[]       @relation("ProjectCreator")
-  demandsCreated      Demand[]        @relation("DemandCreator")
-  demandsApproved     Demand[]        @relation("DemandApprover")
-  executionsRequested Execution[]     @relation("ExecutionRequester")
-  executionsApproved  Execution[]     @relation("ExecutionApprover")
-  auditLogs           AuditLog[]
-  billingAccount      BillingAccount?
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  id                        String              @id @default(cuid())
+  name                      String?
+  email                     String?             @unique
+  emailVerified             DateTime?
+  image                     String?
+  githubLogin               String?             @unique
+  globalRole                GlobalRole          @default(USER)
+  status                    UserStatus          @default(ACTIVE)
+  theme                     String              @default("SYSTEM")
+  locale                    String              @default("pt-BR")
+  accounts                  Account[]
+  sessions                  Session[]
+  projectMemberships        ProjectMember[]
+  projectsCreated           Project[]           @relation("ProjectCreator")
+  demandsCreated            Demand[]            @relation("DemandCreator")
+  demandsApproved           Demand[]            @relation("DemandApprover")
+  executionsRequested       Execution[]         @relation("ExecutionRequester")
+  executionsApproved        Execution[]         @relation("ExecutionApprover")
+  auditLogs                 AuditLog[]
+  billingAccount            BillingAccount?
+  businessKnowledgeOwned    BusinessKnowledge[] @relation("BusinessKnowledgeOwner")
+  businessKnowledgeCreated  BusinessKnowledge[] @relation("BusinessKnowledgeCreator")
+  businessKnowledgeApproved BusinessKnowledge[] @relation("BusinessKnowledgeApprover")
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
 }
 
 model Account {
@@ -220,43 +237,67 @@ model VerificationToken {
 }
 
 model Project {
-  id                   String          @id @default(cuid())
+  id                   String              @id @default(cuid())
   name                 String
-  slug                 String          @unique
-  provider             ProjectProvider @default(GITHUB)
+  slug                 String              @unique
+  provider             ProjectProvider     @default(GITHUB)
   repositoryFullName   String
   repositoryId         String?
-  defaultBranch        String          @default("main")
+  defaultBranch        String              @default("main")
   githubInstallationId String?
   githubWebhookId      String?
   githubWebhookAt      DateTime?
-  githubWebhookError   String?         @db.Text
+  githubWebhookError   String?             @db.Text
   productionUrl        String?
   railwayProjectId     String?
   railwayEnvironmentId String?
   railwayServiceId     String?
-  workingDirectory     String          @default(".")
+  workingDirectory     String              @default(".")
   installCommand       String?
   lintCommand          String?
   testCommand          String?
   buildCommand         String?
   previewCommand       String?
   previewPort          Int?
-  status               ProjectStatus   @default(ACTIVE)
+  status               ProjectStatus       @default(ACTIVE)
   createdById          String
-  createdBy            User            @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy            User                @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
   members              ProjectMember[]
   demands              Demand[]
   pullRequests         PullRequest[]
   healthChecks         HealthCheck[]
   auditLogs            AuditLog[]
   webhookEvents        WebhookEvent[]
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  businessKnowledge    BusinessKnowledge[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@unique([provider, repositoryFullName])
   @@index([status])
   @@index([createdById])
+}
+
+model BusinessKnowledge {
+  id              String                  @id @default(cuid())
+  ownerUserId     String
+  projectId       String?
+  status          BusinessKnowledgeStatus @default(CANDIDATE)
+  source          BusinessKnowledgeSource @default(MANUAL)
+  title           String
+  content         String                  @db.Text
+  sourceReference String?
+  createdById     String?
+  approvedById    String?
+  approvedAt      DateTime?
+  owner           User                    @relation("BusinessKnowledgeOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  project         Project?                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy       User?                   @relation("BusinessKnowledgeCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy      User?                   @relation("BusinessKnowledgeApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([ownerUserId, status])
+  @@index([projectId, status])
 }
 
 model ProjectMember {
