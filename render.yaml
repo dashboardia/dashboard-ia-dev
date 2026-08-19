@@ -5,7 +5,7 @@ services:
   - type: web
     name: dashboard-ia-standby
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     branch: main-render
     autoDeployTrigger: commit
@@ -59,47 +59,3 @@ services:
         sync: false
       - key: BUCKET_SECRET_ACCESS_KEY
         sync: false
-
-  - type: worker
-    name: dashboard-ia-worker-standby
-    runtime: docker
-    plan: standard
-    region: oregon
-    branch: main-render
-    autoDeployTrigger: commit
-    dockerfilePath: ./Dockerfile.worker
-    dockerContext: .
-    maxShutdownDelaySeconds: 300
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: DATABASE_URL
-        sync: false
-      - key: GITHUB_APP_ID
-        sync: false
-      - key: GITHUB_APP_PRIVATE_KEY
-        sync: false
-      - key: GITHUB_APP_SLUG
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_MODEL
-        value: gpt-5.6
-      - key: RAILWAY_API_TOKEN
-        sync: false
-      - key: BUCKET_ENDPOINT
-        sync: false
-      - key: BUCKET_NAME
-        sync: false
-      - key: BUCKET_ACCESS_KEY_ID
-        sync: false
-      - key: BUCKET_SECRET_ACCESS_KEY
-        sync: false
-      - key: WORKER_POLL_INTERVAL_MS
-        value: "5000"
-      - key: HEALTH_CHECK_INTERVAL_MS
-        value: "300000"
-      - key: HEALTH_CHECK_RETENTION_DAYS
-        value: "30"
-      - key: WORKER_HEARTBEAT_INTERVAL_MS
-        value: "30000"
