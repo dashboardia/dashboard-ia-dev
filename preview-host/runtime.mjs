@@ -53,7 +53,10 @@ export function previewUpstreamHeaders(headers = {}, port) {
   return {
     ...headers,
     ...(originalHost ? { "x-forwarded-host": originalHost } : {}),
-    host: `localhost:${port}`,
+    // Vite 4 valida o Host antes de servir a aplicação. Endereços IP são
+    // aceitos por padrão, enquanto aliases Docker e, em algumas versões,
+    // localhost recebido por proxy podem resultar em HTTP 403.
+    host: `127.0.0.1:${port}`,
   };
 }
 

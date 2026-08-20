@@ -115,9 +115,9 @@ test("não considera 404 como preview pronto", () => {
   assert.equal(isPreviewReadyStatus(500), false);
 });
 
-test("usa host local no upstream sem perder o domínio público original", () => {
+test("usa IP local aceito pelo Vite no upstream sem perder o domínio público original", () => {
   assert.deepEqual(previewUpstreamHeaders({ host: "preview.example.com", accept: "text/html" }, 5173), {
-    host: "localhost:5173",
+    host: "127.0.0.1:5173",
     accept: "text/html",
     "x-forwarded-host": "preview.example.com",
   });
