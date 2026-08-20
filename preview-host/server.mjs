@@ -10,6 +10,7 @@ import {
   buildPreviewDockerfile,
   isTransientDockerError,
   isPreviewReadyStatus,
+  previewUpstreamHeaders,
   previewContainerName,
   previewImageName,
   previewNetworkName,
@@ -145,6 +146,7 @@ async function removeRuntime(id, removeImage = true) {
 async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
   const startedAt = Date.now();
   const url = `http://${previewContainerName(id)}:${previewPort}/`;
+  let lastHttpStatus = null;
   while (Date.now() - startedAt < timeoutMs) {
     const state = await docker(["inspect", "--format", "{{.State.Status}}", previewContainerName(id)]).catch(() => ({ stdout: "missing" }));
     if (state.stdout.trim() !== "running") {
@@ -152,7 +154,12 @@ async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
       throw new Error(`O container encerrou antes de ficar pronto\n${logs.stdout}${logs.stderr}`.slice(-12_000));
     }
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(3_000), redirect: "manual" });
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(3_000),
+        redirect: "manual",
+        headers: previewUpstreamHeaders({}, previewPort),
+      });
+      lastHttpStatus = response.status;
       if (isPreviewReadyStatus(response.status)) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 1_500));
@@ -161,6 +168,7 @@ async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
   const diagnostic = `${logs.stdout || ""}${logs.stderr || ""}`.trim();
   throw new Error([
     "O container não publicou uma rota navegável dentro de 90 segundos.",
+    lastHttpStatus ? `Última resposta HTTP recebida: ${lastHttpStatus}.` : null,
     diagnostic ? "Últimos logs do container:" : null,
     diagnostic || null,
   ].filter(Boolean).join("\n").slice(-16_000));
@@ -227,23 +235,26 @@ async function deployPreview(id, configuration) {
       await removeRuntime(id);
       return;
     }
-    await patchState(id, { status: "DEPLOYING", imageReference: previewImageName(id) });
-    try {
-      await startPreviewRuntime(id, configuration);
-    } catch (firstRuntimeError) {
-      const runtimeOutput = dockerErrorText(firstRuntimeError);
-      await removeRuntime(id);
-      const runtimeAdjustments = await applyKnownRuntimeRepairs({ sourceDirectory, runtimeOutput });
-      if (!runtimeAdjustments.length) throw firstRuntimeError;
-      const currentState = await readState(id).catch(() => null);
-      await patchState(id, {
-        status: "BUILDING",
-        adjustments: [...(currentState?.adjustments ?? []), ...runtimeAdjustments],
-        error: null,
-      });
-      await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
-      await patchState(id, { status: "DEPLOYING", imageReference: previewImageName(id) });
-      await startPreviewRuntime(id, configuration);
+    const maximumRuntimeAttempts = 3;
+    for (let attempt = 1; attempt <= maximumRuntimeAttempts; attempt += 1) {
+      await patchState(id, { status: "DEPLOYING", imageReference: previewImageName(id), runtimeAttempt: attempt });
+      try {
+        await startPreviewRuntime(id, configuration);
+        break;
+      } catch (runtimeError) {
+        const runtimeOutput = dockerErrorText(runtimeError);
+        await removeRuntime(id);
+        if (attempt === maximumRuntimeAttempts) throw runtimeError;
+        const runtimeAdjustments = await applyKnownRuntimeRepairs({ sourceDirectory, runtimeOutput });
+        if (!runtimeAdjustments.length) throw runtimeError;
+        const currentState = await readState(id).catch(() => null);
+        await patchState(id, {
+          status: "BUILDING",
+          adjustments: [...(currentState?.adjustments ?? []), ...runtimeAdjustments],
+          error: null,
+        });
+        await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
+      }
     }
     await patchState(id, {
       status: "READY",
@@ -356,7 +367,7 @@ async function proxyPreview(request, response, state) {
     port: state.port,
     method: request.method,
     path: request.url,
-    headers: { ...request.headers, host: `${previewContainerName(state.id)}:${state.port}` },
+    headers: previewUpstreamHeaders(request.headers, state.port),
   }, (upstreamResponse) => {
     response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
     upstreamResponse.pipe(response);
@@ -416,7 +427,7 @@ server.on("upgrade", async (request, socket, head) => {
       port: state.port,
       method: request.method,
       path: request.url,
-      headers: request.headers,
+      headers: previewUpstreamHeaders(request.headers, state.port),
     });
     upstream.on("upgrade", (upstreamResponse, upstreamSocket, upstreamHead) => {
       socket.write(`HTTP/1.1 101 Switching Protocols\r\n${Object.entries(upstreamResponse.headers).map(([key, value]) => `${key}: ${value}`).join("\r\n")}\r\n\r\n`);

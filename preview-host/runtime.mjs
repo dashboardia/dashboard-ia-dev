@@ -48,6 +48,15 @@ export function isPreviewReadyStatus(status) {
   return Number(status) >= 200 && Number(status) < 400;
 }
 
+export function previewUpstreamHeaders(headers = {}, port) {
+  const originalHost = headers.host;
+  return {
+    ...headers,
+    ...(originalHost ? { "x-forwarded-host": originalHost } : {}),
+    host: `localhost:${port}`,
+  };
+}
+
 function runtimeImage(runtime) {
   if (runtime?.startsWith("PYTHON_")) return "python:3.12-slim";
   if (runtime?.startsWith("MONOREPO_")) return "node:22-bookworm";
@@ -96,6 +105,9 @@ function mavenBuildCommandInRepository(command, workingDirectory = ".") {
 function buildMavenWarDockerfile(configuration) {
   const port = Number(configuration.port) || 8080;
   const buildCommand = mavenBuildCommandInRepository(configuration.buildCommand, configuration.workingDirectory);
+  const entrypoint = configuration.workingDirectory && configuration.workingDirectory !== "."
+    ? `${configuration.workingDirectory}/index.html`
+    : "index.html";
 
   return [
     "FROM maven:3.8.8-eclipse-temurin-8 AS build",
@@ -111,7 +123,7 @@ function buildMavenWarDockerfile(configuration) {
     // de entrada: controllers, JSPs e endpoints seguem executando no Tomcat.
     shellInstruction(
       "RUN",
-      'mkdir -p /tmp/dashboardia-entrypoint; if [ -f index.html ]; then cp index.html /tmp/dashboardia-entrypoint/index.html; fi',
+      `mkdir -p /tmp/dashboardia-entrypoint; entrypoint=${shellQuote(entrypoint)}; if [ -f "$entrypoint" ]; then cp "$entrypoint" /tmp/dashboardia-entrypoint/index.html; fi`,
     ),
     "",
     "FROM tomcat:9.0-jdk8-temurin",

@@ -4,7 +4,7 @@ import path from "node:path";
 const MAX_FILES = 5_000;
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
-async function javaSourceFiles(root) {
+async function sourceFiles(root, extension) {
   const matches = [];
   const pending = [root];
   let visited = 0;
@@ -18,7 +18,7 @@ async function javaSourceFiles(root) {
       if ([".git", "node_modules", "target", "build", "dist"].includes(entry.name)) continue;
       const target = path.join(directory, entry.name);
       if (entry.isDirectory()) pending.push(target);
-      else if (entry.isFile() && entry.name.endsWith(".java")) matches.push(target);
+      else if (entry.isFile() && entry.name.endsWith(extension)) matches.push(target);
     }
   }
 
@@ -34,7 +34,7 @@ async function repairJavaAuditDates(sourceDirectory, runtimeOutput) {
   if (!/NULL not allowed for column\s+["']?CREATEDAT["']?/i.test(runtimeOutput)) return [];
 
   const adjustments = [];
-  for (const file of await javaSourceFiles(sourceDirectory)) {
+  for (const file of await sourceFiles(sourceDirectory, ".java")) {
     const metadata = await lstat(file).catch(() => null);
     if (!metadata?.isFile() || metadata.size > MAX_SOURCE_BYTES) continue;
     const original = await readFile(file, "utf8");
@@ -55,7 +55,32 @@ async function repairJavaAuditDates(sourceDirectory, runtimeOutput) {
   return adjustments;
 }
 
-const REPAIRS = [repairJavaAuditDates];
+async function repairSpringRootStaticFallback(sourceDirectory, runtimeOutput) {
+  if (!/No mapping found for HTTP request with URI \[\/\][\s\S]*DispatcherServlet/i.test(runtimeOutput)) return [];
+  const entrypoints = await sourceFiles(sourceDirectory, "index.html");
+  if (!entrypoints.length) return [];
+
+  for (const file of await sourceFiles(sourceDirectory, ".xml")) {
+    const metadata = await lstat(file).catch(() => null);
+    if (!metadata?.isFile() || metadata.size > MAX_SOURCE_BYTES) continue;
+    const original = await readFile(file, "utf8");
+    if (!/<mvc:annotation-driven\s*\/>/.test(original) || !/<\/beans>/.test(original)) continue;
+    if (/<mvc:default-servlet-handler\s*\/>/.test(original)) continue;
+
+    const updated = original.replace(/\s*<\/beans>\s*$/, "\n    <mvc:default-servlet-handler/>\n</beans>\n");
+    if (updated === original) continue;
+    await writeFile(file, updated, "utf8");
+    return [{
+      code: "SPRING_ROOT_STATIC_FALLBACK",
+      file: path.relative(sourceDirectory, file),
+      summary: "Habilitado o servlet padrão do Spring na cópia temporária para publicar o index.html existente quando a aplicação não possui uma rota válida para /.",
+    }];
+  }
+
+  return [];
+}
+
+const REPAIRS = [repairJavaAuditDates, repairSpringRootStaticFallback];
 
 export async function applyKnownRuntimeRepairs({ sourceDirectory, runtimeOutput }) {
   const adjustments = [];

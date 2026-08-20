@@ -4,6 +4,7 @@ import {
   buildPreviewDockerfile,
   isTransientDockerError,
   isPreviewReadyStatus,
+  previewUpstreamHeaders,
   previewContainerName,
   previewNetworkName,
   validPreviewId,
@@ -90,6 +91,7 @@ test("compila Maven no diretório detectado sem perder a publicação do WAR", (
   assert.match(result, /mvn -B -DskipTests package/);
   assert.match(result, /^FROM tomcat:9\.0-jdk8-temurin/m);
   assert.match(result, /find \. -type f -path/);
+  assert.match(result, /entrypoint='sistema-web\/index\.html'/);
 });
 
 test("o próprio Dockerfile localiza um pom aninhado quando recebe Maven na raiz", () => {
@@ -111,6 +113,14 @@ test("não considera 404 como preview pronto", () => {
   assert.equal(isPreviewReadyStatus(302), true);
   assert.equal(isPreviewReadyStatus(404), false);
   assert.equal(isPreviewReadyStatus(500), false);
+});
+
+test("usa host local no upstream sem perder o domínio público original", () => {
+  assert.deepEqual(previewUpstreamHeaders({ host: "preview.example.com", accept: "text/html" }, 5173), {
+    host: "localhost:5173",
+    accept: "text/html",
+    "x-forwarded-host": "preview.example.com",
+  });
 });
 
 test("mantém servidor estático em repositório realmente estático", () => {

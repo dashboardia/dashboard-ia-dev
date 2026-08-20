@@ -49,3 +49,29 @@ test("não altera código Java quando a falha não é de auditoria", async () =>
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("habilita o index existente quando o Spring não possui rota raiz", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-runtime-repair-"));
+  const configuration = path.join(root, "src/main/webapp/WEB-INF/spring/mvc-context.xml");
+  await mkdir(path.dirname(configuration), { recursive: true });
+  await writeFile(path.join(root, "index.html"), "<!doctype html><title>Preview</title>");
+  await writeFile(configuration, [
+    '<beans xmlns:mvc="http://www.springframework.org/schema/mvc">',
+    "    <mvc:annotation-driven/>",
+    "</beans>",
+  ].join("\n"));
+
+  try {
+    const adjustments = await applyKnownRuntimeRepairs({
+      sourceDirectory: root,
+      runtimeOutput: "No mapping found for HTTP request with URI [/] in DispatcherServlet with name 'app'",
+    });
+    const result = await readFile(configuration, "utf8");
+
+    assert.equal(adjustments.length, 1);
+    assert.equal(adjustments[0].code, "SPRING_ROOT_STATIC_FALLBACK");
+    assert.match(result, /<mvc:default-servlet-handler\s*\/>/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
