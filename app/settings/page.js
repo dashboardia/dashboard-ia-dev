@@ -5,7 +5,7 @@ import UserPreferencesForm from "../../components/user-preferences-form";
 import { db } from "../../lib/db";
 import { getConfigurationStatus } from "../../lib/env";
 import { formatBrlCents } from "../../lib/financial-shadow";
-import { getGlobalSettings } from "../../lib/global-settings";
+import { formatDateTime, getGlobalSettings } from "../../lib/global-settings";
 import { requirePageUser } from "../../lib/page-access";
 import { getWorkerRuntimeStatus } from "../../lib/worker-heartbeat";
 import GlobalSettingsForm from "./global-settings-form";
@@ -19,7 +19,13 @@ export default async function SettingsPage() {
   const autoscalerState = user.globalRole === "ADMIN" && configuration.database && db.workerAutoscalerState ? await db.workerAutoscalerState.findUnique({ where: { id: "worker" } }).catch(() => null) : null;
   const worker = configuration.database && configuration.worker ? await getWorkerRuntimeStatus().catch(() => ({ online: false, instances: 0 })) : { online: false, instances: 0 };
   const items = [["PostgreSQL", configuration.database, "DATABASE_URL"], ["GitHub OAuth", configuration.githubAuth, "GITHUB_ID, GITHUB_SECRET e NEXTAUTH_SECRET"], ["Proteção dos tokens OAuth", configuration.tokenEncryption, "TOKEN_ENCRYPTION_KEY"], ["Webhook GitHub", configuration.githubWebhook, "GITHUB_WEBHOOK_SECRET e NEXTAUTH_URL"], ["OpenAI", configuration.openai, "OPENAI_API_KEY"], ["Asaas", configuration.asaas, "ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN e NEXTAUTH_URL"], ["Host de ambientes", configuration.previewHost, "PREVIEW_HOST_URL e PREVIEW_HOST_TOKEN"], ["Worker", worker.online, worker.online ? `${worker.instances} instância(s) ativa(s)` : "Aguardando heartbeat do serviço worker", worker.online ? "Online" : "Offline"]];
-  if (globalSettings?.workerAutoscalingEnabled) items.push(["Autoscaling", !autoscalerState?.lastError, autoscalerState?.lastError || "Aguardando a primeira avaliação da fila", autoscalerState ? `${autoscalerState.currentReplicas ?? worker.instances} atual · ${autoscalerState.desiredReplicas ?? globalSettings.workerMinReplicas} desejada(s)` : "Inicializando"]);
+  if (globalSettings?.workerAutoscalingEnabled) {
+    const autoscalingDetail = autoscalerState?.lastError
+      || (autoscalerState?.lastEvaluatedAt
+        ? `Fila avaliada em ${formatDateTime(autoscalerState.lastEvaluatedAt, globalSettings.timeZone)} · ${autoscalerState.activeExecutions} ativa(s) · ${autoscalerState.queuedExecutions} na fila`
+        : "Inicializando a primeira avaliação da fila");
+    items.push(["Autoscaling", !autoscalerState?.lastError, autoscalingDetail, autoscalerState ? `${autoscalerState.currentReplicas ?? worker.instances} atual · ${autoscalerState.desiredReplicas ?? globalSettings.workerMinReplicas} desejada(s)` : "Inicializando"]);
+  }
   const measuredExecutions = financialSummary?._count.id ?? 0;
   const calibrationProgress = Math.min(20, measuredExecutions);
   const measuredCredits = financialSummary?._sum.simulatedConsumedCredits ?? 0;

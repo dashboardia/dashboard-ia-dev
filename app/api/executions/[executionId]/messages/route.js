@@ -5,6 +5,7 @@ import { apiError, assertSameOrigin } from "../../../../../lib/api";
 import { auditData } from "../../../../../lib/audit";
 import { BillingAccessError, getExecutionCreditBudget } from "../../../../../lib/billing";
 import { db } from "../../../../../lib/db";
+import { clientInteractionRequeueData } from "../../../../../lib/executions";
 import { getGlobalSettings } from "../../../../../lib/global-settings";
 import { executionMessageInputSchema } from "../../../../../lib/validation";
 
@@ -34,20 +35,14 @@ export async function POST(request, context) {
     }
 
     const result = await db.$transaction(async (transaction) => {
+      const interactionAt = new Date();
       const message = await transaction.executionMessage.create({ data: { executionId, authorId: user.id, role: "USER", content: input.content } });
       const updated = await transaction.execution.updateMany({
         where: { id: executionId, status: "AWAITING_CLIENT", closedAt: null },
-        data: {
-          status: "QUEUED",
-          stage: "IMPLEMENTATION",
-          adjustmentCount: { increment: 1 },
-          lastInteractionAt: new Date(),
-          conversationExpiresAt: new Date(Date.now() + settings.executionConversationTimeoutMinutes * 60_000),
-          finishedAt: null,
-          error: null,
-        },
+        data: clientInteractionRequeueData({ now: interactionAt, timeoutMinutes: settings.executionConversationTimeoutMinutes }),
       });
       if (updated.count !== 1) throw new Error("A execução mudou de estado enquanto o ajuste era enviado");
+      await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "QUEUED" } });
       await transaction.auditLog.create({ data: auditData({ actorId: user.id, projectId: execution.demand.projectId, action: "execution.adjustment.request", entityType: "Execution", entityId: executionId, metadata: { adjustment: execution.adjustmentCount + 1, billing: "measured_usage" }, request }) });
       return message;
     });
