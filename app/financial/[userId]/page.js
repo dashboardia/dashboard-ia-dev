@@ -19,6 +19,22 @@ function formatMonth(value) {
   return monthFormatter.format(new Date(`${value}-01T00:00:00Z`)).replace(" de ", "/");
 }
 
+function measuredMoney(value) {
+  return value > 0 ? formatBrlCents(value) : "Sem custo medido";
+}
+
+function costShare(value, total) {
+  return total > 0 ? Math.round(value * 10_000 / total) / 100 : 0;
+}
+
+function executionCostBreakdown(snapshot) {
+  const aiDirect = snapshot.aiCostUsdMicros != null && snapshot.usdToBrlCents != null
+    ? Math.ceil(Math.max(0, snapshot.aiCostUsdMicros) * Math.max(0, snapshot.usdToBrlCents) / 1_000_000)
+    : Math.max(0, snapshot.adjustedAiCostBrlCents || 0);
+  const safety = Math.max(0, (snapshot.adjustedAiCostBrlCents || 0) - aiDirect);
+  return `IA ${formatBrlCents(aiDirect)} · reserva ${formatBrlCents(safety)} · worker ${formatBrlCents(snapshot.workerCostBrlCents)} · visual ${formatBrlCents(snapshot.visualValidationCostBrlCents)}`;
+}
+
 export default async function ClientFinancialPage({ params }) {
   const user = await requirePageAdmin();
   const { userId } = await params;
@@ -37,7 +53,7 @@ export default async function ClientFinancialPage({ params }) {
     }),
     db.executionFinancialSnapshot.findMany({
       where: { calculationStatus: "MEASURED", execution: { demand: { project: { createdById: userId } } } },
-      include: { execution: { select: { id: true, status: true, demand: { select: { id: true, title: true, project: { select: { name: true } } } } } } },
+      include: { execution: { select: { id: true, status: true, demand: { select: { id: true, title: true, project: { select: { name: true, createdById: true } } } } } } },
       orderBy: { calculatedAt: "desc" },
     }),
   ]);
@@ -45,9 +61,16 @@ export default async function ClientFinancialPage({ params }) {
 
   const client = buildClientFinancialRows([account], snapshots)[0];
   const monthly = buildClientFinancialMonthlySeries(account.checkouts, snapshots);
-  const graphMaximum = Math.max(1, ...monthly.flatMap((month) => [month.paidBrlCents, month.totalInternalCostBrlCents]));
-  const adjustedAiCostBrlCents = snapshots.reduce((sum, snapshot) => sum + Math.max(0, snapshot.adjustedAiCostBrlCents || 0), 0);
-  const aiAdjustmentBrlCents = Math.max(0, adjustedAiCostBrlCents - client.aiCostBrlCents);
+  const graphMaximum = Math.max(1, ...monthly.flatMap((month) => [month.paidBrlCents, month.directOperationalCostBrlCents, month.aiSafetyCostBrlCents]));
+  const segmentedInternalCost = client.adjustedAiCostBrlCents + client.workerCostBrlCents + client.visualCostBrlCents;
+  const otherInternalCostBrlCents = Math.max(0, client.totalInternalCostBrlCents - segmentedInternalCost);
+  const costSegments = [
+    { label: "OpenAI direto", detail: "Tokens × preço do modelo × câmbio do snapshot", value: client.aiCostBrlCents, className: "ai" },
+    { label: "Reserva de segurança da IA", detail: "Proteção interna aplicada sobre a variação da API", value: client.aiSafetyCostBrlCents, className: "safety" },
+    { label: "Worker", detail: "Tempo de processamento × custo/hora configurado", value: client.workerCostBrlCents, className: "worker" },
+    { label: "Validação visual", detail: "Custo fixo quando a evidência visual é executada", value: client.visualCostBrlCents, className: "visual" },
+    ...(otherInternalCostBrlCents ? [{ label: "Outros ajustes", detail: "Diferença de arredondamento ou fórmula histórica", value: otherInternalCostBrlCents, className: "other" }] : []),
+  ];
   const formulaVersions = [...new Set(snapshots.map((snapshot) => snapshot.formulaVersion).filter(Boolean))];
 
   return <AppShell user={user}><div className="section-page financial-page financial-detail-page">
@@ -55,33 +78,35 @@ export default async function ClientFinancialPage({ params }) {
     <SectionHeader eyebrow="DETALHAMENTO FINANCEIRO" title={client.name} description={`${client.email} · ${client.planName} · ${client.executions} execução(ões) com custo medido`} />
 
     <section className="financial-kpis">
-      <article><Landmark size={18} /><span><small>Recebido confirmado</small><strong>{formatBrlCents(client.paidBrlCents)}</strong><em>{account.checkouts.length} pagamento(s) pago(s)</em></span></article>
-      <article><Bot size={18} /><span><small>OpenAI direto</small><strong>{formatBrlCents(client.aiCostBrlCents)}</strong><em>tokens × preço e câmbio registrados</em></span></article>
-      <article><Cpu size={18} /><span><small>Custo interno medido</small><strong>{formatBrlCents(client.totalInternalCostBrlCents)}</strong><em>IA ajustada, worker e visual</em></span></article>
-      <article className={client.resultBrlCents < 0 ? "negative" : "positive"}><TrendingUp size={18} /><span><small>Resultado bruto medido</small><strong>{formatBrlCents(client.resultBrlCents)}</strong><em>{client.grossMarginPercent == null ? "sem receita confirmada" : `${client.grossMarginPercent.toLocaleString("pt-BR")}% de margem`}</em></span></article>
+      <article><Landmark size={18} /><span><small>Receita confirmada</small><strong>{client.paidBrlCents ? formatBrlCents(client.paidBrlCents) : "Sem receita"}</strong><em>{account.checkouts.length} pagamento(s) confirmado(s)</em></span></article>
+      <article><Bot size={18} /><span><small>Custo direto medido</small><strong>{measuredMoney(client.directOperationalCostBrlCents)}</strong><em>OpenAI + worker + validação visual</em></span></article>
+      <article><Cpu size={18} /><span><small>Reserva interna</small><strong>{measuredMoney(client.aiSafetyCostBrlCents)}</strong><em>margem de segurança aplicada à IA</em></span></article>
+      <article className={client.resultBrlCents < 0 ? "negative" : "positive"}><TrendingUp size={18} /><span><small>Resultado bruto após reserva</small><strong>{formatBrlCents(client.resultBrlCents)}</strong><em>{client.grossMarginPercent == null ? "sem receita confirmada" : `${client.grossMarginPercent.toLocaleString("pt-BR")}% de margem bruta`}</em></span></article>
     </section>
+    <p className="financial-result-warning">Resultado bruto = receita confirmada − custo operacional calculado. Não é lucro líquido: impostos e custos fixos gerais ainda não atribuídos ao cliente não estão incluídos.</p>
 
     <section className="financial-detail-grid">
       <article className="form-card financial-chart-card">
-        <div className="card-heading"><div><h2>Receita x custo por mês</h2><p>Somente pagamentos confirmados e execuções com uso medido.</p></div><TrendingUp size={19} /></div>
-        <div className="financial-chart-legend"><span><i className="revenue" />Recebido</span><span><i className="cost" />Custo interno</span></div>
-        <div className="financial-month-chart">
-          {monthly.map((month) => <div className="financial-month-column" key={month.month} title={`${formatMonth(month.month)} · recebido ${formatBrlCents(month.paidBrlCents)} · custo ${formatBrlCents(month.totalInternalCostBrlCents)}`}>
-            <div className="financial-bars"><i className="revenue" style={{ height: `${Math.max(month.paidBrlCents ? 4 : 0, month.paidBrlCents * 100 / graphMaximum)}%` }} /><i className="cost" style={{ height: `${Math.max(month.totalInternalCostBrlCents ? 4 : 0, month.totalInternalCostBrlCents * 100 / graphMaximum)}%` }} /></div>
-            <small>{formatMonth(month.month)}</small><em>{month.executions} exec.</em>
-          </div>)}
+        <div className="card-heading"><div><h2>Movimento financeiro por mês</h2><p>Valores escritos e barras na mesma escala para facilitar a comparação.</p></div><TrendingUp size={19} /></div>
+        <div className="financial-month-flow">
+          {monthly.map((month) => <article key={month.month}>
+            <header><span><strong>{formatMonth(month.month)}</strong><small>{month.executions} execução(ões) medida(s)</small></span><em className={month.resultBrlCents < 0 ? "negative" : "positive"}>Resultado {formatBrlCents(month.resultBrlCents)}{month.grossMarginPercent == null ? "" : ` · ${month.grossMarginPercent.toLocaleString("pt-BR")}%`}</em></header>
+            <div className="financial-flow-line revenue"><span><small>Receita confirmada</small><strong>{month.paidBrlCents ? formatBrlCents(month.paidBrlCents) : "Sem receita"}</strong></span><i><b style={{ width: `${month.paidBrlCents * 100 / graphMaximum}%` }} /></i></div>
+            <div className="financial-flow-line direct"><span><small>Custo direto</small><strong>{measuredMoney(month.directOperationalCostBrlCents)}</strong></span><i><b style={{ width: `${month.directOperationalCostBrlCents * 100 / graphMaximum}%` }} /></i></div>
+            <div className="financial-flow-line safety"><span><small>Reserva interna</small><strong>{measuredMoney(month.aiSafetyCostBrlCents)}</strong></span><i><b style={{ width: `${month.aiSafetyCostBrlCents * 100 / graphMaximum}%` }} /></i></div>
+          </article>)}
           {!monthly.length && <div className="list-empty">Ainda não existem valores históricos para este cliente.</div>}
         </div>
       </article>
 
       <article className="form-card financial-cost-card">
-        <div className="card-heading"><div><h2>Composição do custo</h2><p>Valores usados no resultado bruto acima.</p></div><Cpu size={19} /></div>
-        <div className="financial-cost-list">
-          <span><small>OpenAI direto</small><strong>{formatBrlCents(client.aiCostBrlCents)}</strong></span>
-          <span><small>Ajuste de segurança da IA</small><strong>{formatBrlCents(aiAdjustmentBrlCents)}</strong></span>
-          <span><small>Worker</small><strong>{formatBrlCents(client.workerCostBrlCents)}</strong></span>
-          <span><small>Validação visual</small><strong>{formatBrlCents(client.visualCostBrlCents)}</strong></span>
-          <span className="total"><small>Total interno medido</small><strong>{formatBrlCents(client.totalInternalCostBrlCents)}</strong></span>
+        <div className="card-heading"><div><h2>De onde vem o custo</h2><p>Segmentação completa do valor descontado da receita.</p></div><Cpu size={19} /></div>
+        <div className="financial-cost-segments">
+          {costSegments.filter((segment) => segment.value > 0).map((segment) => <div key={segment.label} className={segment.className}>
+            <span><strong>{segment.label}</strong><small>{segment.detail}</small></span><em><b>{formatBrlCents(segment.value)}</b><small>{costShare(segment.value, client.totalInternalCostBrlCents).toLocaleString("pt-BR")}% do total</small></em><i><b style={{ width: `${costShare(segment.value, client.totalInternalCostBrlCents)}%` }} /></i>
+          </div>)}
+          {!client.totalInternalCostBrlCents && <div className="list-empty">Nenhuma execução teve custo medido para este cliente.</div>}
+          <div className="financial-cost-totals"><span><small>Subtotal direto</small><strong>{measuredMoney(client.directOperationalCostBrlCents)}</strong></span><span><small>Reserva interna</small><strong>{measuredMoney(client.aiSafetyCostBrlCents)}</strong></span><span className="total"><small>Custo usado no resultado</small><strong>{measuredMoney(client.totalInternalCostBrlCents)}</strong></span></div>
         </div>
       </article>
     </section>
@@ -91,8 +116,9 @@ export default async function ClientFinancialPage({ params }) {
       <div className="financial-method-grid">
         <span><strong>Receita</strong><small>Somente checkouts com status PAID registrados pelo provedor de pagamento.</small></span>
         <span><strong>OpenAI direto</strong><small>Tokens medidos na execução × tabela do modelo × câmbio salvo no snapshot.</small></span>
-        <span><strong>Custo interno</strong><small>IA com ajuste configurado + duração do worker + validação visual registrada.</small></span>
-        <span><strong>Resultado bruto</strong><small>Receita confirmada − custo interno medido. Não representa lucro contábil e não inclui custos fixos sem medição por cliente.</small></span>
+        <span><strong>Custo direto</strong><small>OpenAI direto + worker calculado + validação visual registrada.</small></span>
+        <span><strong>Reserva interna</strong><small>Margem de segurança configurada para absorver variação de câmbio e preço da IA. Não é cobrança da OpenAI.</small></span>
+        <span><strong>Resultado bruto</strong><small>Receita confirmada − custo direto − reserva interna. Não representa lucro líquido contábil.</small></span>
       </div>
       <small className="financial-formula-note">Fórmula(s): {formulaVersions.join(", ") || "sem snapshot"}. Os valores históricos permanecem associados à cotação e à fórmula registradas em cada execução.</small>
     </section>
@@ -109,7 +135,7 @@ export default async function ClientFinancialPage({ params }) {
       <article className="form-card table-card">
         <div className="card-heading"><div><h2>Execuções medidas</h2><p>Detalhamento que compõe o custo.</p></div><Clock3 size={19} /></div>
         <div className="financial-detail-list">
-          {snapshots.map((snapshot) => <Link href={`/executions/${snapshot.execution.id}`} key={snapshot.id}><span><strong>{snapshot.execution.demand.title}</strong><small>{snapshot.execution.demand.project.name} · {snapshot.model} · {(snapshot.inputTokens + snapshot.outputTokens).toLocaleString("pt-BR")} tokens</small></span><b>{formatBrlCents(snapshot.totalInternalCostBrlCents)}</b></Link>)}
+          {snapshots.map((snapshot) => <Link href={`/executions/${snapshot.execution.id}`} key={snapshot.id}><span><strong>{snapshot.execution.demand.title}</strong><small>{snapshot.execution.demand.project.name} · {snapshot.model} · {(snapshot.inputTokens + snapshot.outputTokens).toLocaleString("pt-BR")} tokens</small><small>{executionCostBreakdown(snapshot)}</small></span><b>{formatBrlCents(snapshot.totalInternalCostBrlCents)}</b></Link>)}
           {!snapshots.length && <div className="list-empty">Nenhuma execução com uso medido.</div>}
         </div>
       </article>

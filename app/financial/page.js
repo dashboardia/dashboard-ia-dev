@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, CircleDollarSign, Cpu, Landmark, TrendingUp } from "lucide-react";
+import { Bot, ChevronRight, CircleDollarSign, Cpu, Landmark, ShieldCheck, TrendingUp } from "lucide-react";
 import Link from "next/link";
 
 import AppShell from "../../components/app-shell";
@@ -30,25 +30,31 @@ export default async function FinancialPage() {
   const totals = summarizeClientFinancialRows(clients);
 
   return <AppShell user={user}><div className="section-page financial-page">
-    <SectionHeader eyebrow="ADMINISTRAÇÃO" title="Financeiro por cliente" description="Compare os pagamentos confirmados com o custo medido da OpenAI e da operação da plataforma." />
+    <SectionHeader eyebrow="ADMINISTRAÇÃO" title="Financeiro por cliente" description="Receita confirmada, custos segmentados e resultado bruto operacional de cada cliente." />
     <section className="financial-kpis">
-      <article><Landmark size={18} /><span><small>Recebido</small><strong>{formatBrlCents(totals.paidBrlCents)}</strong><em>pagamentos confirmados</em></span></article>
-      <article><Bot size={18} /><span><small>Custo OpenAI</small><strong>{formatBrlCents(totals.aiCostBrlCents)}</strong><em>tokens medidos na cotação registrada</em></span></article>
-      <article><Cpu size={18} /><span><small>Custo interno total</small><strong>{formatBrlCents(totals.totalInternalCostBrlCents)}</strong><em>IA, worker e validação visual</em></span></article>
-      <article className={totals.resultBrlCents < 0 ? "negative" : "positive"}><TrendingUp size={18} /><span><small>Resultado bruto</small><strong>{formatBrlCents(totals.resultBrlCents)}</strong><em>{totals.grossMarginPercent == null ? "sem receita confirmada" : `${totals.grossMarginPercent.toLocaleString("pt-BR")}% de margem`}</em></span></article>
+      <article><Landmark size={18} /><span><small>Receita confirmada</small><strong>{formatBrlCents(totals.paidBrlCents)}</strong><em>pagamentos com status pago</em></span></article>
+      <article><Bot size={18} /><span><small>Custo direto medido</small><strong>{formatBrlCents(totals.directOperationalCostBrlCents)}</strong><em>OpenAI + worker + validação visual</em></span></article>
+      <article><ShieldCheck size={18} /><span><small>Reserva interna</small><strong>{formatBrlCents(totals.aiSafetyCostBrlCents)}</strong><em>segurança aplicada à variação da IA</em></span></article>
+      <article className={totals.resultBrlCents < 0 ? "negative" : "positive"}><TrendingUp size={18} /><span><small>Resultado bruto após reserva</small><strong>{formatBrlCents(totals.resultBrlCents)}</strong><em>{totals.grossMarginPercent == null ? "sem receita confirmada" : `${totals.grossMarginPercent.toLocaleString("pt-BR")}% de margem bruta`}</em></span></article>
+    </section>
+    <p className="financial-result-warning">Este resultado ainda não é lucro líquido. Impostos e custos fixos gerais não atribuídos diretamente aos clientes não entram no cálculo.</p>
+
+    <section className="form-card financial-overall-costs">
+      <div className="card-heading"><div><h2>Composição geral do custo</h2><p>Valores efetivamente medidos ou calculados nas {totals.executions} execuções.</p></div><Cpu size={20} /></div>
+      <div><span><small>OpenAI direto</small><strong>{formatBrlCents(totals.aiCostBrlCents)}</strong></span><span><small>Worker</small><strong>{formatBrlCents(totals.workerCostBrlCents)}</strong></span><span><small>Validação visual</small><strong>{formatBrlCents(totals.visualCostBrlCents)}</strong></span><span><small>Reserva da IA</small><strong>{formatBrlCents(totals.aiSafetyCostBrlCents)}</strong></span><span className="total"><small>Custo usado no resultado</small><strong>{formatBrlCents(totals.totalInternalCostBrlCents)}</strong></span></div>
     </section>
 
     <section className="form-card table-card financial-client-card">
       <div className="card-heading financial-table-heading"><div><h2>Clientes</h2><p>{totals.executions} execução(ões) com uso medido</p></div><CircleDollarSign size={20} /></div>
       <div className="data-table financial-client-table">
-        <div className="data-head"><span>Cliente</span><span>Plano</span><span>Pago</span><span>OpenAI</span><span>Custo total</span><span>Resultado</span></div>
+        <div className="data-head"><span>Cliente</span><span>Receita</span><span>Custo direto</span><span>Reserva IA</span><span>Custo considerado</span><span>Resultado bruto</span></div>
         {clients.map((client) => <Link className="data-row financial-client-link" href={`/financial/${client.userId}`} aria-label={`Abrir detalhes financeiros de ${client.name}`} key={client.userId}>
-          <span className="table-title"><i><CircleDollarSign size={16} /></i><strong>{client.name}</strong><small>{client.email} · {client.executions} execução(ões)</small></span>
-          <span><em className="status-pill">{client.planName}</em></span>
+          <span className="table-title"><i><CircleDollarSign size={16} /></i><strong>{client.name}</strong><small>{client.planName} · {client.executions} execução(ões)</small></span>
           <span><strong>{formatBrlCents(client.paidBrlCents)}</strong></span>
-          <span title={client.models.join(", ") || "Sem uso medido"}><strong>{formatBrlCents(client.aiCostBrlCents)}</strong><small>{client.models.join(", ") || "—"}</small></span>
-          <span><strong>{formatBrlCents(client.totalInternalCostBrlCents)}</strong><small>worker {formatBrlCents(client.workerCostBrlCents)}</small></span>
-          <span className={client.resultBrlCents < 0 ? "financial-negative" : "financial-positive"}><strong>{formatBrlCents(client.resultBrlCents)}</strong><small>{client.grossMarginPercent == null ? "sem pagamento" : `${client.grossMarginPercent.toLocaleString("pt-BR")}%`}</small></span>
+          <span><strong>{formatBrlCents(client.directOperationalCostBrlCents)}</strong><small>IA {formatBrlCents(client.aiCostBrlCents)} · worker {formatBrlCents(client.workerCostBrlCents)} · visual {formatBrlCents(client.visualCostBrlCents)}</small></span>
+          <span><strong>{formatBrlCents(client.aiSafetyCostBrlCents)}</strong><small>proteção interna</small></span>
+          <span><strong>{formatBrlCents(client.totalInternalCostBrlCents)}</strong><small>direto + reserva</small></span>
+          <span className={client.resultBrlCents < 0 ? "financial-negative" : "financial-positive"}><strong>{formatBrlCents(client.resultBrlCents)}</strong><small>{client.grossMarginPercent == null ? "sem receita" : `${client.grossMarginPercent.toLocaleString("pt-BR")}% margem`}</small></span>
           <ChevronRight className="financial-client-chevron" size={15} />
         </Link>)}
         {!clients.length && <div className="list-empty">Nenhum cliente financeiro cadastrado.</div>}
