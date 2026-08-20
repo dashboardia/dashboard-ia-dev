@@ -30,7 +30,7 @@ function moneyFromCents(cents, digits = 4) {
 function formatPlanPrice(cents) {
   if (cents == null) return "Sob consulta";
   if (cents === 0) return "Grátis";
-  return moneyFromCents(cents, 0);
+  return moneyFromCents(cents, 2);
 }
 
 function effectiveCreditValueCents(plan) {
