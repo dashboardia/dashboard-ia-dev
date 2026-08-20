@@ -13,6 +13,9 @@ import { assertPlatformProcessingEnabled } from "../../../../../lib/platform-pro
 export async function POST(request, context) {
   try {
     assertSameOrigin(request);
+    const input = await request.json().catch(() => ({}));
+    const emptyRepositoryConfirmed = input?.allowEmptyRepository === true;
+    let allowEmptyRepository = false;
     if (!env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "Configure OPENAI_API_KEY antes de executar" }, { status: 503 });
     }
@@ -33,21 +36,23 @@ export async function POST(request, context) {
       await verifyRepositoryProjectBranch(token, demand.project.repositoryFullName, demand.project.defaultBranch);
     } catch (error) {
       if (error instanceof RepositoryBranchContentError) {
-        return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
-      }
-      return NextResponse.json({
+        if (!emptyRepositoryConfirmed) {
+          return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+        }
+        allowEmptyRepository = true;
+      } else return NextResponse.json({
         error: `A branch ${demand.project.defaultBranch} ainda não existe. Crie o primeiro arquivo no repositório antes de iniciar a análise.`,
       }, { status: 409 });
     }
 
     const billing = await prepareExecutionBilling({ demand });
-    const { activeExecutionId, execution } = await queueDemandExecution({ demand, requestedById: user.id, billing });
+    const { activeExecutionId, execution } = await queueDemandExecution({ demand, requestedById: user.id, billing, allowEmptyRepository });
     if (activeExecutionId) {
       return NextResponse.json({ error: "Já existe uma execução ativa", executionId: activeExecutionId }, { status: 409 });
     }
 
     await db.auditLog.create({
-      data: auditData({ actorId: user.id, projectId: demand.projectId, action: "execution.queue", entityType: "Execution", entityId: execution.id, request }),
+      data: auditData({ actorId: user.id, projectId: demand.projectId, action: "execution.queue", entityType: "Execution", entityId: execution.id, metadata: { allowEmptyRepository }, request }),
     });
     return NextResponse.json({ execution }, { status: 202 });
   } catch (error) {

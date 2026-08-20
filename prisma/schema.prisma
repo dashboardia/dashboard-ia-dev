@@ -371,6 +371,7 @@ model Execution {
   inputTokens           Int?
   outputTokens          Int?
   attempts              Int                         @default(0)
+  allowEmptyRepository  Boolean                     @default(false)
   cancelRequestedAt     DateTime?
   stopRequestedAt       DateTime?
   lockedAt              DateTime?

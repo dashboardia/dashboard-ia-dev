@@ -70,7 +70,7 @@ function businessKnowledgeInstructions(businessKnowledge) {
   ];
 }
 
-export function buildAgentPrompt(demand, scope = classifyImplementationScope(demand), { businessKnowledge = "" } = {}) {
+export function buildAgentPrompt(demand, scope = classifyImplementationScope(demand), { businessKnowledge = "", emptyRepository = false } = {}) {
   const approvedKnowledge = businessKnowledgeInstructions(businessKnowledge);
   if (demand.type === "DOCUMENTATION") {
     return [
@@ -100,10 +100,17 @@ export function buildAgentPrompt(demand, scope = classifyImplementationScope(dem
     : [
         "Faça alterações focadas no objetivo e preserve a arquitetura e os padrões existentes.",
       ];
+  const repositoryInstructions = emptyRepository
+    ? [
+        "A branch base não contém uma aplicação existente e o cliente autorizou expressamente a criação do projeto do zero.",
+        "Crie toda a estrutura executável necessária, incluindo manifests, código-fonte, configuração, persistência, migrações, dados demonstrativos e documentação de inicialização compatíveis com os critérios de aceite.",
+      ]
+    : [];
 
   return [
     "Implemente a demanda aprovada abaixo no repositório disponível.",
     "Antes de editar, inspecione a estrutura e os arquivos relevantes com o shell somente leitura.",
+    ...repositoryInstructions,
     ...scopeInstructions,
     "Não altere arquivos de segredos nem workflows de CI.",
     "Use exclusivamente apply_patch para criar, alterar ou excluir arquivos.",

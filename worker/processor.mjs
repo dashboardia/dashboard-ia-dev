@@ -255,7 +255,10 @@ export async function processExecution(executionId, workerId) {
       .map((file) => file.trim())
       .filter(Boolean);
     if (!repositoryHasUsableProject(trackedFiles)) {
-      throw new Error(`A branch ${sourceBranch} não contém arquivos de um projeto que o agente possa alterar. Faça merge do Pull Request que contém o código na branch principal e tente novamente. Nenhum crédito foi cobrado.`);
+      if (!execution.allowEmptyRepository) {
+        throw new Error(`A branch ${sourceBranch} não contém arquivos de um projeto que o agente possa alterar. Faça merge do Pull Request que contém o código na branch principal e tente novamente. Nenhum crédito foi cobrado.`);
+      }
+      await log(executionId, "workspace", "Branch sem código: criação completa do projeto autorizada pelo cliente");
     }
 
     const branchName = isFollowUp ? execution.branchName : `forgeboard/demand-${execution.demandId.slice(-8)}-${execution.id.slice(-6)}`;
@@ -270,7 +273,10 @@ export async function processExecution(executionId, workerId) {
       ownerUserId: execution.demand.project.createdById,
       projectId: execution.demand.project.id,
     });
-    const promptOptions = { businessKnowledge: approvedKnowledge.context };
+    const promptOptions = {
+      businessKnowledge: approvedKnowledge.context,
+      emptyRepository: execution.allowEmptyRepository,
+    };
     await db.execution.update({
       where: { id: executionId },
       data: { status: "RUNNING", stage: documentationOnly ? "ANALYSIS" : "IMPLEMENTATION", branchName, model: selectedModel },

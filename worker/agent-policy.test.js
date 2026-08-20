@@ -72,4 +72,21 @@ describe("agent policy", () => {
     expect(prompt).toContain("Sempre descontar perdas confirmadas");
     expect(prompt).toContain("A demanda aprovada e o código atual têm precedência");
   });
+
+  it("instrui a criação completa quando a branch vazia foi confirmada", () => {
+    const demand = {
+      project,
+      type: "FEATURE",
+      priority: "NORMAL",
+      title: "Criar portal do cliente",
+      description: "Desenvolver a primeira versão funcional do portal.",
+      acceptanceCriteria: "Aplicação deve iniciar com banco limpo.",
+      visualValidation: false,
+    };
+
+    const prompt = buildAgentPrompt(demand, "STANDARD", { emptyRepository: true });
+
+    expect(prompt).toContain("autorizou expressamente a criação do projeto do zero");
+    expect(prompt).toContain("Crie toda a estrutura executável necessária");
+  });
 });
