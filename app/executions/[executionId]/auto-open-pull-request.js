@@ -2,8 +2,10 @@
 
 import { GitPullRequest, LoaderCircle, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function AutoOpenPullRequest({ executionId }) {
+  const router = useRouter();
   const requested = useRef(false);
   const [error, setError] = useState("");
 
@@ -17,7 +19,7 @@ export default function AutoOpenPullRequest({ executionId }) {
         const response = await fetch(`/api/executions/${executionId}/pull-request`, { method: "POST" });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error ?? "Não foi possível abrir o Pull Request automaticamente");
-        if (!cancelled) window.location.reload();
+        if (!cancelled) router.refresh();
       } catch (requestError) {
         if (!cancelled) setError(requestError.message);
       }
@@ -25,7 +27,7 @@ export default function AutoOpenPullRequest({ executionId }) {
 
     openPullRequest();
     return () => { cancelled = true; };
-  }, [executionId]);
+  }, [executionId, router]);
 
   return <div className={`execution-action ${error ? "error" : ""}`}>
     {error ? <TriangleAlert size={14} /> : <LoaderCircle className="spin" size={14} />}

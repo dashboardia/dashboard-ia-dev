@@ -13,9 +13,7 @@ export default function AutoRefresh({ active, interval = 5000, revisionUrl = nul
   const currentRevision = useRef(revision);
 
   const softRefresh = useCallback(() => {
-    const target = new URL(window.location.href);
-    target.searchParams.set("_live", Date.now().toString(36));
-    router.replace(`${target.pathname}${target.search}${target.hash}`, { scroll: false });
+    router.refresh();
   }, [router]);
 
   const refresh = useCallback(async () => {

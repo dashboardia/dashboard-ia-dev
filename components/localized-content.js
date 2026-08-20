@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { resolveLocalizedText } from "../lib/localized-text";
 import { usePreferences } from "./preferences-provider";
 
 const phrases = {
@@ -9,6 +10,7 @@ const phrases = {
 };
 
 const originals = new WeakMap();
+
 export default function LocalizedContent({ children }) {
   const ref = useRef(null);
   const { locale } = usePreferences();
@@ -20,16 +22,14 @@ export default function LocalizedContent({ children }) {
       let node;
       while ((node = walker.nextNode())) {
         if (node.parentElement?.closest("pre,code,[data-no-translate]") || !node.nodeValue?.trim()) continue;
-        if (!originals.has(node)) originals.set(node, node.nodeValue);
-        const original = originals.get(node);
-        const trimmed = original.trim();
-        const translated = phrases[locale]?.[trimmed] ?? trimmed;
-        node.nodeValue = original.replace(trimmed, translated);
+        const state = resolveLocalizedText(originals.get(node), node.nodeValue, phrases[locale]);
+        originals.set(node, state);
+        if (node.nodeValue !== state.rendered) node.nodeValue = state.rendered;
       }
     };
     apply();
     const observer = new MutationObserver(apply);
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(root, { childList: true, characterData: true, subtree: true });
     return () => observer.disconnect();
   }, [locale]);
   return <div className="localized-content" ref={ref}>{children}</div>;

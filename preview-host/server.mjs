@@ -228,6 +228,11 @@ async function startPreviewRuntime(id, configuration) {
   return waitUntilReady(id, configuration.port);
 }
 
+async function seedPreviewRuntime(id, command) {
+  if (!command?.trim()) return;
+  await docker(["exec", previewContainerName(id), "/bin/sh", "-lc", command], 180_000);
+}
+
 async function deployPreview(id, configuration) {
   const directory = workPath(id);
   const sourceDirectory = path.join(directory, "source");
@@ -252,9 +257,11 @@ async function deployPreview(id, configuration) {
     }
     const demoAccess = await prepareDemoAccess({
       sourceDirectory,
+      workingDirectory: configuration.workingDirectory,
       credentials: configuration.demoCredentials,
     });
     configuration.runtimeEnvironment = demoAccess.environment;
+    configuration.demoSeedCommand = demoAccess.seedCommand;
     if (demoAccess.credentials) {
       const currentState = await readState(id).catch(() => null);
       await patchState(id, {
@@ -297,6 +304,10 @@ async function deployPreview(id, configuration) {
       try {
         await recordActivity(id, "checking", "Verificando a porta e procurando uma rota navegável");
         entryPath = await startPreviewRuntime(id, configuration);
+        if (configuration.demoSeedCommand) {
+          await recordActivity(id, "seeding", "Criando a massa de dados e o acesso de demonstração");
+          await seedPreviewRuntime(id, configuration.demoSeedCommand);
+        }
         break;
       } catch (runtimeError) {
         const runtimeOutput = dockerErrorText(runtimeError);
