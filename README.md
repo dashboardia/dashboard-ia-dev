@@ -123,6 +123,9 @@ Crie um segundo serviço a partir do mesmo repositório:
 - start command: `npm run worker`;
 - sem domínio público;
 - variáveis obrigatórias: `DATABASE_URL`, `OPENAI_API_KEY` e `OPENAI_MODEL`.
+- cada réplica processa uma execução por vez em workspace isolado;
+- configure no Railway a mesma quantidade de réplicas desejada em **Capacidade global**;
+- o PostgreSQL aplica o limite global, o claim atômico e a distribuição justa entre clientes.
 
 ## Ambiente secundário no Render
 

@@ -9,7 +9,8 @@ import { pruneWorkerHeartbeats, recordWorkerHeartbeat, removeWorkerHeartbeat } f
 import { checkProjectHealth, pruneHealthChecks } from "./health.mjs";
 import { processExecution } from "./processor.mjs";
 
-const workerId = `${os.hostname()}:${process.pid}`;
+const workerId = `${process.env.RAILWAY_REPLICA_ID || os.hostname()}:${process.pid}`;
+const LOCAL_CONCURRENCY_LIMIT = 1;
 let stopping = false;
 let lastHealthCheck = 0;
 let lastHealthPrune = 0;
@@ -18,7 +19,8 @@ let lastConversationExpiration = 0;
 const workerStartedAt = new Date();
 let heartbeatTimer = null;
 let heartbeatPromise = null;
-let concurrencyLimit = 2;
+let globalConcurrencyLimit = 2;
+let processingEnabled = true;
 let lastConcurrencyRefresh = 0;
 let runtimeSettings = null;
 const activeExecutions = new Set();
@@ -48,10 +50,11 @@ async function refreshConcurrencyLimit() {
   if (Date.now() - lastConcurrencyRefresh < 5_000) return;
   const settings = await getGlobalSettings();
   runtimeSettings = settings;
-  const nextLimit = settings.executionProcessingEnabled ? Math.max(1, Math.min(5, settings.parallelExecutions)) : 0;
-  if (nextLimit !== concurrencyLimit) {
-    concurrencyLimit = nextLimit;
-    console.log(`[worker:${workerId}] ${nextLimit ? `limite atualizado para ${nextLimit} execuções paralelas` : "processamento global pausado"}`);
+  const nextLimit = Math.max(1, Math.trunc(settings.parallelExecutions));
+  if (nextLimit !== globalConcurrencyLimit || settings.executionProcessingEnabled !== processingEnabled) {
+    globalConcurrencyLimit = nextLimit;
+    processingEnabled = settings.executionProcessingEnabled;
+    console.log(`[worker:${workerId}] ${processingEnabled ? `capacidade global atualizada para ${globalConcurrencyLimit}; uma execução por réplica` : "processamento global pausado"}`);
   }
   lastConcurrencyRefresh = Date.now();
 }
@@ -110,8 +113,12 @@ async function main() {
       lastHealthPrune = Date.now();
     }
 
-    while (!stopping && activeExecutions.size < concurrencyLimit) {
-      const executionId = await claimNextExecution(workerId, db, runtimeSettings.executionMaxAttempts);
+    while (!stopping && processingEnabled && activeExecutions.size < LOCAL_CONCURRENCY_LIMIT) {
+      const executionId = await claimNextExecution(workerId, db, {
+        maxAttempts: runtimeSettings.executionMaxAttempts,
+        globalConcurrencyLimit,
+        processingEnabled,
+      });
       if (!executionId) break;
       startExecution(executionId);
     }
