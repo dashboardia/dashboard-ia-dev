@@ -63,11 +63,11 @@ export function ChangePlanButton({ plan, immediate = false, credits = 0 }) {
     setMessage(response.ok
       ? result.immediate
         ? `Upgrade concluído. ${Number(result.creditsAdded || credits).toLocaleString("pt-BR")} créditos foram adicionados ao saldo.`
-        : "Troca agendada para o próximo ciclo."
+        : "Downgrade agendado para o próximo ciclo."
       : result.error || "Não foi possível trocar o plano");
     setLoading(false);
     if (response.ok) window.location.reload();
   }
 
-  return <div className="billing-action"><button className="secondary-button" type="button" onClick={changePlan} disabled={loading}>{loading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}{loading ? "Processando..." : immediate ? "Fazer upgrade agora" : "Trocar no próximo ciclo"}</button>{immediate && <small>Os novos créditos serão somados ao saldo atual.</small>}{message && <small>{message}</small>}</div>;
+  return <div className="billing-action"><button className="secondary-button" type="button" onClick={changePlan} disabled={loading}>{loading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}{loading ? "Processando..." : immediate ? "Fazer upgrade agora" : "Fazer downgrade no próximo ciclo"}</button>{immediate ? <small>Os novos créditos serão somados ao saldo atual.</small> : <small>Seu plano atual permanece até o fim do ciclo já pago.</small>}{message && <small>{message}</small>}</div>;
 }
