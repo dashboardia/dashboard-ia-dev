@@ -16,6 +16,7 @@ import {
   validPreviewId,
 } from "./runtime.mjs";
 import { applyKnownBuildRepairs } from "./build-repairs.mjs";
+import { applyKnownRuntimeRepairs } from "./runtime-repairs.mjs";
 import { expectedRepositoryPaths, normalizeExtractedRepository } from "./archive.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -165,6 +166,23 @@ async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
   ].filter(Boolean).join("\n").slice(-16_000));
 }
 
+async function startPreviewRuntime(id, configuration) {
+  await docker(["network", "create", "--internal", "--label", `dashboardia.preview.id=${id}`, previewNetworkName(id)]);
+  await docker(["network", "connect", previewNetworkName(id), hostContainerName]);
+  await docker([
+    "run", "--detach", "--name", previewContainerName(id),
+    "--network", previewNetworkName(id),
+    "--memory", "768m", "--cpus", "1", "--pids-limit", "256",
+    "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
+    "--tmpfs", "/tmp:rw,noexec,nosuid,size=128m",
+    "--env", `PORT=${configuration.port}`,
+    "--env", "HOST=0.0.0.0", "--env", "HOSTNAME=0.0.0.0",
+    "--label", `dashboardia.preview.id=${id}`,
+    previewImageName(id),
+  ]);
+  await waitUntilReady(id, configuration.port);
+}
+
 async function deployPreview(id, configuration) {
   const directory = workPath(id);
   const sourceDirectory = path.join(directory, "source");
@@ -210,20 +228,23 @@ async function deployPreview(id, configuration) {
       return;
     }
     await patchState(id, { status: "DEPLOYING", imageReference: previewImageName(id) });
-    await docker(["network", "create", "--internal", "--label", `dashboardia.preview.id=${id}`, previewNetworkName(id)]);
-    await docker(["network", "connect", previewNetworkName(id), hostContainerName]);
-    await docker([
-      "run", "--detach", "--name", previewContainerName(id),
-      "--network", previewNetworkName(id),
-      "--memory", "768m", "--cpus", "1", "--pids-limit", "256",
-      "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
-      "--tmpfs", "/tmp:rw,noexec,nosuid,size=128m",
-      "--env", `PORT=${configuration.port}`,
-      "--env", "HOST=0.0.0.0", "--env", "HOSTNAME=0.0.0.0",
-      "--label", `dashboardia.preview.id=${id}`,
-      previewImageName(id),
-    ]);
-    await waitUntilReady(id, configuration.port);
+    try {
+      await startPreviewRuntime(id, configuration);
+    } catch (firstRuntimeError) {
+      const runtimeOutput = dockerErrorText(firstRuntimeError);
+      await removeRuntime(id);
+      const runtimeAdjustments = await applyKnownRuntimeRepairs({ sourceDirectory, runtimeOutput });
+      if (!runtimeAdjustments.length) throw firstRuntimeError;
+      const currentState = await readState(id).catch(() => null);
+      await patchState(id, {
+        status: "BUILDING",
+        adjustments: [...(currentState?.adjustments ?? []), ...runtimeAdjustments],
+        error: null,
+      });
+      await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
+      await patchState(id, { status: "DEPLOYING", imageReference: previewImageName(id) });
+      await startPreviewRuntime(id, configuration);
+    }
     await patchState(id, {
       status: "READY",
       readyAt: new Date().toISOString(),

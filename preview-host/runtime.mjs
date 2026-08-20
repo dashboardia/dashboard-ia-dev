@@ -143,6 +143,11 @@ export function buildPreviewDockerfile(configuration) {
   const lines = [`FROM ${runtimeImage(staticHttpServer ? "STATIC" : runtime)}`];
   if (runtime.startsWith("MONOREPO_")) {
     lines.push("RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && rm -rf /var/lib/apt/lists/*");
+    lines.push(
+      "RUN python3 -m venv /opt/dashboardia-venv",
+      "ENV VIRTUAL_ENV=/opt/dashboardia-venv",
+      'ENV PATH="/opt/dashboardia-venv/bin:$PATH"',
+    );
   }
   lines.push("WORKDIR /app", "COPY . .");
   // Um servidor HTTP estático não depende da stack principal do repositório.

@@ -22,6 +22,22 @@ test("gera Dockerfile Node que publica em todas as interfaces", () => {
   assert.match(result, /npm start -- --hostname 0\.0\.0\.0/);
 });
 
+test("instala dependências Python do monorepo em ambiente virtual", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "MONOREPO_PYTHON_FASTAPI_NODE",
+    installCommand: "(cd backend && pip install -r requirements.txt) && npm --prefix frontend ci",
+    buildCommand: "npm --prefix frontend run build",
+    previewCommand: "npm --prefix frontend run dev -- --host 127.0.0.1 --port $PORT",
+    port: 5173,
+  });
+
+  assert.match(result, /^FROM node:22-bookworm/m);
+  assert.match(result, /python3 -m venv \/opt\/dashboardia-venv/);
+  assert.match(result, /ENV VIRTUAL_ENV=\/opt\/dashboardia-venv/);
+  assert.match(result, /ENV PATH="\/opt\/dashboardia-venv\/bin:\$PATH"/);
+  assert.match(result, /pip install -r requirements\.txt/);
+});
+
 test("mantém comandos não confiáveis dentro do JSON da instrução", () => {
   const result = buildPreviewDockerfile({
     runtime: "NODE",
