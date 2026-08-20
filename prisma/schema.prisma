@@ -495,6 +495,22 @@ model BillingPlanCatalog {
   @@index([active, public, sortOrder])
 }
 
+model BillingCreditPackCatalog {
+  code           String   @id
+  name           String
+  credits        Int
+  priceCents     Int
+  validityMonths Int      @default(12)
+  active         Boolean  @default(true)
+  public         Boolean  @default(true)
+  structural     Boolean  @default(false)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([active, public, sortOrder])
+}
+
 model BillingAccount {
   id                     String                       @id @default(cuid())
   ownerUserId            String                       @unique
@@ -595,6 +611,7 @@ model BillingCheckout {
   kind               BillingCheckoutKind
   targetPlan         String?
   creditAmount       Int?
+  creditValidityMonths Int?
   amountCents        Int
   status             BillingCheckoutStatus @default(PENDING)
   providerCheckoutId String?               @unique

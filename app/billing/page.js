@@ -4,7 +4,7 @@ import Link from "next/link";
 import AppShell from "../../components/app-shell";
 import SectionHeader from "../../components/section-header";
 import { getBillingOverview } from "../../lib/billing";
-import { formatPlanPrice, getCreditPacks, listBillingPlans, planIsPaid } from "../../lib/billing-plans";
+import { formatPlanPrice, listBillingPlans, listCreditPacks, planChangeKind, planIsPaid } from "../../lib/billing-plans";
 import { db } from "../../lib/db";
 import { getConfigurationStatus } from "../../lib/env";
 import { formatDateTime, getGlobalSettings } from "../../lib/global-settings";
@@ -30,14 +30,14 @@ function daysRemaining(date) {
 export default async function BillingPage({ searchParams }) {
   const user = await requirePageUser();
   const params = await searchParams;
-  const [overview, settings, publicPlans] = await Promise.all([
+  const [overview, settings, publicPlans, creditPacks] = await Promise.all([
     getBillingOverview(user),
     getGlobalSettings(),
     listBillingPlans(db, { includeInactive: false, publicOnly: true }),
+    listCreditPacks(db, { includeInactive: false, publicOnly: true }),
   ]);
   const account = overview.account;
   const paidAccount = planIsPaid(overview.plan);
-  const creditPacks = getCreditPacks(settings.creditValueCents);
   const pendingPlan = account.pendingPlan ? await db.billingPlanCatalog.findUnique({ where: { code: account.pendingPlan } }) : null;
   const usagePeriodStart = account.plan === "TRIAL" ? account.trialStartedAt : account.cycleStartedAt;
   const [transactions, reservations, interactionTransactions, consumedSummary] = await Promise.all([
@@ -138,11 +138,11 @@ export default async function BillingPage({ searchParams }) {
     <details className="billing-section billing-collapsible billing-usage"><summary className="billing-collapsible-header"><span><Coins size={20} /></span><div><h2>Uso de créditos</h2><p>Saldo e consumo no ciclo atual.</p></div><ChevronDown size={18} /></summary><div className="billing-collapsible-content"><div className="billing-usage-summary"><span><small>Disponíveis</small><strong>{overview.availableCredits == null ? "Ilimitados" : overview.availableCredits.toLocaleString("pt-BR")}</strong></span><span><small>Consumidos</small><strong>{consumedCredits.toLocaleString("pt-BR")}</strong></span><span><small>Reservados</small><strong>{overview.reservedCredits.toLocaleString("pt-BR")}</strong></span></div><div className="billing-demand-usage">{demandUsage.map((demand) => <Link href={`/demands/${demand.id}`} key={demand.id}><span><strong>{demand.title}</strong><small>{demand.projectName} · {demand.executions} execução(ões){demand.interactions ? ` · ${demand.interactions} ajuste(s)` : ""}</small></span><em>{demand.consumedCredits.toLocaleString("pt-BR")} créditos</em></Link>)}{!demandUsage.length && <p className="list-empty">Nenhum crédito foi consumido neste ciclo.</p>}</div></div></details>
 
     <section className="billing-section"><div className="card-heading"><div><h2>Planos</h2><p>Escolha conforme a quantidade de projetos e execuções simultâneas.</p></div><CreditCard size={20} /></div><div className="billing-plan-grid">
-      {publicPlans.map((plan) => <article className={`billing-plan ${account.plan === plan.code ? "current" : ""}`} key={plan.code}><span className="plan-name">{plan.name}</span><strong>{formatPlanPrice(plan.priceCents)}<small>/mês</small></strong><ul><li><Coins size={15} />{plan.includedCredits.toLocaleString("pt-BR")} créditos mensais</li><li><FolderGit2 size={15} />Até {plan.projectLimit} projetos</li><li><Gauge size={15} />{plan.parallelExecutionLimit} execuções simultâneas</li><li><Check size={15} />Usuários ilimitados</li></ul>{account.plan === plan.code && account.status === "ACTIVE" ? <span className="current-plan-label">Plano atual</span> : account.status === "ACTIVE" && paidAccount ? <ChangePlanButton plan={plan.code} /> : <CheckoutButton kind="PLAN" value={plan.code} disabled={!configuration.asaas || user.globalRole === "ADMIN"}>Assinar {plan.name}</CheckoutButton>}</article>)}
+      {publicPlans.map((plan) => <article className={`billing-plan ${account.plan === plan.code ? "current" : ""}`} key={plan.code}><span className="plan-name">{plan.name}</span><strong>{formatPlanPrice(plan.priceCents)}<small>/mês</small></strong><ul><li><Coins size={15} />{plan.includedCredits.toLocaleString("pt-BR")} créditos mensais</li><li><FolderGit2 size={15} />Até {plan.projectLimit} projetos</li><li><Gauge size={15} />{plan.parallelExecutionLimit} execuções simultâneas</li><li><Check size={15} />Usuários ilimitados</li></ul>{account.plan === plan.code && account.status === "ACTIVE" ? <span className="current-plan-label">Plano atual</span> : account.status === "ACTIVE" && paidAccount ? <ChangePlanButton plan={plan.code} credits={plan.includedCredits} immediate={planChangeKind(overview.plan, plan) === "UPGRADE"} /> : <CheckoutButton kind="PLAN" value={plan.code} disabled={!configuration.asaas || user.globalRole === "ADMIN"}>Assinar {plan.name}</CheckoutButton>}</article>)}
       <article className="billing-plan custom"><span className="plan-name">Sob medida</span><strong>Comercial</strong><ul><li><Check size={15} />Limites personalizados</li><li><Check size={15} />Volume e operação dedicados</li><li><Check size={15} />Acompanhamento comercial</li></ul>{configuration.asaas && process.env.BILLING_CONTACT_URL ? <a className="secondary-button" href={process.env.BILLING_CONTACT_URL}>Falar sobre o plano</a> : <span className="current-plan-label">Fale com o administrador</span>}</article>
     </div></section>
 
-    {account.status === "ACTIVE" && paidAccount && <section className="billing-section"><div className="card-heading"><div><h2>Créditos adicionais</h2><p>Valor unitário de {formatPlanPrice(settings.creditValueCents, 2)}; validade de 12 meses e assinatura ativa obrigatória.</p></div><Coins size={20} /></div><div className="credit-pack-grid">{creditPacks.map((pack) => <article key={pack.code}><strong>{pack.credits.toLocaleString("pt-BR")}</strong><span>créditos</span><em>{formatPlanPrice(pack.priceCents)}</em><CheckoutButton kind="CREDIT_PACK" value={pack.code} disabled={!configuration.asaas}>Comprar</CheckoutButton></article>)}</div></section>}
+    {account.status === "ACTIVE" && paidAccount && <section className="billing-section"><div className="card-heading"><div><h2>Créditos adicionais</h2><p>Pacotes definidos no catálogo; o saldo comprado é somado ao atual.</p></div><Coins size={20} /></div><div className="credit-pack-grid">{creditPacks.map((pack) => <article key={pack.code}><strong>{pack.credits.toLocaleString("pt-BR")}</strong><span>créditos · válidos por {pack.validityMonths} meses</span><em>{formatPlanPrice(pack.priceCents)}</em><CheckoutButton kind="CREDIT_PACK" value={pack.code} disabled={!configuration.asaas}>Comprar</CheckoutButton></article>)}</div></section>}
 
     <details className="billing-section billing-collapsible billing-history"><summary className="billing-collapsible-header"><span><CalendarDays size={20} /></span><div><h2>Movimentações</h2><p>Histórico auditável de concessões, reservas, consumo e devoluções.</p></div><ChevronDown size={18} /></summary><div className="billing-collapsible-content">{transactions.map((transaction) => <span key={transaction.id}><time>{formatDateTime(transaction.createdAt, settings.timeZone)}</time><strong>{transaction.description || transaction.type}</strong><em className={transaction.amount < 0 ? "negative" : "positive"}>{transaction.amount > 0 ? "+" : ""}{transaction.amount} créditos</em></span>)}{!transactions.length && <p className="list-empty">Nenhuma movimentação registrada.</p>}</div></details>
 

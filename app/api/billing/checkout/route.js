@@ -3,12 +3,11 @@ import { NextResponse } from "next/server";
 import { requireUser } from "../../../../lib/access";
 import { createCreditPackCheckout, createPlanCheckout } from "../../../../lib/asaas";
 import { BillingAccessError, ensureBillingAccount } from "../../../../lib/billing";
-import { findBillingPlan, getBillingPlan, getCreditPack, planIsPaid } from "../../../../lib/billing-plans";
+import { findBillingPlan, findCreditPack, getBillingPlan, planIsPaid } from "../../../../lib/billing-plans";
 import { apiError, assertSameOrigin } from "../../../../lib/api";
 import { auditData } from "../../../../lib/audit";
 import { db } from "../../../../lib/db";
 import { billingCheckoutSchema } from "../../../../lib/validation";
-import { getGlobalSettings } from "../../../../lib/global-settings";
 
 export async function POST(request) {
   try {
@@ -24,11 +23,10 @@ export async function POST(request) {
     if (input.kind === "CREDIT_PACK" && account.status !== "ACTIVE") {
       throw new BillingAccessError("Créditos adicionais exigem uma assinatura Studio ou Agência ativa.");
     }
-    const settings = await getGlobalSettings();
     const plan = input.kind === "PLAN" ? await findBillingPlan(input.plan) : null;
-    const pack = input.kind === "CREDIT_PACK" ? getCreditPack(input.pack, settings.creditValueCents) : null;
+    const pack = input.kind === "CREDIT_PACK" ? await findCreditPack(input.pack) : null;
     if (input.kind === "PLAN" && (!planIsPaid(plan) || !plan.active || !plan.public)) throw new BillingAccessError("Este plano não está disponível para contratação.", 404, "PLAN_UNAVAILABLE");
-    if (input.kind === "CREDIT_PACK" && !pack) throw new BillingAccessError("Pacote de créditos inválido.", 404, "PACK_UNAVAILABLE");
+    if (input.kind === "CREDIT_PACK" && (!pack || !pack.active || !pack.public)) throw new BillingAccessError("Este pacote de créditos não está disponível.", 404, "PACK_UNAVAILABLE");
     const pendingCheckout = await db.billingCheckout.findFirst({
       where: { accountId: account.id, kind: input.kind, status: "PENDING", expiresAt: { gt: new Date() } },
       orderBy: { createdAt: "desc" },
@@ -36,7 +34,7 @@ export async function POST(request) {
     if (pendingCheckout?.providerLink) {
       const sameOffer = input.kind === "PLAN"
         ? pendingCheckout.targetPlan === plan.code && pendingCheckout.amountCents === plan.priceCents && pendingCheckout.creditAmount === plan.includedCredits
-        : pendingCheckout.creditAmount === pack.credits;
+        : pendingCheckout.creditAmount === pack.credits && pendingCheckout.amountCents === pack.priceCents && pendingCheckout.creditValidityMonths === pack.validityMonths;
       if (sameOffer) return NextResponse.json({ checkoutUrl: pendingCheckout.providerLink, reused: true });
       throw new BillingAccessError("Já existe um checkout pendente. Conclua-o ou aguarde até uma hora para escolher outra oferta.", 409, "PENDING_CHECKOUT");
     }
@@ -46,6 +44,7 @@ export async function POST(request) {
         kind: input.kind,
         targetPlan: plan?.code,
         creditAmount: plan?.includedCredits ?? pack?.credits,
+        creditValidityMonths: pack?.validityMonths,
         amountCents: plan?.priceCents ?? pack.priceCents,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       },

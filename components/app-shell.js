@@ -15,6 +15,7 @@ import {
   LogOut,
   Logs,
   Menu,
+  PackageOpen,
   ServerCog,
   Settings,
   WalletCards,
@@ -85,6 +86,7 @@ function AppShellContent({ children, user = null, setupMode = false }) {
           {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/users"}><Users size={18} />{t("users")}</Link>}
           {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/audit"}><History size={18} />{t("audit")}</Link>}
           {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/financial"}><BadgeDollarSign size={18} />{t("financial")}</Link>}
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/catalog"}><PackageOpen size={18} />{t("catalog")}</Link>}
           <Link href={setupMode ? "/login" : "/billing"}><WalletCards size={18} />{t("billing")}</Link>
           <Link href={setupMode ? "/login" : "/faq"}><HelpCircle size={18} />{t("faq")}</Link>
           <Link href={setupMode ? "/login" : "/settings"}><Settings size={18} />{t("settings")}</Link>

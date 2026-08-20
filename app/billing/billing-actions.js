@@ -47,7 +47,7 @@ export function CancelSubscriptionButton() {
   return <div className="billing-action"><button className="danger-button" type="button" onClick={cancel} disabled={loading}><XCircle size={15} />{loading ? "Cancelando..." : "Cancelar renovação"}</button>{message && <small>{message}</small>}</div>;
 }
 
-export function ChangePlanButton({ plan }) {
+export function ChangePlanButton({ plan, immediate = false, credits = 0 }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -60,10 +60,14 @@ export function ChangePlanButton({ plan }) {
       body: JSON.stringify({ plan }),
     });
     const result = await response.json();
-    setMessage(response.ok ? "Troca agendada para o próximo ciclo." : result.error || "Não foi possível trocar o plano");
+    setMessage(response.ok
+      ? result.immediate
+        ? `Upgrade concluído. ${Number(result.creditsAdded || credits).toLocaleString("pt-BR")} créditos foram adicionados ao saldo.`
+        : "Troca agendada para o próximo ciclo."
+      : result.error || "Não foi possível trocar o plano");
     setLoading(false);
     if (response.ok) window.location.reload();
   }
 
-  return <div className="billing-action"><button className="secondary-button" type="button" onClick={changePlan} disabled={loading}>{loading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}{loading ? "Agendando..." : "Trocar no próximo ciclo"}</button>{message && <small>{message}</small>}</div>;
+  return <div className="billing-action"><button className="secondary-button" type="button" onClick={changePlan} disabled={loading}>{loading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}{loading ? "Processando..." : immediate ? "Fazer upgrade agora" : "Trocar no próximo ciclo"}</button>{immediate && <small>Os novos créditos serão somados ao saldo atual.</small>}{message && <small>{message}</small>}</div>;
 }

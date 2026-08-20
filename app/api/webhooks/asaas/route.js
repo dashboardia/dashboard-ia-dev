@@ -51,9 +51,9 @@ async function processCheckoutEvent(transaction, payload) {
       accountId: order.accountId,
       type: "ADDITIONAL",
       credits: order.creditAmount,
-      expiresAt: addMonths(new Date(), 12),
+      expiresAt: addMonths(new Date(), Math.max(1, order.creditValidityMonths || 12)),
       sourceRef: `pack:${order.id}`,
-      description: "Créditos adicionais válidos por 12 meses",
+      description: `Créditos adicionais válidos por ${Math.max(1, order.creditValidityMonths || 12)} meses`,
     });
     if (providerCustomerId && !order.account.providerCustomerId) {
       await transaction.billingAccount.update({ where: { id: order.accountId }, data: { providerCustomerId } });
