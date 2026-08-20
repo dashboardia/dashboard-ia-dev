@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -7,10 +8,11 @@ const USER_KEYS = ["ADMIN_USER", "ADMIN_USERNAME", "DEFAULT_ADMIN_USER", "DEFAUL
 const EMAIL_KEYS = ["ADMIN_EMAIL", "DEFAULT_ADMIN_EMAIL", "INITIAL_ADMIN_EMAIL", "DEMO_EMAIL", "TEST_EMAIL", "DJANGO_SUPERUSER_EMAIL"];
 const PASSWORD_KEYS = ["ADMIN_PASS", "ADMIN_PASSWORD", "DEFAULT_ADMIN_PASS", "DEFAULT_ADMIN_PASSWORD", "INITIAL_ADMIN_PASS", "INITIAL_ADMIN_PASSWORD", "DEMO_PASS", "DEMO_PASSWORD", "TEST_PASS", "TEST_PASSWORD", "DJANGO_SUPERUSER_PASSWORD"];
 const SEED_KEYS = ["DASHBOARDIA_DEMO_MODE", "DEMO_MODE", "SEED_DEMO_DATA", "LOAD_SAMPLE_DATA", "SEED_DATA"];
+const AUTH_SECRET_KEYS = ["JWT_SECRET", "JWT_SECRET_KEY", "SECURITY_JWT_SECRET", "SECRET_KEY", "APP_SECRET"];
 const CONTRACT_PATH = /(?:^|\/)\.dashboardia\/demo-access\.json$/i;
 const INITIALIZER_NAME = /[^/]*(?:bootstrap|initializer|seeder|data[_-]?loader|fixture)\.(?:java|kt|js|ts|py)$/i;
 const DEMO_PATH = new RegExp(`(?:^|/)(?:DemoDataBootstrap\\.(?:java|kt)|${INITIALIZER_NAME.source}|(?:demo[_-]?(?:data|seed)|seed(?:_data)?|data|import)\\.(?:js|ts|py|sql)|fixtures/[^/]+\\.(?:json|ya?ml))$`, "i");
-const DISCOVERY_PATH = new RegExp(`(?:^|/)(?:package\\.json|manage\\.py|config\\.(?:js|ts|py)|\\.env(?:\\.example)?|application(?:-[^/]+)?\\.(?:properties|ya?ml)|${INITIALIZER_NAME.source}|DemoDataBootstrap\\.(?:java|kt)|(?:demo[_-]?(?:data|seed)|seed(?:_data)?|data|import)\\.(?:js|ts|py|sql)|fixtures/[^/]+\\.(?:json|ya?ml)|\\.dashboardia/demo-access\\.json)$`, "i");
+const DISCOVERY_PATH = new RegExp(`(?:^|/)(?:package\\.json|manage\\.py|config\\.(?:js|ts|py)|\\.env(?:\\.example)?|application(?:-[^/]+)?\\.(?:properties|ya?ml)|[^/]*(?:login|auth|security|jwt|token)[^/]*\\.(?:java|kt|js|jsx|ts|tsx|py)|${INITIALIZER_NAME.source}|DemoDataBootstrap\\.(?:java|kt)|(?:demo[_-]?(?:data|seed)|seed(?:_data)?|data|import)\\.(?:js|ts|py|sql)|fixtures/[^/]+\\.(?:json|ya?ml)|\\.dashboardia/demo-access\\.json)$`, "i");
 const STANDARD_DEMO_ENVIRONMENT = {
   enabled: "DASHBOARDIA_DEMO_MODE",
   username: "DASHBOARDIA_DEMO_USERNAME",
@@ -195,6 +197,7 @@ export async function prepareDemoAccess({ sourceDirectory, workingDirectory = ".
   const emailKeys = referencedKeys(source, EMAIL_KEYS);
   const passwordKeys = referencedKeys(source, PASSWORD_KEYS);
   const seedKeys = referencedKeys(source, SEED_KEYS);
+  const authSecretKeys = referencedKeys(source, AUTH_SECRET_KEYS);
   const environment = {};
   const seedCommand = detectedSeedCommand(files, workingDirectory);
 
@@ -202,6 +205,8 @@ export async function prepareDemoAccess({ sourceDirectory, workingDirectory = ".
   for (const key of emailKeys) environment[key] = credentials.email;
   for (const key of passwordKeys) environment[key] = credentials.password;
   for (const key of seedKeys) environment[key] = "true";
+  const temporaryAuthSecret = createHash("sha256").update(`${credentials.username}:${credentials.email}:${credentials.password}`).digest("hex");
+  for (const key of authSecretKeys) environment[key] = temporaryAuthSecret;
 
   const supportsGeneratedCredentials = (userKeys.length > 0 || emailKeys.length > 0) && passwordKeys.length > 0;
   if (supportsGeneratedCredentials) {

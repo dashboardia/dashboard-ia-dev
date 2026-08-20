@@ -165,3 +165,22 @@ test("detecta e prepara o comando de seed de um monorepo Node", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("gera um segredo JWT temporário quando a autenticação do projeto o exige", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-demo-access-"));
+  const security = path.join(root, "src/main/java/br/com/app/security/JwtService.java");
+  const seeder = path.join(root, "src/main/java/br/com/app/DatabaseSeeder.java");
+  await mkdir(path.dirname(security), { recursive: true });
+  await writeFile(security, 'String secret = System.getenv("JWT_SECRET");');
+  await writeFile(seeder, 'user.setUsername("admin"); user.setPassword(encoder.encode("Admin-123"));');
+  try {
+    const result = await prepareDemoAccess({
+      sourceDirectory: root,
+      credentials: { username: "demo", email: "demo@example.test", password: "Safe-123" },
+    });
+    assert.match(result.environment.JWT_SECRET, /^[a-f0-9]{64}$/);
+    assert.equal(result.credentials.password, "Safe-123");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

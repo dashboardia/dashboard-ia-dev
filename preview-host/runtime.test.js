@@ -7,6 +7,7 @@ import {
   isOpenApiDocumentPath,
   isPreviewReadyStatus,
   probePreviewHttp,
+  railpackPrepareArguments,
   previewUpstreamHeaders,
   previewUpstreamPath,
   previewContainerName,
@@ -14,6 +15,21 @@ import {
   rewriteOpenApiDocument,
   validPreviewId,
 } from "./runtime.mjs";
+
+test("fixa Rust moderno no Railpack apenas quando o projeto não declarou outra fonte prioritária", () => {
+  assert.deepEqual(railpackPrepareArguments({
+    sourceDirectory: "/tmp/source",
+    planFile: "/tmp/plan.json",
+    infoFile: "/tmp/info.json",
+    rustProject: true,
+  }), [
+    "prepare",
+    "--plan-out", "/tmp/plan.json",
+    "--info-out", "/tmp/info.json",
+    "--env", "RAILPACK_RUST_VERSION=1.89",
+    "/tmp/source",
+  ]);
+});
 
 test("gera Dockerfile Node que publica em todas as interfaces", () => {
   const result = buildPreviewDockerfile({

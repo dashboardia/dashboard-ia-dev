@@ -12,6 +12,7 @@ import {
   isTransientDockerError,
   isPreviewReadyStatus,
   probePreviewHttp,
+  railpackPrepareArguments,
   previewUpstreamHeaders,
   previewUpstreamPath,
   previewContainerName,
@@ -22,6 +23,7 @@ import {
 } from "./runtime.mjs";
 import { applyKnownBuildRepairs } from "./build-repairs.mjs";
 import { prepareDemoAccess } from "./demo-access.mjs";
+import { verifyOrCreateDemoAccess } from "./demo-verification.mjs";
 import { applyKnownRuntimeRepairs } from "./runtime-repairs.mjs";
 import { expectedRepositoryPaths, normalizeExtractedRepository } from "./archive.mjs";
 
@@ -131,7 +133,8 @@ async function buildPreviewImage(id, buildFile, sourceDirectory, runtime) {
       if (runtime === "RAILPACK") {
         const planFile = path.join(path.dirname(buildFile), "railpack-plan.json");
         const infoFile = path.join(path.dirname(buildFile), "railpack-info.json");
-        await execFile("railpack", ["prepare", sourceDirectory, "--plan-out", planFile, "--info-out", infoFile], {
+        const rustProject = await readFile(path.join(sourceDirectory, "Cargo.toml"), "utf8").then(() => true).catch(() => false);
+        await execFile("railpack", railpackPrepareArguments({ sourceDirectory, planFile, infoFile, rustProject }), {
           timeout: 120_000,
           maxBuffer: 4 * 1024 * 1024,
         });
@@ -293,10 +296,10 @@ async function deployPreview(id, configuration) {
     });
     configuration.runtimeEnvironment = demoAccess.environment;
     configuration.demoSeedCommand = demoAccess.seedCommand;
+    configuration.demoAccessCredentials = demoAccess.credentials;
     if (demoAccess.credentials) {
       const currentState = await readState(id).catch(() => null);
       await patchState(id, {
-        credentials: demoAccess.credentials,
         adjustments: [...(currentState?.adjustments ?? []), ...demoAccess.adjustments],
       });
     }
@@ -342,6 +345,28 @@ async function deployPreview(id, configuration) {
           await recordActivity(id, "seeding", "Criando a massa de dados e o acesso de demonstração");
           await seedPreviewRuntime(id, configuration.demoSeedCommand);
         }
+        if (configuration.demoAccessCredentials?.password) {
+          await recordActivity(id, "verifying-demo-access", "Validando o acesso de demonstração pela API do ambiente");
+          const verification = await verifyOrCreateDemoAccess({
+            hostname: previewContainerName(id),
+            port: configuration.port,
+            credentials: configuration.demoAccessCredentials,
+          });
+          configuration.demoAccessCredentials = verification.credentials;
+          if (!verification.verified) {
+            const currentState = await readState(id).catch(() => null);
+            await patchState(id, {
+              adjustments: [...(currentState?.adjustments ?? []), {
+                code: "DEMO_ACCESS_VERIFICATION_FAILED",
+                file: "API de autenticação do ambiente",
+                summary: `O acesso preparado não foi exibido porque a autenticação não foi confirmada (${verification.diagnostic}).`,
+              }],
+            });
+            await recordActivity(id, "verifying-demo-access", "A API não confirmou as credenciais demonstrativas", "FAILED");
+          } else {
+            await recordActivity(id, "verifying-demo-access", "Acesso de demonstração criado e validado", "COMPLETED");
+          }
+        }
         break;
       } catch (runtimeError) {
         const runtimeOutput = dockerErrorText(runtimeError);
@@ -366,6 +391,7 @@ async function deployPreview(id, configuration) {
       readyAt: new Date().toISOString(),
       url: `https://${id}.${baseDomain}`,
       entryPath,
+      credentials: configuration.demoAccessCredentials,
       error: null,
     });
     await rm(directory, { recursive: true, force: true });
