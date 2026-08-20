@@ -35,6 +35,7 @@ test("instala dependências Python do monorepo em ambiente virtual", () => {
   assert.match(result, /python3 -m venv \/opt\/dashboardia-venv/);
   assert.match(result, /ENV VIRTUAL_ENV=\/opt\/dashboardia-venv/);
   assert.match(result, /ENV PATH="\/opt\/dashboardia-venv\/bin:\$PATH"/);
+  assert.match(result, /export VIRTUAL_ENV=\/opt\/dashboardia-venv; export PATH=\\"\$VIRTUAL_ENV\/bin:\$PATH\\"; \(cd backend && pip install/);
   assert.match(result, /pip install -r requirements\.txt/);
 });
 

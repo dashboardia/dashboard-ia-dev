@@ -66,6 +66,11 @@ function normalizePreviewCommand(command) {
     .replaceAll("localhost", "0.0.0.0");
 }
 
+function withPythonVirtualEnvironment(command) {
+  if (!command?.trim()) return command;
+  return `export VIRTUAL_ENV=/opt/dashboardia-venv; export PATH="$VIRTUAL_ENV/bin:$PATH"; ${command}`;
+}
+
 function isStaticHttpServer(command) {
   return /^(?:\(cd\s+[^&]+\s+&&\s+)?python3?\s+-m\s+http\.server(?:\s|$)/i.test(String(command || "").trim());
 }
@@ -131,6 +136,7 @@ function buildMavenWarDockerfile(configuration) {
 export function buildPreviewDockerfile(configuration) {
   const runtime = String(configuration.runtime || "UNKNOWN");
   const staticHttpServer = isStaticHttpServer(configuration.previewCommand);
+  const pythonMonorepo = runtime.startsWith("MONOREPO_");
 
   // Projetos Maven empacotados como WAR precisam executar a aplicação inteira.
   // Um comando HTTP estático configurado anteriormente é apenas um fallback de
@@ -141,7 +147,7 @@ export function buildPreviewDockerfile(configuration) {
   }
 
   const lines = [`FROM ${runtimeImage(staticHttpServer ? "STATIC" : runtime)}`];
-  if (runtime.startsWith("MONOREPO_")) {
+  if (pythonMonorepo) {
     lines.push("RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && rm -rf /var/lib/apt/lists/*");
     lines.push(
       "RUN python3 -m venv /opt/dashboardia-venv",
@@ -153,8 +159,11 @@ export function buildPreviewDockerfile(configuration) {
   // Um servidor HTTP estático não depende da stack principal do repositório.
   // Não execute comandos legados/incompatíveis (por exemplo npm em uma imagem
   // Maven) quando o cliente escolheu publicar diretamente os arquivos HTML.
-  const install = shellInstruction("RUN", staticHttpServer ? null : configuration.installCommand);
-  const build = shellInstruction("RUN", staticHttpServer ? null : configuration.buildCommand);
+  const installCommand = pythonMonorepo ? withPythonVirtualEnvironment(configuration.installCommand) : configuration.installCommand;
+  const buildCommand = pythonMonorepo ? withPythonVirtualEnvironment(configuration.buildCommand) : configuration.buildCommand;
+  const previewCommand = pythonMonorepo ? withPythonVirtualEnvironment(normalizePreviewCommand(configuration.previewCommand)) : normalizePreviewCommand(configuration.previewCommand);
+  const install = shellInstruction("RUN", staticHttpServer ? null : installCommand);
+  const build = shellInstruction("RUN", staticHttpServer ? null : buildCommand);
   if (install) lines.push(install);
   if (build) lines.push(build);
   lines.push(
@@ -162,7 +171,7 @@ export function buildPreviewDockerfile(configuration) {
     "ENV HOST=0.0.0.0",
     "ENV HOSTNAME=0.0.0.0",
     `EXPOSE ${configuration.port}`,
-    shellInstruction("CMD", normalizePreviewCommand(configuration.previewCommand)),
+    shellInstruction("CMD", previewCommand),
   );
   return `${lines.join("\n")}\n`;
 }
