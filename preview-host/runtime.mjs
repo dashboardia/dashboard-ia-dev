@@ -104,6 +104,12 @@ function normalizePreviewCommand(command) {
     .replaceAll("localhost", "0.0.0.0");
 }
 
+function combinedPreviewCommand(primaryCommand, auxiliaryCommand, auxiliaryPort) {
+  if (!auxiliaryCommand?.trim()) return primaryCommand;
+  const auxiliary = normalizePreviewCommand(auxiliaryCommand).replaceAll("$PORT", String(auxiliaryPort));
+  return `(${auxiliary}) & auxiliary_pid=$!; trap 'kill $auxiliary_pid 2>/dev/null || true' EXIT INT TERM; ${primaryCommand}`;
+}
+
 function withPythonVirtualEnvironment(command) {
   if (!command?.trim()) return command;
   return `export VIRTUAL_ENV=/opt/dashboardia-venv; export PATH="$VIRTUAL_ENV/bin:$PATH"; ${command}`;
@@ -191,7 +197,9 @@ export function buildPreviewDockerfile(configuration) {
   // Maven) quando o cliente escolheu publicar diretamente os arquivos HTML.
   const installCommand = pythonMonorepo ? withPythonVirtualEnvironment(configuration.installCommand) : configuration.installCommand;
   const buildCommand = pythonMonorepo ? withPythonVirtualEnvironment(configuration.buildCommand) : configuration.buildCommand;
-  const previewCommand = pythonMonorepo ? withPythonVirtualEnvironment(normalizePreviewCommand(configuration.previewCommand)) : normalizePreviewCommand(configuration.previewCommand);
+  const normalizedPrimaryCommand = normalizePreviewCommand(configuration.previewCommand);
+  const combinedCommand = combinedPreviewCommand(normalizedPrimaryCommand, configuration.auxiliaryPreviewCommand, configuration.auxiliaryPreviewPort);
+  const previewCommand = pythonMonorepo ? withPythonVirtualEnvironment(combinedCommand) : combinedCommand;
   const install = shellInstruction("RUN", staticHttpServer ? null : installCommand);
   const build = shellInstruction("RUN", staticHttpServer ? null : buildCommand);
   if (install) lines.push(install);

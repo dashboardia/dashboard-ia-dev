@@ -47,6 +47,9 @@
 [data-theme="dark"] .diff-file-status.deleted { color:#f85149; background:#492025; }
 [data-theme="dark"] .diff-file-status.renamed { color:#d29922; background:#403615; }
 [data-theme="dark"] .diff-files { background:#090c10; }
+[data-theme="dark"] .environment-credentials { border-color:#7656ff55; background:#7656ff12; }
+[data-theme="dark"] .environment-credentials>div strong,[data-theme="dark"] .environment-credentials code { color:#f7f8fb; }
+[data-theme="dark"] .environment-credentials code,[data-theme="dark"] .environment-credentials button { border-color:#414553; background:#171923; }
 [data-theme="dark"] .diff-hunk+.diff-hunk,[data-theme="dark"] .diff-file:has(.diff-file-content) .diff-file-header { border-color:#30363d; }
 [data-theme="dark"] .diff-hunk-header { color:#a5b9d8; background:#17233b; }
 [data-theme="dark"] .diff-hunk pre { color:#e6edf3; }

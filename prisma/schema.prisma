@@ -461,6 +461,7 @@ model DevEnvironment {
   creditCost      Int                  @default(0)
   creditCharge    Json?
   adjustments     Json?
+  credentials     Json?
   error           String?              @db.Text
   requestedAt     DateTime             @default(now())
   startedAt       DateTime?

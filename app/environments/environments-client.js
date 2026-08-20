@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, GitBranch, LoaderCircle, Play, ServerCog, Square } from "lucide-react";
+import { Check, Copy, ExternalLink, GitBranch, KeyRound, LoaderCircle, Play, ServerCog, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 const ACTIVE = new Set(["QUEUED", "BUILDING", "DEPLOYING", "READY", "STOPPING"]);
@@ -13,6 +13,7 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
   const [branchName, setBranchName] = useState(initialProjects[0]?.defaultBranch ?? "main");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [copiedCredential, setCopiedCredential] = useState("");
 
   useEffect(() => {
     const synchronization = window.setTimeout(() => setEnvironments(initialEnvironments), 0);
@@ -57,6 +58,13 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
     setEnvironments((current) => current.map((environment) => environment.id === environmentId ? { ...environment, ...result.environment } : environment));
   }
 
+  async function copyCredential(environmentId, field, value) {
+    await navigator.clipboard.writeText(value);
+    const key = `${environmentId}:${field}`;
+    setCopiedCredential(key);
+    window.setTimeout(() => setCopiedCredential((current) => current === key ? "" : current), 1_500);
+  }
+
   return <>
     <form className="form-card detail-card full-card environment-create-form" onSubmit={createEnvironment}>
       <div className="card-heading"><div><h2>Novo ambiente</h2><p>A stack e os comandos são detectados na branch e podem usar as configurações salvas no projeto.</p></div><ServerCog size={20} /></div>
@@ -79,6 +87,12 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
           <ul>{environment.adjustments.map((adjustment, index) => <li key={`${adjustment.code ?? "adjustment"}-${adjustment.file ?? index}`}><strong>{adjustment.file ?? "Projeto"}</strong><span>{adjustment.summary}</span></li>)}</ul>
           <small>Essas alterações existem somente neste ambiente temporário e não modificaram a branch do cliente.</small>
         </details>}
+        {environment.status === "READY" && environment.credentials?.password && <section className="environment-credentials">
+          <div><KeyRound size={16} /><span><strong>Acesso de demonstração</strong><small>Credenciais exclusivas deste ambiente temporário</small></span></div>
+          {environment.credentials.username && <label><span>Usuário</span><code>{environment.credentials.username}</code><button type="button" aria-label="Copiar usuário" onClick={() => copyCredential(environment.id, "username", environment.credentials.username)}>{copiedCredential === `${environment.id}:username` ? <Check size={14} /> : <Copy size={14} />}</button></label>}
+          {environment.credentials.email && <label><span>E-mail</span><code>{environment.credentials.email}</code><button type="button" aria-label="Copiar e-mail" onClick={() => copyCredential(environment.id, "email", environment.credentials.email)}>{copiedCredential === `${environment.id}:email` ? <Check size={14} /> : <Copy size={14} />}</button></label>}
+          <label><span>Senha</span><code>{environment.credentials.password}</code><button type="button" aria-label="Copiar senha" onClick={() => copyCredential(environment.id, "password", environment.credentials.password)}>{copiedCredential === `${environment.id}:password` ? <Check size={14} /> : <Copy size={14} />}</button></label>
+        </section>}
         {environment.error && <details className="environment-error"><summary>Ver falha técnica</summary><pre>{environment.error}</pre></details>}
         <div className="environment-actions">{environment.url && <a className="primary compact" href={environment.url} target="_blank" rel="noreferrer"><ExternalLink size={14} />Abrir ambiente</a>}{ACTIVE.has(environment.status) && <button type="button" onClick={() => stopEnvironment(environment.id)}><Square size={14} />Encerrar</button>}</div>
       </article>)}

@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import { NextResponse } from "next/server";
 
 import { requireProjectRole } from "../../../lib/access";
@@ -63,6 +65,11 @@ export async function POST(request) {
     await db.devEnvironment.update({ where: { id: environment.id }, data: { creditCharge: charge } });
 
     const archive = await downloadGitHubArchive(token, project.repositoryFullName, input.branchName);
+    const demoCredentials = {
+      username: "demo",
+      email: "demo@dashboardia.local",
+      password: `Demo-${randomBytes(6).toString("hex")}!`,
+    };
     const remote = await createDashboardiaPreview({
       previewId: environment.id,
       archive,
@@ -72,9 +79,12 @@ export async function POST(request) {
         installCommand: configuration.installCommand,
         buildCommand: configuration.buildCommand,
         previewCommand: configuration.previewCommand,
+        auxiliaryPreviewCommand: detected.commands.auxiliaryPreviewCommand,
+        auxiliaryPreviewPort: detected.commands.auxiliaryPreviewPort,
         port: configuration.previewPort,
         ttlMinutes: settings.environmentTtlMinutes,
         stripComponents: 1,
+        demoCredentials,
       },
     });
     environment = await db.devEnvironment.update({

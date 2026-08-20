@@ -32,6 +32,8 @@ test("instala dependências Python do monorepo em ambiente virtual", () => {
     installCommand: "(cd backend && pip install -r requirements.txt) && npm --prefix frontend ci",
     buildCommand: "npm --prefix frontend run build",
     previewCommand: "npm --prefix frontend run dev -- --host 127.0.0.1 --port $PORT",
+    auxiliaryPreviewCommand: "(cd backend && uvicorn main:app --host 127.0.0.1 --port $PORT)",
+    auxiliaryPreviewPort: 8000,
     port: 5173,
   });
 
@@ -41,6 +43,9 @@ test("instala dependências Python do monorepo em ambiente virtual", () => {
   assert.match(result, /ENV PATH="\/opt\/dashboardia-venv\/bin:\$PATH"/);
   assert.match(result, /export VIRTUAL_ENV=\/opt\/dashboardia-venv; export PATH=\\"\$VIRTUAL_ENV\/bin:\$PATH\\"; \(cd backend && pip install/);
   assert.match(result, /pip install -r requirements\.txt/);
+  assert.match(result, /uvicorn main:app --host 0\.0\.0\.0 --port 8000/);
+  assert.match(result, /auxiliary_pid=\$!/);
+  assert.match(result, /npm --prefix frontend run dev/);
 });
 
 test("mantém comandos não confiáveis dentro do JSON da instrução", () => {

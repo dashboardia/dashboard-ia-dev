@@ -19,6 +19,7 @@ import {
   validPreviewId,
 } from "./runtime.mjs";
 import { applyKnownBuildRepairs } from "./build-repairs.mjs";
+import { prepareDemoAccess } from "./demo-access.mjs";
 import { applyKnownRuntimeRepairs } from "./runtime-repairs.mjs";
 import { expectedRepositoryPaths, normalizeExtractedRepository } from "./archive.mjs";
 
@@ -119,11 +120,22 @@ function parseConfiguration(request) {
   const configuration = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
   if (!configuration.previewCommand?.trim()) throw new Error("Comando de preview ausente");
   if (!Number.isInteger(configuration.port) || configuration.port < 1 || configuration.port > 65535) throw new Error("Porta do preview inválida");
+  if (configuration.auxiliaryPreviewCommand != null) {
+    if (typeof configuration.auxiliaryPreviewCommand !== "string" || !configuration.auxiliaryPreviewCommand.trim()) throw new Error("Comando auxiliar inválido");
+    if (!Number.isInteger(configuration.auxiliaryPreviewPort) || configuration.auxiliaryPreviewPort < 1 || configuration.auxiliaryPreviewPort > 65535 || configuration.auxiliaryPreviewPort === configuration.port) throw new Error("Porta auxiliar inválida");
+  }
   if (!Number.isInteger(configuration.ttlMinutes) || configuration.ttlMinutes < 5 || configuration.ttlMinutes > 1440) throw new Error("TTL do preview inválido");
   if (![0, 1].includes(configuration.stripComponents ?? 0)) throw new Error("Formato do arquivo compactado inválido");
   const workingDirectory = String(configuration.workingDirectory || ".");
   if (path.isAbsolute(workingDirectory) || workingDirectory.split(/[\\/]/).includes("..")) throw new Error("Diretório de trabalho inválido");
   configuration.workingDirectory = workingDirectory;
+  if (configuration.demoCredentials != null) {
+    const { username, email, password } = configuration.demoCredentials;
+    if (![username, email, password].every((value) => typeof value === "string" && value.length >= 3 && value.length <= 160)) {
+      throw new Error("Credenciais temporárias inválidas");
+    }
+    configuration.demoCredentials = { username, email, password };
+  }
   return configuration;
 }
 
@@ -177,6 +189,8 @@ async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
 async function startPreviewRuntime(id, configuration) {
   await docker(["network", "create", "--internal", "--label", `dashboardia.preview.id=${id}`, previewNetworkName(id)]);
   await docker(["network", "connect", previewNetworkName(id), hostContainerName]);
+  const runtimeEnvironment = Object.entries(configuration.runtimeEnvironment ?? {})
+    .flatMap(([name, value]) => ["--env", `${name}=${value}`]);
   await docker([
     "run", "--detach", "--name", previewContainerName(id),
     "--network", previewNetworkName(id),
@@ -185,6 +199,7 @@ async function startPreviewRuntime(id, configuration) {
     "--tmpfs", "/tmp:rw,noexec,nosuid,size=128m",
     "--env", `PORT=${configuration.port}`,
     "--env", "HOST=0.0.0.0", "--env", "HOSTNAME=0.0.0.0",
+    ...runtimeEnvironment,
     "--label", `dashboardia.preview.id=${id}`,
     previewImageName(id),
   ]);
@@ -209,6 +224,18 @@ async function deployPreview(id, configuration) {
           kind: "ARCHIVE_ROOT_NORMALIZED",
           message: `Estrutura do pacote ajustada: ${normalizedDirectories.join(" / ")} foi removido da raiz.`,
         }],
+      });
+    }
+    const demoAccess = await prepareDemoAccess({
+      sourceDirectory,
+      credentials: configuration.demoCredentials,
+    });
+    configuration.runtimeEnvironment = demoAccess.environment;
+    if (demoAccess.credentials) {
+      const currentState = await readState(id).catch(() => null);
+      await patchState(id, {
+        credentials: demoAccess.credentials,
+        adjustments: [...(currentState?.adjustments ?? []), ...demoAccess.adjustments],
       });
     }
     const generatedDockerfile = path.join(directory, "Dockerfile");
@@ -268,7 +295,7 @@ async function deployPreview(id, configuration) {
   } catch (error) {
     const buildOutput = dockerErrorText(error).slice(-16_000);
     await removeRuntime(id);
-    await patchState(id, { status: "FAILED", error: buildOutput || "Falha desconhecida ao publicar o preview" }).catch(() => null);
+    await patchState(id, { status: "FAILED", credentials: null, error: buildOutput || "Falha desconhecida ao publicar o preview" }).catch(() => null);
     await rm(directory, { recursive: true, force: true }).catch(() => null);
   }
 }
@@ -295,7 +322,7 @@ async function expirePreview(id, state) {
   if (["EXPIRED", "FAILED"].includes(state.status)) return;
   await patchState(id, { status: "STOPPING" });
   await removeRuntime(id);
-  await patchState(id, { status: "EXPIRED", url: null, stoppedAt: new Date().toISOString() });
+  await patchState(id, { status: "EXPIRED", url: null, credentials: null, stoppedAt: new Date().toISOString() });
   await rm(workPath(id), { recursive: true, force: true });
 }
 
@@ -317,7 +344,7 @@ async function recoverInterruptedBuilds() {
     const state = await readState(id).catch(() => null);
     if (state && ["QUEUED", "BUILDING", "DEPLOYING"].includes(state.status)) {
       await removeRuntime(id);
-      await patchState(id, { status: "FAILED", error: "O host de previews reiniciou durante a publicação. Solicite uma nova execução." });
+      await patchState(id, { status: "FAILED", credentials: null, error: "O host de previews reiniciou durante a publicação. Solicite uma nova execução." });
     }
   }));
 }
@@ -354,6 +381,7 @@ async function handleApi(request, response, url) {
     port: configuration.port,
     imageReference: null,
     url: null,
+    credentials: null,
     error: null,
     adjustments: [],
     requestedAt: now.toISOString(),
