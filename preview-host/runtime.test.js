@@ -4,12 +4,14 @@ import { test } from "vitest";
 import {
   buildPreviewDockerfile,
   isTransientDockerError,
+  isOpenApiDocumentPath,
   isPreviewReadyStatus,
   probePreviewHttp,
   previewUpstreamHeaders,
   previewUpstreamPath,
   previewContainerName,
   previewNetworkName,
+  rewriteOpenApiDocument,
   validPreviewId,
 } from "./runtime.mjs";
 
@@ -189,7 +191,27 @@ test("usa IP local aceito pelo Vite no upstream sem perder o domínio público o
     host: "127.0.0.1:5173",
     accept: "text/html",
     "x-forwarded-host": "preview.example.com",
+    "x-forwarded-proto": "https",
+    "x-forwarded-port": "443",
   });
+});
+
+test("reconhece documentos Swagger/OpenAPI sem confundir a interface HTML", () => {
+  assert.equal(isOpenApiDocumentPath("/v3/api-docs"), true);
+  assert.equal(isOpenApiDocumentPath("/v3/api-docs/swagger-config"), true);
+  assert.equal(isOpenApiDocumentPath("/swagger.json"), true);
+  assert.equal(isOpenApiDocumentPath("/swagger-ui/index.html"), false);
+});
+
+test("troca servidores locais do OpenAPI pelo domínio público do ambiente", () => {
+  const result = JSON.parse(rewriteOpenApiDocument(JSON.stringify({
+    openapi: "3.0.1",
+    servers: [{ url: "http://127.0.0.1:8080/api" }],
+    paths: { "/addresses": {} },
+  }), "https://preview.example.com"));
+
+  assert.equal(result.servers[0].url, "https://preview.example.com/api");
+  assert.deepEqual(result.paths, { "/addresses": {} });
 });
 
 test("sonda uma rota do preview com o Host local aceito pelo Vite", async () => {

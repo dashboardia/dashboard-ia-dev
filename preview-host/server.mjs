@@ -8,6 +8,7 @@ import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import {
   buildPreviewDockerfile,
+  isOpenApiDocumentPath,
   isTransientDockerError,
   isPreviewReadyStatus,
   probePreviewHttp,
@@ -16,6 +17,7 @@ import {
   previewContainerName,
   previewImageName,
   previewNetworkName,
+  rewriteOpenApiDocument,
   validPreviewId,
 } from "./runtime.mjs";
 import { applyKnownBuildRepairs } from "./build-repairs.mjs";
@@ -472,15 +474,40 @@ async function handleApi(request, response, url) {
 }
 
 async function proxyPreview(request, response, state) {
+  const rewriteOpenApi = request.method === "GET" && isOpenApiDocumentPath(request.url);
+  const upstreamHeaders = previewUpstreamHeaders(request.headers, state.port);
+  if (rewriteOpenApi) upstreamHeaders["accept-encoding"] = "identity";
   const upstream = http.request({
     hostname: previewContainerName(state.id),
     port: state.port,
     method: request.method,
     path: previewUpstreamPath(request.url, state.entryPath),
-    headers: previewUpstreamHeaders(request.headers, state.port),
+    headers: upstreamHeaders,
   }, (upstreamResponse) => {
-    response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
-    upstreamResponse.pipe(response);
+    const contentType = String(upstreamResponse.headers["content-type"] || "");
+    const encoded = Boolean(upstreamResponse.headers["content-encoding"]);
+    if (!rewriteOpenApi || !/json/i.test(contentType) || encoded) {
+      response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
+      upstreamResponse.pipe(response);
+      return;
+    }
+
+    const chunks = [];
+    let size = 0;
+    upstreamResponse.on("data", (chunk) => {
+      size += chunk.length;
+      if (size <= 8 * 1024 * 1024) chunks.push(chunk);
+    });
+    upstreamResponse.on("end", () => {
+      if (size > 8 * 1024 * 1024) return sendJson(response, 502, { error: "Documento OpenAPI excede o limite de 8 MB" });
+      const forwardedProto = String(request.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+      const publicOrigin = `${["http", "https"].includes(forwardedProto) ? forwardedProto : "https"}://${request.headers.host}`;
+      const body = Buffer.from(rewriteOpenApiDocument(Buffer.concat(chunks).toString("utf8"), publicOrigin));
+      const headers = { ...upstreamResponse.headers, "content-length": String(body.length) };
+      delete headers["transfer-encoding"];
+      response.writeHead(upstreamResponse.statusCode || 502, headers);
+      response.end(body);
+    });
   });
   upstream.on("error", () => {
     if (!response.headersSent) sendJson(response, 502, { error: "O container temporário não respondeu" });

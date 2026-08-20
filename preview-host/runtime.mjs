@@ -52,14 +52,73 @@ export function isPreviewReadyStatus(status) {
 
 export function previewUpstreamHeaders(headers = {}, port) {
   const originalHost = headers.host;
+  const forwardedProto = String(headers["x-forwarded-proto"] || "https").split(",")[0].trim().toLowerCase();
+  const publicProto = ["http", "https"].includes(forwardedProto) ? forwardedProto : "https";
   return {
     ...headers,
-    ...(originalHost ? { "x-forwarded-host": originalHost } : {}),
+    ...(originalHost ? {
+      "x-forwarded-host": originalHost,
+      "x-forwarded-proto": publicProto,
+      "x-forwarded-port": publicProto === "https" ? "443" : "80",
+    } : {}),
     // Vite 4 valida o Host antes de servir a aplicação. Endereços IP são
     // aceitos por padrão, enquanto aliases Docker e, em algumas versões,
     // localhost recebido por proxy podem resultar em HTTP 403.
     host: `127.0.0.1:${port}`,
   };
+}
+
+export function isOpenApiDocumentPath(requestUrl = "/") {
+  const pathname = new URL(requestUrl, "http://preview.internal").pathname;
+  return /(?:^|\/)(?:v[23]\/api-docs|api-docs|openapi(?:\.json)?|swagger(?:\.json)?)(?:\/|$)/i.test(pathname);
+}
+
+function isLocalPreviewHostname(hostname) {
+  return ["127.0.0.1", "0.0.0.0", "localhost", "::1"].includes(String(hostname || "").toLowerCase());
+}
+
+function rewriteLocalPreviewUrl(value, publicOrigin) {
+  if (typeof value !== "string") return value;
+  try {
+    const url = new URL(value);
+    if (!isLocalPreviewHostname(url.hostname)) return value;
+    const publicUrl = new URL(publicOrigin);
+    return `${publicUrl.origin}${url.pathname === "/" ? "" : url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return value;
+  }
+}
+
+export function rewriteOpenApiDocument(source, publicOrigin) {
+  let document;
+  try {
+    document = JSON.parse(String(source || ""));
+    new URL(publicOrigin);
+  } catch {
+    return String(source || "");
+  }
+
+  if (Array.isArray(document.servers)) {
+    document.servers = document.servers.map((server) => (
+      server && typeof server === "object"
+        ? { ...server, url: rewriteLocalPreviewUrl(server.url, publicOrigin) }
+        : server
+    ));
+  }
+  if (typeof document.url === "string") document.url = rewriteLocalPreviewUrl(document.url, publicOrigin);
+  if (Array.isArray(document.urls)) {
+    document.urls = document.urls.map((entry) => (
+      entry && typeof entry === "object"
+        ? { ...entry, url: rewriteLocalPreviewUrl(entry.url, publicOrigin) }
+        : entry
+    ));
+  }
+  if (typeof document.host === "string" && isLocalPreviewHostname(document.host.split(":")[0])) {
+    const publicUrl = new URL(publicOrigin);
+    document.host = publicUrl.host;
+    document.schemes = [publicUrl.protocol.slice(0, -1)];
+  }
+  return JSON.stringify(document);
 }
 
 export function probePreviewHttp(hostname, port, requestPath = "/", timeoutMs = 3_000) {
