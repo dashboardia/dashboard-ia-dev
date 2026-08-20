@@ -11,7 +11,6 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
   const indicatorTimer = useRef(null);
   const inFlight = useRef(false);
   const currentRevision = useRef(revision);
-  const pendingRevision = useRef(null);
 
   const refresh = useCallback(async () => {
     if (!active || document.visibilityState === "hidden" || inFlight.current) return;
@@ -22,15 +21,23 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
       if (revisionUrl) {
         const separator = revisionUrl.includes("?") ? "&" : "?";
         const response = await fetch(`${revisionUrl}${separator}t=${Date.now()}`, { cache: "no-store" });
-        if (!response.ok) return;
+        if (!response.ok) {
+          router.refresh();
+          return;
+        }
         const result = await response.json();
-        if (result.revision === currentRevision.current || result.revision === pendingRevision.current) return;
-        pendingRevision.current = result.revision;
-        const target = new URL(window.location.href);
-        target.searchParams.set("_live", Date.now().toString(36));
-        router.replace(`${target.pathname}${target.search}${target.hash}`, { scroll: false });
+        if (result.revision === currentRevision.current) return;
+        // router.refresh atualiza somente a árvore de Server Components. A
+        // página, a rolagem e o estado dos painéis permanecem intactos. Se a
+        // nova revisão ainda não chegar ao componente, o próximo ciclo tenta
+        // novamente em vez de deixar a tela congelada.
+        router.refresh();
         return;
       }
+      router.refresh();
+    } catch {
+      // O endpoint de revisão é apenas uma otimização. Uma falha pontual nele
+      // não pode impedir a atualização dos dados da execução.
       router.refresh();
     } finally {
       inFlight.current = false;
@@ -41,7 +48,6 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
 
   useEffect(() => {
     currentRevision.current = revision;
-    if (pendingRevision.current === revision) pendingRevision.current = null;
   }, [revision]);
 
   useEffect(() => {
