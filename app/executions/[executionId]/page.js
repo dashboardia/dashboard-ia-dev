@@ -17,6 +17,7 @@ import AutoOpenPullRequest from "./auto-open-pull-request";
 import EvidenceCard from "./evidence-card";
 import DiffViewer from "./diff-viewer";
 import ExecutionConversation from "./execution-conversation";
+import CopyBranchButton from "./copy-branch-button";
 
 const cancellableStatuses = ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"];
 const activeExecutionStatuses = new Set(["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"]);
@@ -75,7 +76,7 @@ export default async function ExecutionPage({ params }) {
 
         <section className="execution-metrics">
           <div><Activity size={17} /><span><small>Status</small><strong>{execution.cancelRequestedAt && execution.status !== "CANCELLED" ? "CANCELAMENTO SOLICITADO" : execution.status}</strong></span></div>
-          <div><GitBranch size={17} /><span><small>Branch</small><strong>{execution.branchName ?? "Aguardando worker"}</strong></span></div>
+          <div><GitBranch size={17} /><span><small>Branch</small><span className="execution-branch-value"><strong>{execution.branchName ?? "Aguardando worker"}</strong><CopyBranchButton branchName={execution.branchName} /></span></span></div>
           <div><Clock3 size={17} /><span><small>Duração</small><strong>{duration(execution)}</strong></span></div>
           <div><Zap size={17} /><span><small>Tokens</small><strong>{(execution.inputTokens ?? 0) + (execution.outputTokens ?? 0) || "—"}</strong></span></div>
         </section>

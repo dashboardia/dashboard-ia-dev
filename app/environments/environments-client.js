@@ -3,6 +3,8 @@
 import { Check, ChevronDown, CircleCheck, CircleDotDashed, CircleX, Copy, ExternalLink, GitBranch, KeyRound, LoaderCircle, Play, ServerCog, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import BranchCombobox from "../../components/branch-combobox";
+
 const ACTIVE = new Set(["QUEUED", "BUILDING", "DEPLOYING", "READY", "STOPPING"]);
 const labels = { QUEUED: "Na fila", BUILDING: "Construindo", DEPLOYING: "Iniciando", READY: "Disponível", FAILED: "Falhou", STOPPING: "Encerrando", EXPIRED: "Encerrado" };
 
@@ -61,6 +63,10 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
 
   async function createEnvironment(event) {
     event.preventDefault();
+    if (!branches.some((branch) => branch.name === branchName)) {
+      setError("Selecione uma branch existente no repositório.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -95,10 +101,10 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
       <div className="card-heading"><div><h2>Novo ambiente</h2><p>A stack e os comandos são detectados na branch e podem usar as configurações salvas no projeto.</p></div><ServerCog size={20} /></div>
       <div className="form-grid">
         <label><span>Projeto</span><select value={projectId} onChange={(event) => { const nextProject = initialProjects.find((project) => project.id === event.target.value); setBranchesLoading(true); setBranchError(""); setBranches(nextProject ? [{ name: nextProject.defaultBranch }] : []); setProjectId(event.target.value); setBranchName(nextProject?.defaultBranch ?? "main"); }} required>{initialProjects.map((project) => <option value={project.id} key={project.id}>{project.name} · {project.repositoryFullName}</option>)}</select></label>
-        <label><span>Branch {branchesLoading && <LoaderCircle className="spin branch-loader" size={12} />}</span><select value={branchName} onChange={(event) => setBranchName(event.target.value)} disabled={branchesLoading || !branches.length} required>{branches.map((branch) => <option value={branch.name} key={branch.name}>{branch.name}{branch.protected ? " · protegida" : ""}</option>)}</select><small className={branchError ? "field-warning" : "field-guidance"}>{branchError || `${branches.length} branch${branches.length === 1 ? "" : "es"} disponível${branches.length === 1 ? "" : "is"} no repositório`}</small></label>
+        <label><span>Branch {branchesLoading && <LoaderCircle className="spin branch-loader" size={12} />}</span><BranchCombobox key={projectId} branches={branches} value={branchName} onChange={setBranchName} disabled={branchesLoading || !branches.length} /><small className={branchError ? "field-warning" : "field-guidance"}>{branchError || `Cole ou digite para filtrar entre ${branches.length} branch${branches.length === 1 ? "" : "es"}.`}</small></label>
       </div>
       {error && <div className="form-error">{error}</div>}
-      <div className="form-actions"><button className="primary" type="submit" disabled={loading || !projectId}>{loading ? <LoaderCircle className="spin" size={17} /> : <Play size={17} />}{loading ? "Enviando para o Docker..." : "Subir ambiente"}</button></div>
+      <div className="form-actions"><button className="primary" type="submit" disabled={loading || !projectId || !branches.some((branch) => branch.name === branchName)}>{loading ? <LoaderCircle className="spin" size={17} /> : <Play size={17} />}{loading ? "Enviando para o Docker..." : "Subir ambiente"}</button></div>
     </form>
 
     <section className="resource-grid environment-grid">

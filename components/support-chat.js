@@ -1,33 +1,86 @@
 "use client";
 
-import { Bot, MessageCircle, Send, X } from "lucide-react";
+import { Bot, ImagePlus, LifeBuoy, MessageCircle, Send, Trash2, X } from "lucide-react";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { usePreferences } from "./preferences-provider";
 
+const SUPPORT_EMAIL = "suportdashboardia@gmail.com";
+const MAX_ATTACHMENTS = 3;
+const MAX_IMAGE_BYTES = 1_500_000;
 const subscribeToClient = () => () => {};
+
+function readImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, dataUrl: reader.result });
+    reader.onerror = () => reject(new Error(`Não foi possível ler ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
 
 function SupportChatSession({ locale, pathname, t }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [humanSupportSuggested, setHumanSupportSuggested] = useState(false);
   const activeRequest = useRef(null);
+  const fileInput = useRef(null);
+  const messageList = useRef(null);
 
   useEffect(() => () => activeRequest.current?.abort(), []);
+  useEffect(() => { messageList.current?.scrollTo({ top: messageList.current.scrollHeight, behavior: "smooth" }); }, [messages, loading]);
+
+  const supportEmailUrl = useMemo(() => {
+    const transcript = messages.slice(-10).map((message) => `${message.role === "user" ? "Cliente" : "Assistente"}: ${message.content.slice(0, 700)}`).join("\n\n");
+    const imageNames = [...messages.flatMap((message) => message.attachments ?? []), ...attachments].map((item) => item.name);
+    const body = ["Olá, preciso de suporte no Dashboardia.", `Página: ${pathname}`, transcript && `Histórico do atendimento:\n${transcript}`, imageNames.length && `Prints analisados: ${imageNames.join(", ")} (anexarei novamente ao e-mail).`].filter(Boolean).join("\n\n");
+    return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Suporte Dashboardia · ${pathname}`)}&body=${encodeURIComponent(body)}`;
+  }, [attachments, messages, pathname]);
+
+  async function selectAttachments(event) {
+    const selected = Array.from(event.target.files || []);
+    event.target.value = "";
+    setAttachmentError("");
+    const available = Math.max(0, MAX_ATTACHMENTS - attachments.length);
+    const accepted = selected.slice(0, available).filter((file) => {
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+        setAttachmentError("Envie somente imagens PNG, JPG ou WEBP.");
+        return false;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        setAttachmentError(`Cada print pode ter até ${(MAX_IMAGE_BYTES / 1_000_000).toLocaleString("pt-BR")} MB.`);
+        return false;
+      }
+      return true;
+    });
+    try {
+      const prepared = await Promise.all(accepted.map(readImage));
+      setAttachments((current) => [...current, ...prepared].slice(0, MAX_ATTACHMENTS));
+    } catch (error) {
+      setAttachmentError(error.message);
+    }
+  }
 
   async function send(event) {
     event.preventDefault();
     const content = text.trim();
     if (!content || loading) return;
 
-    const next = [...messages, { role: "user", content }];
+    const submittedAttachments = attachments;
+    const next = [...messages, { role: "user", content, attachments: submittedAttachments }];
     const controller = new AbortController();
     activeRequest.current = controller;
     setMessages(next);
     setText("");
+    setAttachments([]);
+    setAttachmentError("");
     setLoading(true);
 
     try {
@@ -35,42 +88,45 @@ function SupportChatSession({ locale, pathname, t }) {
         method: "POST",
         signal: controller.signal,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locale, currentPath: pathname, messages: next.slice(-12) }),
+        body: JSON.stringify({ locale, currentPath: pathname, messages: next.slice(-12).map(({ role, content: value }) => ({ role, content: value })), attachments: submittedAttachments }),
       });
       const payload = await response.json();
-      setMessages((current) => [...current, { role: "assistant", content: payload.answer ?? t("supportUnavailable") }]);
+      setHumanSupportSuggested(Boolean(payload.suggestHumanSupport));
+      setMessages((current) => [...current, { role: "assistant", content: payload.answer ?? t("supportUnavailable"), demandReference: payload.demandReference }]);
     } catch (error) {
-      if (error?.name !== "AbortError") setMessages((current) => [...current, { role: "assistant", content: t("supportUnavailable") }]);
+      if (error?.name !== "AbortError") {
+        setHumanSupportSuggested(true);
+        setMessages((current) => [...current, { role: "assistant", content: t("supportUnavailable") }]);
+      }
     } finally {
       activeRequest.current = null;
       setLoading(false);
     }
   }
 
-  return (
-    <div className={`support-chat ${open ? "open" : ""}`}>
-      {open && (
-        <aside className="support-panel" role="dialog" aria-label={t("support")}>
-          <header className="support-panel-header"><span><Bot size={18} /><strong>{t("support")}</strong></span><button onClick={() => setOpen(false)} aria-label={t("close")}><X size={17} /></button></header>
-          <div className="support-messages">
-            {!messages.length && <div className="assistant-message">{t("supportIntro")}</div>}
-            {messages.map((message, index) => <div className={`${message.role}-message`} key={`${message.role}-${index}`}>{message.content}</div>)}
-            {loading && <div className="assistant-message typing">•••</div>}
-          </div>
-          <form className="support-panel-form" onSubmit={send}><input maxLength={800} value={text} onChange={(event) => setText(event.target.value)} placeholder={t("askPlaceholder")} /><button disabled={loading || !text.trim()} aria-label={t("send")}><Send size={16} /></button></form>
-          <small className="support-panel-disclaimer">{t("assistantDisclaimer")}</small>
-        </aside>
-      )}
-      <button className="support-launcher" onClick={() => setOpen((value) => !value)} aria-label={t("support")}><MessageCircle size={21} /></button>
-    </div>
-  );
+  return <div className={`support-chat ${open ? "open" : ""}`}>
+    {open && <aside className="support-panel" role="dialog" aria-label={t("support")}>
+      <header className="support-panel-header"><span><Bot size={18} /><strong>{t("support")}</strong></span><button onClick={() => setOpen(false)} aria-label={t("close")}><X size={17} /></button></header>
+      <div className="support-messages" ref={messageList}>
+        {!messages.length && <div className="assistant-message">Sou o agente de suporte do Dashboardia. Explique o problema, informe o número da demanda ou envie um print para eu analisar.</div>}
+        {messages.map((message, index) => <div className={`${message.role}-message`} key={`${message.role}-${index}`}>{message.demandReference && <small className="support-demand-reference">Demanda {message.demandReference}</small>}<span>{message.content}</span>{message.attachments?.length > 0 && <div className="support-message-images">{message.attachments.map((attachment, imageIndex) => <Image unoptimized src={attachment.dataUrl} alt={attachment.name} width={92} height={64} key={`${attachment.name}-${imageIndex}`} />)}</div>}</div>)}
+        {loading && <div className="assistant-message typing">Analisando contexto e informações…</div>}
+      </div>
+      <form className="support-panel-form" onSubmit={send}>
+        {attachments.length > 0 && <div className="support-attachment-list">{attachments.map((attachment, index) => <span key={`${attachment.name}-${index}`}><Image unoptimized src={attachment.dataUrl} alt={attachment.name} width={42} height={42} /><small>{attachment.name}</small><button type="button" onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remover ${attachment.name}`}><Trash2 size={12} /></button></span>)}</div>}
+        {attachmentError && <small className="support-attachment-error">{attachmentError}</small>}
+        <div className="support-composer"><input ref={fileInput} hidden type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={selectAttachments} /><button className="support-attach" type="button" onClick={() => fileInput.current?.click()} disabled={loading || attachments.length >= MAX_ATTACHMENTS} aria-label="Anexar prints"><ImagePlus size={17} /></button><textarea maxLength={4000} rows={2} value={text} onChange={(event) => setText(event.target.value)} placeholder="Descreva o problema ou informe a demanda…" /><button className="support-send" disabled={loading || !text.trim()} aria-label={t("send")}><Send size={16} /></button></div>
+      </form>
+      <footer className={`support-panel-footer ${humanSupportSuggested ? "suggested" : ""}`}><a href={supportEmailUrl}><LifeBuoy size={14} /><span><strong>Abrir chamado por e-mail</strong><small>{SUPPORT_EMAIL}</small></span></a><small>Prints são enviados à IA somente durante esta análise. Ao abrir o e-mail, anexe-os novamente.</small></footer>
+    </aside>}
+    <button className="support-launcher" onClick={() => setOpen((value) => !value)} aria-label={t("support")}><MessageCircle size={21} /></button>
+  </div>;
 }
 
 export default function SupportChat({ disabled = false }) {
   const { locale, t } = usePreferences();
   const pathname = usePathname();
   const isClient = useSyncExternalStore(subscribeToClient, () => true, () => false);
-
   if (disabled || !isClient) return null;
   return createPortal(<SupportChatSession key={locale} locale={locale} pathname={pathname} t={t} />, document.body);
 }
