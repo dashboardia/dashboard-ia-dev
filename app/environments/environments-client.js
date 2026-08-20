@@ -8,13 +8,15 @@ import BranchCombobox from "../../components/branch-combobox";
 const ACTIVE = new Set(["QUEUED", "BUILDING", "DEPLOYING", "READY", "STOPPING"]);
 const labels = { QUEUED: "Na fila", BUILDING: "Construindo", DEPLOYING: "Iniciando", READY: "Disponível", FAILED: "Falhou", STOPPING: "Encerrando", EXPIRED: "Encerrado" };
 
-export default function EnvironmentsClient({ initialProjects, initialEnvironments }) {
+export default function EnvironmentsClient({ initialProjects, initialEnvironments, initialSelection = null }) {
+  const initialProject = initialProjects.find((project) => project.id === initialSelection?.projectId) ?? initialProjects[0];
+  const initialBranch = initialSelection?.branchName ?? initialProject?.defaultBranch ?? "main";
   const [environments, setEnvironments] = useState(initialEnvironments);
-  const [projectId, setProjectId] = useState(initialProjects[0]?.id ?? "");
+  const [projectId, setProjectId] = useState(initialProject?.id ?? "");
   const selectedProject = useMemo(() => initialProjects.find((project) => project.id === projectId), [initialProjects, projectId]);
-  const [branchName, setBranchName] = useState(initialProjects[0]?.defaultBranch ?? "main");
-  const [branches, setBranches] = useState(initialProjects[0] ? [{ name: initialProjects[0].defaultBranch }] : []);
-  const [branchesLoading, setBranchesLoading] = useState(Boolean(initialProjects[0]));
+  const [branchName, setBranchName] = useState(initialBranch);
+  const [branches, setBranches] = useState(initialProject ? [{ name: initialBranch }] : []);
+  const [branchesLoading, setBranchesLoading] = useState(Boolean(initialProject));
   const [branchError, setBranchError] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

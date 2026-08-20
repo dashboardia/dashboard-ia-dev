@@ -7,8 +7,9 @@ import EnvironmentsClient from "./environments-client";
 
 export const dynamic = "force-dynamic";
 
-export default async function EnvironmentsPage() {
+export default async function EnvironmentsPage({ searchParams }) {
   const user = await requirePageUser();
+  const query = await searchParams;
   const access = projectAccessWhere(user);
   const [projects, environments] = await Promise.all([
     db.project.findMany({
@@ -24,5 +25,10 @@ export default async function EnvironmentsPage() {
     }),
   ]);
 
-  return <AppShell user={user}><div className="section-page"><SectionHeader eyebrow="DOCKER · CONTABO" title="Ambientes" description="Suba uma branch do cliente em um container isolado, sem vincular o ambiente à execução de uma demanda." /><EnvironmentsClient initialProjects={projects} initialEnvironments={environments} /></div></AppShell>;
+  const requestedProject = projects.find((project) => project.id === query?.projectId);
+  const initialSelection = requestedProject && typeof query?.branch === "string" && query.branch.length <= 255
+    ? { projectId: requestedProject.id, branchName: query.branch }
+    : null;
+
+  return <AppShell user={user}><div className="section-page"><SectionHeader eyebrow="DOCKER · CONTABO" title="Ambientes" description="Suba uma branch do cliente em um container isolado, sem vincular o ambiente à execução de uma demanda." /><EnvironmentsClient initialProjects={projects} initialEnvironments={environments} initialSelection={initialSelection} /></div></AppShell>;
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronDown, Download, FileCode2, Images, Maximize2, X } from "lucide-react";
+import { ChevronDown, Download, FileCode2, Images, Maximize2, ServerCog, X } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 function evidenceLabel(artifact) {
@@ -16,7 +17,7 @@ function fileExtension(name) {
   return extension && extension !== name ? extension.slice(0, 4).toUpperCase() : "FILE";
 }
 
-export default function EvidenceCard({ artifacts }) {
+export default function EvidenceCard({ artifacts, projectId, branchName }) {
   const evidence = artifacts.filter((artifact) => artifact.type !== "diff");
   const visuals = evidence.filter((artifact) => artifact.type === "visual");
   const files = evidence.filter((artifact) => artifact.type !== "visual");
@@ -37,6 +38,7 @@ export default function EvidenceCard({ artifacts }) {
     <details className="form-card detail-card full-card execution-collapsible execution-evidence-card">
       <summary className="execution-collapsible-header"><Images size={19} /><span><strong>Validações e evidências</strong><small>{visuals.length} captura(s) · {files.length} arquivo(s)</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
       <div className="execution-collapsible-content execution-evidence-content">
+        {branchName && <div className="execution-evidence-environment"><span><strong>Visualizar a versão completa</strong><small>Abra um ambiente temporário com o projeto e a branch desta execução já selecionados.</small></span><Link href={{ pathname: "/environments", query: { projectId, branch: branchName } }}><ServerCog size={15} />Subir esta branch</Link></div>}
         {visuals.length > 0 && <div className="execution-screenshot-grid">{visuals.map((artifact) => {
           const href = `/api/artifacts/${artifact.id}`;
           return <button type="button" className="execution-screenshot" onClick={() => setSelected({ ...artifact, href })} key={artifact.id} aria-label={`Ampliar ${artifact.name}`}>

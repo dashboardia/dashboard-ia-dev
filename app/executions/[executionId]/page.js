@@ -130,7 +130,7 @@ export default async function ExecutionPage({ params }) {
           <div className="execution-collapsible-content"><div className="execution-timeline">{execution.logs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; return <div key={entry.id}><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Ver detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>; })}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div></div>
         </details>
 
-        {execution.demand.type !== "DOCUMENTATION" && <EvidenceCard artifacts={execution.artifacts} />}
+        {execution.demand.type !== "DOCUMENTATION" && <EvidenceCard artifacts={execution.artifacts} projectId={execution.demand.projectId} branchName={execution.branchName} />}
 
         <details className="form-card detail-card full-card execution-collapsible execution-diff-card">
           <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Diff para revisão</strong><small>{diff?.content ? "Alterações exatas geradas antes da abertura do Pull Request" : "Disponível após as validações"}</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
