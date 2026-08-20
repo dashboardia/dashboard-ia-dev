@@ -788,6 +788,11 @@ model GlobalSettings {
   commandTimeoutMinutes               Int      @default(10)
   agentTimeoutMinutes                 Int      @default(5)
   parallelExecutions                  Int      @default(2)
+  workerAutoscalingEnabled            Boolean  @default(true)
+  workerMinReplicas                   Int      @default(2)
+  workerMaxReplicas                   Int      @default(10)
+  workerAutoscaleIntervalSeconds      Int      @default(60)
+  workerScaleDownCooldownMinutes      Int      @default(5)
   executionProcessingEnabled          Boolean  @default(true)
   agentPowerMode                      String   @default("BALANCED")
   executionMaxAttempts                Int      @default(3)
@@ -812,4 +817,18 @@ model GlobalSettings {
   workerCostCentsPerHour              Int      @default(100)
   visualValidationCostCents           Int      @default(10)
   updatedAt                           DateTime @updatedAt
+}
+
+model WorkerAutoscalerState {
+  id               String    @id
+  leaseOwner       String?
+  leaseExpiresAt   DateTime?
+  currentReplicas  Int?
+  desiredReplicas  Int?
+  queuedExecutions Int       @default(0)
+  activeExecutions Int       @default(0)
+  lastEvaluatedAt  DateTime?
+  lastScaledAt     DateTime?
+  lastError        String?   @db.Text
+  updatedAt        DateTime  @updatedAt
 }

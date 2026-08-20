@@ -8,6 +8,7 @@ import { getGlobalSettings } from "../lib/global-settings.js";
 import { pruneWorkerHeartbeats, recordWorkerHeartbeat, removeWorkerHeartbeat } from "../lib/worker-heartbeat.js";
 import { checkProjectHealth, pruneHealthChecks } from "./health.mjs";
 import { processExecution } from "./processor.mjs";
+import { evaluateWorkerAutoscaling } from "./autoscaler.mjs";
 
 const workerId = `${process.env.RAILWAY_REPLICA_ID || os.hostname()}:${process.pid}`;
 const LOCAL_CONCURRENCY_LIMIT = 1;
@@ -16,6 +17,7 @@ let lastHealthCheck = 0;
 let lastHealthPrune = 0;
 let lastStaleRecovery = 0;
 let lastConversationExpiration = 0;
+let lastAutoscaleEvaluation = 0;
 const workerStartedAt = new Date();
 let heartbeatTimer = null;
 let heartbeatPromise = null;
@@ -50,7 +52,7 @@ async function refreshConcurrencyLimit() {
   if (Date.now() - lastConcurrencyRefresh < 5_000) return;
   const settings = await getGlobalSettings();
   runtimeSettings = settings;
-  const nextLimit = Math.max(1, Math.trunc(settings.parallelExecutions));
+  const nextLimit = Math.max(1, Math.trunc(settings.workerAutoscalingEnabled ? settings.workerMaxReplicas : settings.parallelExecutions));
   if (nextLimit !== globalConcurrencyLimit || settings.executionProcessingEnabled !== processingEnabled) {
     globalConcurrencyLimit = nextLimit;
     processingEnabled = settings.executionProcessingEnabled;
@@ -99,6 +101,20 @@ async function main() {
     if (Date.now() - lastConversationExpiration >= 60_000) {
       await expireInactiveExecutionConversations(db).catch((error) => console.error(`[worker:${workerId}] expiração de conversas falhou`, error));
       lastConversationExpiration = Date.now();
+    }
+    if (runtimeSettings.workerAutoscalingEnabled && Date.now() - lastAutoscaleEvaluation >= runtimeSettings.workerAutoscaleIntervalSeconds * 1_000) {
+      const autoscaling = await evaluateWorkerAutoscaling({
+        workerId,
+        settings: runtimeSettings,
+        configuration: env,
+      }).catch((error) => {
+        console.error(`[worker:${workerId}] autoscaling falhou`, error);
+        return null;
+      });
+      if (autoscaling?.status === "SCALED") {
+        console.log(`[worker:${workerId}] replicas ${autoscaling.previousReplicas} -> ${autoscaling.currentReplicas}; fila=${autoscaling.queuedExecutions}; ativas=${autoscaling.activeExecutions}`);
+      }
+      lastAutoscaleEvaluation = Date.now();
     }
     if (Date.now() - lastHealthCheck >= runtimeSettings.healthCheckIntervalMinutes * 60_000) {
       await checkProjectHealth({

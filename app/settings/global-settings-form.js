@@ -15,6 +15,11 @@ export default function GlobalSettingsForm({ initialSettings, workerInstances = 
     commandTimeoutMinutes: String(initialSettings.commandTimeoutMinutes),
     agentTimeoutMinutes: String(initialSettings.agentTimeoutMinutes),
     parallelExecutions: String(initialSettings.parallelExecutions),
+    workerAutoscalingEnabled: initialSettings.workerAutoscalingEnabled,
+    workerMinReplicas: String(initialSettings.workerMinReplicas),
+    workerMaxReplicas: String(initialSettings.workerMaxReplicas),
+    workerAutoscaleIntervalSeconds: String(initialSettings.workerAutoscaleIntervalSeconds),
+    workerScaleDownCooldownMinutes: String(initialSettings.workerScaleDownCooldownMinutes),
     executionProcessingEnabled: initialSettings.executionProcessingEnabled,
     agentPowerMode: initialSettings.agentPowerMode,
     executionMaxAttempts: String(initialSettings.executionMaxAttempts),
@@ -42,7 +47,7 @@ export default function GlobalSettingsForm({ initialSettings, workerInstances = 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
-  const requestedCapacity = Math.max(1, Number(form.parallelExecutions) || 1);
+  const requestedCapacity = Math.max(1, Number(form.workerAutoscalingEnabled ? form.workerMaxReplicas : form.parallelExecutions) || 1);
   const effectiveCapacity = Math.min(requestedCapacity, workerInstances);
 
   function change(event) {
@@ -116,8 +121,33 @@ export default function GlobalSettingsForm({ initialSettings, workerInstances = 
         </label>
         <label>
           <span>Capacidade global</span>
-          <input name="parallelExecutions" type="number" min="1" max={MAX_PARALLEL_EXECUTIONS} value={form.parallelExecutions} onChange={change} />
-          <small>{workerInstances} réplica(s) ativa(s); capacidade efetiva agora: {effectiveCapacity}. Cada réplica processa uma demanda.</small>
+          <input name="parallelExecutions" type="number" min="1" max={MAX_PARALLEL_EXECUTIONS} value={form.parallelExecutions} onChange={change} disabled={form.workerAutoscalingEnabled} />
+          <small>{form.workerAutoscalingEnabled ? "Controlada automaticamente pelo máximo de réplicas." : `${workerInstances} réplica(s) ativa(s); capacidade efetiva agora: ${effectiveCapacity}.`}</small>
+        </label>
+        <label>
+          <span>Autoscaling do Worker</span>
+          <input name="workerAutoscalingEnabled" type="checkbox" checked={form.workerAutoscalingEnabled} onChange={change} />
+          <small>{form.workerAutoscalingEnabled ? "Ativo: ajusta réplicas conforme a fila." : "Inativo: mantém a escala configurada manualmente no Railway."}</small>
+        </label>
+        <label>
+          <span>Mínimo de réplicas</span>
+          <input name="workerMinReplicas" type="number" min="1" max={MAX_PARALLEL_EXECUTIONS} value={form.workerMinReplicas} onChange={change} disabled={!form.workerAutoscalingEnabled} />
+          <small>Capacidade mantida mesmo sem fila. Recomendado: 2.</small>
+        </label>
+        <label>
+          <span>Máximo de réplicas</span>
+          <input name="workerMaxReplicas" type="number" min="1" max={MAX_PARALLEL_EXECUTIONS} value={form.workerMaxReplicas} onChange={change} disabled={!form.workerAutoscalingEnabled} />
+          <small>Teto de custo e simultaneidade. Recomendado inicial: 10.</small>
+        </label>
+        <label>
+          <span>Verificar fila a cada (s)</span>
+          <input name="workerAutoscaleIntervalSeconds" type="number" min="30" max="300" value={form.workerAutoscaleIntervalSeconds} onChange={change} disabled={!form.workerAutoscalingEnabled} />
+          <small>Escala para cima imediatamente em cada verificação.</small>
+        </label>
+        <label>
+          <span>Cooldown para reduzir (min)</span>
+          <input name="workerScaleDownCooldownMinutes" type="number" min="1" max="60" value={form.workerScaleDownCooldownMinutes} onChange={change} disabled={!form.workerAutoscalingEnabled} />
+          <small>Reduz uma réplica por vez para evitar oscilações.</small>
         </label>
         <label>
           <span>Timeout de cada comando</span>

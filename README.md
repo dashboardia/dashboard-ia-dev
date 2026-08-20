@@ -87,7 +87,9 @@ npm run build
 | `HEALTH_CHECK_INTERVAL_MS` | Worker | Intervalo de monitoramento, padrão 5 minutos |
 | `HEALTH_CHECK_RETENTION_DAYS` | Worker | Retenção do histórico de saúde, padrão 30 dias |
 | `WORKER_HEARTBEAT_INTERVAL_MS` | Worker | Heartbeat do processo, padrão 30 segundos |
-| `RAILWAY_API_TOKEN` | Web | Reservado para integração avançada com a API Railway |
+| `RAILWAY_API_TOKEN` | Web e worker | Token de conta/workspace ou projeto usado para ajustar réplicas automaticamente |
+| `RAILWAY_SERVICE_ID` | Worker | Variável fornecida automaticamente pelo Railway com o serviço a escalar |
+| `RAILWAY_ENVIRONMENT_ID` | Worker | Variável fornecida automaticamente pelo Railway com o ambiente do serviço |
 
 O callback do GitHub OAuth em produção é:
 
@@ -124,7 +126,7 @@ Crie um segundo serviço a partir do mesmo repositório:
 - sem domínio público;
 - variáveis obrigatórias: `DATABASE_URL`, `OPENAI_API_KEY` e `OPENAI_MODEL`.
 - cada réplica processa uma execução por vez em workspace isolado;
-- configure no Railway a mesma quantidade de réplicas desejada em **Capacidade global**;
+- com autoscaling ativo, a fila ajusta o serviço entre o mínimo e o máximo configurados no Admin;
 - o PostgreSQL aplica o limite global, o claim atômico e a distribuição justa entre clientes.
 
 ## Ambiente secundário no Render
