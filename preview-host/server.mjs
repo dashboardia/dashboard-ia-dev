@@ -109,23 +109,45 @@ async function failActivity(id, message) {
   return writeState(id, { ...state, activity: activity.slice(-10) });
 }
 
-async function docker(args, timeout = 120_000) {
-  return execFile("docker", args, { timeout, maxBuffer: 4 * 1024 * 1024 });
+async function docker(args, timeout = 120_000, environment = null) {
+  return execFile("docker", args, {
+    timeout,
+    maxBuffer: 4 * 1024 * 1024,
+    ...(environment ? { env: { ...process.env, ...environment } } : {}),
+  });
 }
 
 function dockerErrorText(error) {
   return [error?.stderr, error?.stdout, error?.message].filter(Boolean).join("\n");
 }
 
-async function buildPreviewImage(id, generatedDockerfile, sourceDirectory) {
+async function buildPreviewImage(id, buildFile, sourceDirectory, runtime) {
   const maximumAttempts = 3;
   for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
     try {
       await patchState(id, { buildAttempt: attempt });
-      await docker(["build", "--file", generatedDockerfile, "--tag", previewImageName(id), sourceDirectory], buildTimeoutMs);
+      if (runtime === "RAILPACK") {
+        const planFile = path.join(path.dirname(buildFile), "railpack-plan.json");
+        const infoFile = path.join(path.dirname(buildFile), "railpack-info.json");
+        await execFile("railpack", ["prepare", sourceDirectory, "--plan-out", planFile, "--info-out", infoFile], {
+          timeout: 120_000,
+          maxBuffer: 4 * 1024 * 1024,
+        });
+        await docker([
+          "build",
+          "--build-arg", `BUILDKIT_SYNTAX=${process.env.RAILPACK_FRONTEND_IMAGE || "ghcr.io/railwayapp/railpack-frontend"}`,
+          "--build-arg", `cache-key=${id}`,
+          "--file", planFile,
+          "--tag", previewImageName(id),
+          sourceDirectory,
+        ], buildTimeoutMs, { DOCKER_BUILDKIT: "1" });
+      } else {
+        await docker(["build", "--file", buildFile, "--tag", previewImageName(id), sourceDirectory], buildTimeoutMs);
+      }
       return;
     } catch (error) {
-      if (attempt === maximumAttempts || !isTransientDockerError(error)) throw error;
+      const transientRailpackPreparation = runtime === "RAILPACK" && Number(error?.code) === 75;
+      if (attempt === maximumAttempts || (!transientRailpackPreparation && !isTransientDockerError(error))) throw error;
       await patchState(id, {
         status: "BUILDING",
         error: `Falha transitória no Docker; nova tentativa ${attempt + 1} de ${maximumAttempts}.`,
@@ -134,6 +156,13 @@ async function buildPreviewImage(id, generatedDockerfile, sourceDirectory) {
       await new Promise((resolve) => setTimeout(resolve, attempt * 5_000));
     }
   }
+}
+
+async function projectDockerfile(sourceDirectory) {
+  const entries = await readdir(sourceDirectory, { withFileTypes: true });
+  const dockerfile = entries.find((entry) => entry.isFile() && entry.name.toLowerCase() === "dockerfile");
+  if (!dockerfile) throw new Error("A stack Dockerfile foi detectada, mas o arquivo não existe na raiz do projeto.");
+  return path.join(sourceDirectory, dockerfile.name);
 }
 
 function parseConfiguration(request) {
@@ -269,12 +298,15 @@ async function deployPreview(id, configuration) {
         adjustments: [...(currentState?.adjustments ?? []), ...demoAccess.adjustments],
       });
     }
-    const generatedDockerfile = path.join(directory, "Dockerfile");
-    await writeFile(generatedDockerfile, buildPreviewDockerfile(configuration), { mode: 0o600 });
+    const imageManagedRuntime = ["DOCKERFILE", "RAILPACK"].includes(configuration.runtime);
+    const buildFile = configuration.runtime === "DOCKERFILE"
+      ? await projectDockerfile(sourceDirectory)
+      : path.join(directory, "Dockerfile");
+    if (!imageManagedRuntime) await writeFile(buildFile, buildPreviewDockerfile(configuration), { mode: 0o600 });
     await removeRuntime(id);
     await recordActivity(id, "building", "Instalando dependências e construindo a imagem Docker");
     try {
-      await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
+      await buildPreviewImage(id, buildFile, sourceDirectory, configuration.runtime);
     } catch (firstBuildError) {
       const buildAdjustments = await applyKnownBuildRepairs({
         sourceDirectory,
@@ -289,7 +321,7 @@ async function deployPreview(id, configuration) {
       });
       await recordActivity(id, "repairing", "Aplicando correções temporárias para concluir o build");
       await recordActivity(id, "building", "Reconstruindo a imagem com os ajustes temporários");
-      await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
+      await buildPreviewImage(id, buildFile, sourceDirectory, configuration.runtime);
     }
     const afterBuild = await readState(id).catch(() => null);
     if (!afterBuild || afterBuild.status !== "BUILDING" || new Date(afterBuild.expiresAt).getTime() <= Date.now()) {
@@ -323,7 +355,7 @@ async function deployPreview(id, configuration) {
         });
         await recordActivity(id, "repairing-runtime", "Ajustando a inicialização com base nos logs do container");
         await recordActivity(id, "building-runtime", "Reconstruindo a imagem após o ajuste de inicialização");
-        await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
+        await buildPreviewImage(id, buildFile, sourceDirectory, configuration.runtime);
       }
     }
     await recordActivity(id, "ready", "Ambiente publicado e pronto para uso", "COMPLETED");

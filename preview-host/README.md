@@ -28,3 +28,13 @@ PREVIEW_TTL_MINUTES=60
 ```
 
 Os containers recebem 1 CPU, 768 MB de memória, limite de processos, nenhuma capability Linux adicional e uma rede interna exclusiva por preview. Assim, projetos de clientes diferentes não conseguem se comunicar. O host executa no máximo dois builds simultâneos, enfileira o restante e remove automaticamente rede, imagem e container ao vencer o TTL.
+
+## Estratégia de build das stacks
+
+O Preview Host usa a mesma abordagem extensível do Railway:
+
+1. um `Dockerfile` na raiz do repositório tem prioridade e controla o build;
+2. stacks já tratadas pelo Dashboardia continuam usando os builders especializados e seus reparos temporários;
+3. qualquer outra stack é detectada e construída pelo Railpack, com versão fixa no container do host.
+
+O fallback Railpack contempla os providers suportados pelo projeto, incluindo Node/Bun, Python, Go, PHP, Java, Ruby, .NET, Deno, Rust, Elixir, Gleam, C/C++, sites estáticos e shell. Assim como no Railway, aplicações incomuns ou monorepos ambíguos podem precisar fornecer um `Dockerfile` para declarar explicitamente o build, o comando de inicialização e a porta HTTP.
