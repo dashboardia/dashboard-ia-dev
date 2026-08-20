@@ -10,6 +10,11 @@ import { supportReferenceCandidates, wantsHumanSupport } from "../../../../lib/s
 import { buildSupportFallback, searchSupportArticles, supportArticles } from "../../../../lib/support-knowledge";
 
 const windows = new Map();
+const SUPPORT_EMAIL = "suportdashboardia@gmail.com";
+
+function withHumanSupportGuidance(answer) {
+  return `${answer}\n\nSe preferir atendimento humano, envie um e-mail para ${SUPPORT_EMAIL}. Inclua o número da demanda, uma descrição do problema e os prints relevantes.`;
+}
 
 function rateLimited(userId) {
   const now = Date.now();
@@ -92,8 +97,9 @@ export async function POST(request) {
     const matches = searchSupportArticles(question, 4);
     const fallback = buildSupportFallback(question, locale);
     const operationalContext = await loadOperationalContext(user, question, currentPath);
-    const suggestHumanSupport = wantsHumanSupport(question) || matches.length === 0;
-    if (!env.OPENAI_API_KEY) return NextResponse.json({ answer: fallback, source: "faq", suggestHumanSupport, demandReference: operationalContext.demand?.id.slice(-10) ?? null });
+    const humanSupportRequested = wantsHumanSupport(question);
+    const fallbackAnswer = humanSupportRequested || matches.length === 0 ? withHumanSupportGuidance(fallback) : fallback;
+    if (!env.OPENAI_API_KEY) return NextResponse.json({ answer: fallbackAnswer, source: "faq", demandReference: operationalContext.demand?.id.slice(-10) ?? null });
 
     try {
       const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -107,6 +113,7 @@ CONTEXTO DA SESSÃO
 - Página atual: ${currentPath}
 - Papel do usuário: ${user.globalRole === "ADMIN" ? "administrador" : "usuário de projeto"}
 - Prints anexados nesta mensagem: ${attachments.length}
+- Cliente pediu atendimento humano: ${humanSupportRequested ? "sim" : "não"}
 
 CONTEXTO OPERACIONAL AUTORIZADO
 ${operationalContext.text}
@@ -120,7 +127,8 @@ COMO RESPONDER
 - Analise os prints anexados em conjunto com o texto. Não presuma detalhes ilegíveis; diga o que conseguiu observar.
 - Diferencie claramente o que a plataforma faz automaticamente do que depende de GitHub, Worker, Render, Railway ou Asaas.
 - Use exclusivamente a documentação e o contexto operacional autorizado abaixo. Se eles não sustentarem a resposta, diga que não conseguiu concluir e ofereça atendimento humano.
-- Se o cliente pedir atendimento humano ou o diagnóstico não for seguro, oriente usar o botão “Abrir chamado por e-mail” disponível no chat. O endereço oficial é suportdashboardia@gmail.com.
+- Se o cliente pedir atendimento humano, não prolongue o diagnóstico: informe imediatamente que ele pode enviar o chamado para ${SUPPORT_EMAIL}.
+- Se não conseguir resolver ou o diagnóstico não for seguro, explique isso com clareza e indique o mesmo e-mail. Oriente incluir o número da demanda, a descrição do problema e os prints relevantes.
 - Você pode dizer que consultou o status da demanda exibida no contexto. Nunca alegue acesso ao código, conteúdo do repositório, segredos ou tokens. Não solicite segredos e não execute ações.
 - Recuse temas alheios ao produto.
 
@@ -133,13 +141,15 @@ ${supportArticles.map((item) => `- ${item.title}: ${item.answer}`).join("\n")}`,
           ? { ...message, content: [{ type: "input_text", text: message.content }, ...attachments.map((attachment) => ({ type: "input_image", image_url: attachment.dataUrl, detail: "auto" }))] }
           : message),
       });
-      return NextResponse.json({ answer: response.output_text?.trim() || fallback, source: "ai", suggestHumanSupport, demandReference: operationalContext.demand?.id.slice(-10) ?? null });
+      const aiAnswer = response.output_text?.trim() || fallbackAnswer;
+      const answer = humanSupportRequested && !aiAnswer.includes(SUPPORT_EMAIL) ? withHumanSupportGuidance(aiAnswer) : aiAnswer;
+      return NextResponse.json({ answer, source: "ai", demandReference: operationalContext.demand?.id.slice(-10) ?? null });
     } catch (error) {
       console.error("[support-chat:ai]", error);
-      return NextResponse.json({ answer: fallback, source: "faq", suggestHumanSupport: true, demandReference: operationalContext.demand?.id.slice(-10) ?? null });
+      return NextResponse.json({ answer: withHumanSupportGuidance(fallback), source: "faq", demandReference: operationalContext.demand?.id.slice(-10) ?? null });
     }
   } catch (error) {
     console.error("[support-chat]", error);
-    return NextResponse.json({ answer: error instanceof AccessDeniedError ? error.message : "O assistente está temporariamente indisponível." }, { status: error instanceof AccessDeniedError ? error.status : 500 });
+    return NextResponse.json({ answer: error instanceof AccessDeniedError ? error.message : `O assistente está temporariamente indisponível. Para atendimento humano, envie um e-mail para ${SUPPORT_EMAIL}.` }, { status: error instanceof AccessDeniedError ? error.status : 500 });
   }
 }

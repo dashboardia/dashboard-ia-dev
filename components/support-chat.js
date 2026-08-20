@@ -1,14 +1,13 @@
 "use client";
 
-import { Bot, ImagePlus, LifeBuoy, MessageCircle, Send, Trash2, X } from "lucide-react";
+import { Bot, ImagePlus, MessageCircle, Send, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { usePreferences } from "./preferences-provider";
 
-const SUPPORT_EMAIL = "suportdashboardia@gmail.com";
 const MAX_ATTACHMENTS = 3;
 const MAX_IMAGE_BYTES = 1_500_000;
 const subscribeToClient = () => () => {};
@@ -29,20 +28,12 @@ function SupportChatSession({ locale, pathname, t }) {
   const [messages, setMessages] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [attachmentError, setAttachmentError] = useState("");
-  const [humanSupportSuggested, setHumanSupportSuggested] = useState(false);
   const activeRequest = useRef(null);
   const fileInput = useRef(null);
   const messageList = useRef(null);
 
   useEffect(() => () => activeRequest.current?.abort(), []);
   useEffect(() => { messageList.current?.scrollTo({ top: messageList.current.scrollHeight, behavior: "smooth" }); }, [messages, loading]);
-
-  const supportEmailUrl = useMemo(() => {
-    const transcript = messages.slice(-10).map((message) => `${message.role === "user" ? "Cliente" : "Assistente"}: ${message.content.slice(0, 700)}`).join("\n\n");
-    const imageNames = [...messages.flatMap((message) => message.attachments ?? []), ...attachments].map((item) => item.name);
-    const body = ["Olá, preciso de suporte no Dashboardia.", `Página: ${pathname}`, transcript && `Histórico do atendimento:\n${transcript}`, imageNames.length && `Prints analisados: ${imageNames.join(", ")} (anexarei novamente ao e-mail).`].filter(Boolean).join("\n\n");
-    return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Suporte Dashboardia · ${pathname}`)}&body=${encodeURIComponent(body)}`;
-  }, [attachments, messages, pathname]);
 
   async function selectAttachments(event) {
     const selected = Array.from(event.target.files || []);
@@ -91,12 +82,10 @@ function SupportChatSession({ locale, pathname, t }) {
         body: JSON.stringify({ locale, currentPath: pathname, messages: next.slice(-12).map(({ role, content: value }) => ({ role, content: value })), attachments: submittedAttachments }),
       });
       const payload = await response.json();
-      setHumanSupportSuggested(Boolean(payload.suggestHumanSupport));
       setMessages((current) => [...current, { role: "assistant", content: payload.answer ?? t("supportUnavailable"), demandReference: payload.demandReference }]);
     } catch (error) {
       if (error?.name !== "AbortError") {
-        setHumanSupportSuggested(true);
-        setMessages((current) => [...current, { role: "assistant", content: t("supportUnavailable") }]);
+        setMessages((current) => [...current, { role: "assistant", content: `${t("supportUnavailable")} Para atendimento humano, envie um e-mail para suportdashboardia@gmail.com.` }]);
       }
     } finally {
       activeRequest.current = null;
@@ -117,7 +106,6 @@ function SupportChatSession({ locale, pathname, t }) {
         {attachmentError && <small className="support-attachment-error">{attachmentError}</small>}
         <div className="support-composer"><input ref={fileInput} hidden type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={selectAttachments} /><button className="support-attach" type="button" onClick={() => fileInput.current?.click()} disabled={loading || attachments.length >= MAX_ATTACHMENTS} aria-label="Anexar prints"><ImagePlus size={17} /></button><textarea maxLength={4000} rows={2} value={text} onChange={(event) => setText(event.target.value)} placeholder="Descreva o problema ou informe a demanda…" /><button className="support-send" disabled={loading || !text.trim()} aria-label={t("send")}><Send size={16} /></button></div>
       </form>
-      <footer className={`support-panel-footer ${humanSupportSuggested ? "suggested" : ""}`}><a href={supportEmailUrl}><LifeBuoy size={14} /><span><strong>Abrir chamado por e-mail</strong><small>{SUPPORT_EMAIL}</small></span></a><small>Prints são enviados à IA somente durante esta análise. Ao abrir o e-mail, anexe-os novamente.</small></footer>
     </aside>}
     <button className="support-launcher" onClick={() => setOpen((value) => !value)} aria-label={t("support")}><MessageCircle size={21} /></button>
   </div>;

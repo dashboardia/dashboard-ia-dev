@@ -1,4 +1,5 @@
-import { Bot, CircleDollarSign, Cpu, Landmark, TrendingUp } from "lucide-react";
+import { Bot, ChevronRight, CircleDollarSign, Cpu, Landmark, TrendingUp } from "lucide-react";
+import Link from "next/link";
 
 import AppShell from "../../components/app-shell";
 import SectionHeader from "../../components/section-header";
@@ -42,14 +43,15 @@ export default async function FinancialPage() {
       <div className="card-heading financial-table-heading"><div><h2>Clientes</h2><p>{totals.executions} execução(ões) com uso medido</p></div><CircleDollarSign size={20} /></div>
       <div className="data-table financial-client-table">
         <div className="data-head"><span>Cliente</span><span>Plano</span><span>Pago</span><span>OpenAI</span><span>Custo total</span><span>Resultado</span></div>
-        {clients.map((client) => <article className="data-row" key={client.userId}>
+        {clients.map((client) => <Link className="data-row financial-client-link" href={`/financial/${client.userId}`} aria-label={`Abrir detalhes financeiros de ${client.name}`} key={client.userId}>
           <span className="table-title"><i><CircleDollarSign size={16} /></i><strong>{client.name}</strong><small>{client.email} · {client.executions} execução(ões)</small></span>
           <span><em className="status-pill">{planLabels[client.plan] ?? client.plan}</em></span>
           <span><strong>{formatBrlCents(client.paidBrlCents)}</strong></span>
           <span title={client.models.join(", ") || "Sem uso medido"}><strong>{formatBrlCents(client.aiCostBrlCents)}</strong><small>{client.models.join(", ") || "—"}</small></span>
           <span><strong>{formatBrlCents(client.totalInternalCostBrlCents)}</strong><small>worker {formatBrlCents(client.workerCostBrlCents)}</small></span>
           <span className={client.resultBrlCents < 0 ? "financial-negative" : "financial-positive"}><strong>{formatBrlCents(client.resultBrlCents)}</strong><small>{client.grossMarginPercent == null ? "sem pagamento" : `${client.grossMarginPercent.toLocaleString("pt-BR")}%`}</small></span>
-        </article>)}
+          <ChevronRight className="financial-client-chevron" size={15} />
+        </Link>)}
         {!clients.length && <div className="list-empty">Nenhum cliente financeiro cadastrado.</div>}
       </div>
     </section>

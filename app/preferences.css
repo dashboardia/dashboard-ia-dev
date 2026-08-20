@@ -142,3 +142,11 @@
   .billing-page .billing-section { padding:17px; }
   .billing-page .billing-plan { min-height:0; }
 }
+
+[data-theme="dark"] .financial-client-link:hover,[data-theme="dark"] .financial-detail-list>a:hover { background:#171923; }
+[data-theme="dark"] .financial-cost-list>span,[data-theme="dark"] .financial-detail-list>div,[data-theme="dark"] .financial-detail-list>a { border-color:#383a46; }
+[data-theme="dark"] .financial-cost-list strong,[data-theme="dark"] .financial-detail-list strong,[data-theme="dark"] .financial-detail-list b { color:#f0f1f5; }
+[data-theme="dark"] .financial-cost-list .total { background:#29243b; }
+[data-theme="dark"] .financial-method-grid>span { background:#1d1f27; border-color:#383a46; }
+[data-theme="dark"] .financial-method-grid strong { color:#f0f1f5; }
+[data-theme="dark"] .financial-month-chart { border-color:#383a46; }
