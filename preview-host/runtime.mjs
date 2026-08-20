@@ -62,12 +62,12 @@ export function previewUpstreamHeaders(headers = {}, port) {
   };
 }
 
-export function probePreviewHttp(hostname, port, timeoutMs = 3_000) {
+export function probePreviewHttp(hostname, port, requestPath = "/", timeoutMs = 3_000) {
   return new Promise((resolve, reject) => {
     const request = http.request({
       hostname,
       port,
-      path: "/",
+      path: requestPath,
       method: "GET",
       headers: previewUpstreamHeaders({}, port),
     }, (response) => {
@@ -78,6 +78,12 @@ export function probePreviewHttp(hostname, port, timeoutMs = 3_000) {
     request.on("error", reject);
     request.end();
   });
+}
+
+export function previewUpstreamPath(requestUrl, entryPath = "/") {
+  const url = new URL(requestUrl || "/", "http://preview.internal");
+  if (url.pathname !== "/" || entryPath === "/") return requestUrl || "/";
+  return `${entryPath}${url.search}`;
 }
 
 function runtimeImage(runtime) {

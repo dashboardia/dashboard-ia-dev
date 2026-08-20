@@ -7,6 +7,7 @@ import {
   isPreviewReadyStatus,
   probePreviewHttp,
   previewUpstreamHeaders,
+  previewUpstreamPath,
   previewContainerName,
   previewNetworkName,
   validPreviewId,
@@ -123,18 +124,25 @@ test("usa IP local aceito pelo Vite no upstream sem perder o domínio público o
   });
 });
 
-test("sonda o preview com o Host local aceito pelo Vite", async () => {
+test("sonda uma rota do preview com o Host local aceito pelo Vite", async () => {
   const server = http.createServer((request, response) => {
     const expectedHost = `127.0.0.1:${server.address().port}`;
-    response.writeHead(request.headers.host === expectedHost ? 204 : 403).end();
+    response.writeHead(request.headers.host === expectedHost && request.url === "/index.html" ? 204 : 403).end();
   });
   await new Promise((resolve) => server.listen(0, "localhost", resolve));
   try {
-    const status = await probePreviewHttp("localhost", server.address().port);
+    const status = await probePreviewHttp("localhost", server.address().port, "/index.html");
     assert.equal(status, 204);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("direciona apenas a raiz pública para a entrada navegável detectada", () => {
+  assert.equal(previewUpstreamPath("/", "/index.html"), "/index.html");
+  assert.equal(previewUpstreamPath("/?cliente=1", "/index.html"), "/index.html?cliente=1");
+  assert.equal(previewUpstreamPath("/src/main.jsx", "/index.html"), "/src/main.jsx");
+  assert.equal(previewUpstreamPath("/", "/"), "/");
 });
 
 test("mantém servidor estático em repositório realmente estático", () => {

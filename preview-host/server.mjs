@@ -12,6 +12,7 @@ import {
   isPreviewReadyStatus,
   probePreviewHttp,
   previewUpstreamHeaders,
+  previewUpstreamPath,
   previewContainerName,
   previewImageName,
   previewNetworkName,
@@ -147,6 +148,7 @@ async function removeRuntime(id, removeImage = true) {
 async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
   const startedAt = Date.now();
   const hostname = previewContainerName(id);
+  const candidatePaths = ["/", "/index.html"];
   let lastHttpStatus = null;
   while (Date.now() - startedAt < timeoutMs) {
     const state = await docker(["inspect", "--format", "{{.State.Status}}", previewContainerName(id)]).catch(() => ({ stdout: "missing" }));
@@ -155,8 +157,10 @@ async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
       throw new Error(`O container encerrou antes de ficar pronto\n${logs.stdout}${logs.stderr}`.slice(-12_000));
     }
     try {
-      lastHttpStatus = await probePreviewHttp(hostname, previewPort);
-      if (isPreviewReadyStatus(lastHttpStatus)) return;
+      for (const candidatePath of candidatePaths) {
+        lastHttpStatus = await probePreviewHttp(hostname, previewPort, candidatePath);
+        if (isPreviewReadyStatus(lastHttpStatus)) return candidatePath;
+      }
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 1_500));
   }
@@ -184,7 +188,7 @@ async function startPreviewRuntime(id, configuration) {
     "--label", `dashboardia.preview.id=${id}`,
     previewImageName(id),
   ]);
-  await waitUntilReady(id, configuration.port);
+  return waitUntilReady(id, configuration.port);
 }
 
 async function deployPreview(id, configuration) {
@@ -232,10 +236,11 @@ async function deployPreview(id, configuration) {
       return;
     }
     const maximumRuntimeAttempts = 3;
+    let entryPath = "/";
     for (let attempt = 1; attempt <= maximumRuntimeAttempts; attempt += 1) {
       await patchState(id, { status: "DEPLOYING", imageReference: previewImageName(id), runtimeAttempt: attempt });
       try {
-        await startPreviewRuntime(id, configuration);
+        entryPath = await startPreviewRuntime(id, configuration);
         break;
       } catch (runtimeError) {
         const runtimeOutput = dockerErrorText(runtimeError);
@@ -256,6 +261,7 @@ async function deployPreview(id, configuration) {
       status: "READY",
       readyAt: new Date().toISOString(),
       url: `https://${id}.${baseDomain}`,
+      entryPath,
       error: null,
     });
     await rm(directory, { recursive: true, force: true });
@@ -362,7 +368,7 @@ async function proxyPreview(request, response, state) {
     hostname: previewContainerName(state.id),
     port: state.port,
     method: request.method,
-    path: request.url,
+    path: previewUpstreamPath(request.url, state.entryPath),
     headers: previewUpstreamHeaders(request.headers, state.port),
   }, (upstreamResponse) => {
     response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
