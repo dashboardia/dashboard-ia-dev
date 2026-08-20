@@ -28,17 +28,19 @@ export async function POST(request) {
     }
     let providerIdentity;
     try {
-      const originalCheckout = !account.providerSubscriptionId
-        ? await db.billingCheckout.findFirst({
-          where: { accountId: account.id, kind: "PLAN", status: "PAID", providerCheckoutId: { not: null } },
-          select: { providerCheckoutId: true },
+      const originalCheckouts = !account.providerSubscriptionId
+        ? await db.billingCheckout.findMany({
+          where: { accountId: account.id, kind: "PLAN" },
+          select: { id: true, providerCheckoutId: true },
           orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+          take: 5,
         })
-        : null;
+        : [];
       providerIdentity = await updateAsaasSubscriptionPlan({
         subscriptionId: account.providerSubscriptionId,
         customerId: account.providerCustomerId,
-        checkoutId: originalCheckout?.providerCheckoutId,
+        customerEmail: user.email,
+        checkouts: originalCheckouts,
         plan,
       });
     } catch (providerError) {
