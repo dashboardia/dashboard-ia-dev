@@ -12,6 +12,12 @@ export default function AutoRefresh({ active, interval = 5000, revisionUrl = nul
   const inFlight = useRef(false);
   const currentRevision = useRef(revision);
 
+  const softRefresh = useCallback(() => {
+    const target = new URL(window.location.href);
+    target.searchParams.set("_live", Date.now().toString(36));
+    router.replace(`${target.pathname}${target.search}${target.hash}`, { scroll: false });
+  }, [router]);
+
   const refresh = useCallback(async () => {
     if (!active || document.visibilityState === "hidden" || inFlight.current) return;
     inFlight.current = true;
@@ -22,29 +28,25 @@ export default function AutoRefresh({ active, interval = 5000, revisionUrl = nul
         const separator = revisionUrl.includes("?") ? "&" : "?";
         const response = await fetch(`${revisionUrl}${separator}t=${Date.now()}`, { cache: "no-store" });
         if (!response.ok) {
-          router.refresh();
+          softRefresh();
           return;
         }
         const result = await response.json();
         if (result.revision === currentRevision.current) return;
-        // router.refresh atualiza somente a árvore de Server Components. A
-        // página, a rolagem e o estado dos painéis permanecem intactos. Se a
-        // nova revisão ainda não chegar ao componente, o próximo ciclo tenta
-        // novamente em vez de deixar a tela congelada.
-        router.refresh();
+        softRefresh();
         return;
       }
-      router.refresh();
+      softRefresh();
     } catch {
       // O endpoint de revisão é apenas uma otimização. Uma falha pontual nele
       // não pode impedir a atualização dos dados da execução.
-      router.refresh();
+      softRefresh();
     } finally {
       inFlight.current = false;
       window.clearTimeout(indicatorTimer.current);
       if (showIndicator) indicatorTimer.current = window.setTimeout(() => setRefreshing(false), 700);
     }
-  }, [active, revisionUrl, router, showIndicator]);
+  }, [active, revisionUrl, showIndicator, softRefresh]);
 
   useEffect(() => {
     currentRevision.current = revision;
