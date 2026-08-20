@@ -115,6 +115,28 @@
 .billing-page .billing-plan li { color:var(--billing-text); font-size:10px; line-height:1.45; }
 .billing-page .billing-plan li svg { color:var(--billing-accent); }
 .billing-page .current-plan-label { color:var(--billing-accent); background:var(--billing-accent-soft); }
+.billing-page .plan-change-action { gap:9px; }
+.billing-page .plan-change-button { width:100%; min-height:54px; padding:8px 11px; display:grid; grid-template-columns:32px minmax(0,1fr) 16px; align-items:center; gap:10px; border:1px solid transparent; border-radius:11px; cursor:pointer; text-align:left; transition:border-color .16s ease,background .16s ease,transform .16s ease,box-shadow .16s ease; }
+.billing-page .plan-change-button:hover:not(:disabled) { transform:translateY(-1px); }
+.billing-page .plan-change-button:disabled { cursor:wait; opacity:.68; }
+.billing-page .plan-change-icon { width:32px; height:32px; display:grid; place-items:center; border-radius:9px; }
+.billing-page .plan-change-copy { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.billing-page .plan-change-copy strong { overflow:hidden; font-size:10px; line-height:1.3; text-overflow:ellipsis; white-space:nowrap; }
+.billing-page .plan-change-copy small { font-size:8px; font-weight:600; }
+.billing-page .plan-change-arrow { opacity:.72; transition:transform .16s ease; }
+.billing-page .plan-change-button:hover:not(:disabled) .plan-change-arrow { transform:translateX(2px); }
+.billing-page .plan-change-action.upgrade .plan-change-button { color:#fff; background:linear-gradient(135deg,#7653ed,#6040d2); box-shadow:0 8px 18px rgba(100,67,218,.2); }
+.billing-page .plan-change-action.upgrade .plan-change-icon { color:#fff; background:rgba(255,255,255,.14); }
+.billing-page .plan-change-action.upgrade .plan-change-copy strong,.billing-page .plan-change-action.upgrade .plan-change-copy small { color:#fff; }
+.billing-page .plan-change-action.upgrade .plan-change-copy small { opacity:.78; }
+.billing-page .plan-change-action.downgrade .plan-change-button { color:var(--billing-text); border-color:var(--billing-border); background:color-mix(in srgb,var(--billing-surface) 75%,transparent); }
+.billing-page .plan-change-action.downgrade .plan-change-button:disabled { cursor:not-allowed; opacity:.78; }
+.billing-page .plan-change-action.downgrade .plan-change-button:hover:not(:disabled) { border-color:color-mix(in srgb,var(--billing-accent) 45%,var(--billing-border)); background:var(--billing-surface); }
+.billing-page .plan-change-action.downgrade .plan-change-icon { color:var(--billing-accent); background:var(--billing-accent-soft); }
+.billing-page .plan-change-copy strong { color:inherit; }
+.billing-page .plan-change-copy small,.billing-page .plan-change-note { color:var(--billing-muted); }
+.billing-page .plan-change-note,.billing-page .plan-change-message { padding:0 3px; font-size:8px; line-height:1.45; }
+.billing-page .plan-change-message { color:var(--billing-accent); font-weight:700; }
 .billing-page .credit-pack-grid article { border-color:var(--billing-border); color:var(--billing-text); background:var(--billing-surface-raised); }
 .billing-page .credit-pack-grid strong { color:var(--billing-heading); }
 .billing-page .credit-pack-grid span { color:var(--billing-muted); }

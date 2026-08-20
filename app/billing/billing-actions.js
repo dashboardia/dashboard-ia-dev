@@ -1,6 +1,6 @@
 "use client";
 
-import { CreditCard, LoaderCircle, ShoppingCart, XCircle } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CalendarClock, LoaderCircle, ShoppingCart, XCircle } from "lucide-react";
 import { useState } from "react";
 
 export function CheckoutButton({ kind, value, children, disabled = false }) {
@@ -47,7 +47,7 @@ export function CancelSubscriptionButton() {
   return <div className="billing-action"><button className="danger-button" type="button" onClick={cancel} disabled={loading}><XCircle size={15} />{loading ? "Cancelando..." : "Cancelar renovação"}</button>{message && <small>{message}</small>}</div>;
 }
 
-export function ChangePlanButton({ plan, immediate = false, credits = 0 }) {
+export function ChangePlanButton({ plan, immediate = false, credits = 0, disabledUntil = null }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -69,5 +69,17 @@ export function ChangePlanButton({ plan, immediate = false, credits = 0 }) {
     if (response.ok) window.location.reload();
   }
 
-  return <div className="billing-action"><button className="secondary-button" type="button" onClick={changePlan} disabled={loading}>{loading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}{loading ? "Processando..." : immediate ? "Fazer upgrade agora" : "Fazer downgrade no próximo ciclo"}</button>{immediate ? <small>Os novos créditos serão somados ao saldo atual.</small> : <small>Seu plano atual permanece até o fim do ciclo já pago.</small>}{message && <small>{message}</small>}</div>;
+  const downgradeLocked = !immediate;
+  const label = immediate ? "Fazer upgrade agora" : "Disponível após o ciclo atual";
+  const detail = immediate ? "Ativação imediata" : disabledUntil || "Aguarde o encerramento do plano";
+
+  return <div className={`billing-action plan-change-action ${immediate ? "upgrade" : "downgrade"}`}>
+    <button className="plan-change-button" type="button" onClick={changePlan} disabled={loading || downgradeLocked} title={downgradeLocked ? "O downgrade será liberado quando o ciclo atual terminar" : undefined}>
+      <span className="plan-change-icon">{loading ? <LoaderCircle className="spin" size={17} /> : immediate ? <ArrowUpRight size={17} /> : <CalendarClock size={17} />}</span>
+      <span className="plan-change-copy"><strong>{loading ? "Processando..." : label}</strong><small>{detail}</small></span>
+      <ArrowRight className="plan-change-arrow" size={16} />
+    </button>
+    <small className="plan-change-note">{immediate ? "Os novos créditos serão somados ao saldo atual." : "O plano menor poderá ser contratado após o término do plano atual."}</small>
+    {message && <small className="plan-change-message">{message}</small>}
+  </div>;
 }

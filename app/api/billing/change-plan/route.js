@@ -23,33 +23,38 @@ export async function POST(request) {
     const plan = await findBillingPlan(input.plan);
     if (!planIsPaid(plan) || !plan.active || !plan.public) throw new BillingAccessError("Este plano não está disponível para contratação.", 404, "PLAN_UNAVAILABLE");
     const changeKind = planChangeKind(currentPlan, plan);
-    let providerSubscriptionId;
+    if (changeKind === "DOWNGRADE") {
+      throw new BillingAccessError("O downgrade ficará disponível somente após o término do ciclo atual.", 409, "DOWNGRADE_LOCKED_UNTIL_CYCLE_END");
+    }
+    let providerIdentity;
     try {
-      providerSubscriptionId = await updateAsaasSubscriptionPlan({
+      const originalCheckout = !account.providerSubscriptionId
+        ? await db.billingCheckout.findFirst({
+          where: { accountId: account.id, kind: "PLAN", status: "PAID", providerCheckoutId: { not: null } },
+          select: { providerCheckoutId: true },
+          orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+        })
+        : null;
+      providerIdentity = await updateAsaasSubscriptionPlan({
         subscriptionId: account.providerSubscriptionId,
         customerId: account.providerCustomerId,
+        checkoutId: originalCheckout?.providerCheckoutId,
         plan,
       });
     } catch (providerError) {
       throw new BillingAccessError(`Não foi possível alterar a assinatura no Asaas: ${providerError instanceof Error ? providerError.message : "erro não identificado"}`, 409, "PROVIDER_PLAN_CHANGE_FAILED");
     }
-    if (changeKind === "UPGRADE") {
-      await db.$transaction(async (transaction) => {
-        await activatePlanUpgrade(transaction, {
-          account,
-          planCode: input.plan,
-          sourceRef: `${account.id}:${account.cycleStartedAt?.toISOString() || "current"}:${input.plan}`,
-          providerSubscriptionId,
-        });
-        await transaction.auditLog.create({ data: auditData({ actorId: user.id, action: "billing.subscription.upgrade", entityType: "BillingAccount", entityId: account.id, metadata: { from: account.plan, to: input.plan, creditsAdded: plan.includedCredits }, request }) });
+    await db.$transaction(async (transaction) => {
+      await activatePlanUpgrade(transaction, {
+        account,
+        planCode: input.plan,
+        sourceRef: `${account.id}:${account.cycleStartedAt?.toISOString() || "current"}:${input.plan}`,
+        providerCustomerId: providerIdentity.customerId,
+        providerSubscriptionId: providerIdentity.subscriptionId,
       });
-      return NextResponse.json({ immediate: true, plan: input.plan, creditsAdded: plan.includedCredits });
-    }
-    await db.$transaction([
-      db.billingAccount.update({ where: { id: account.id }, data: { pendingPlan: input.plan, providerSubscriptionId } }),
-      db.auditLog.create({ data: auditData({ actorId: user.id, action: "billing.subscription.downgrade", entityType: "BillingAccount", entityId: account.id, metadata: { from: account.plan, to: input.plan }, request }) }),
-    ]);
-    return NextResponse.json({ scheduled: true, plan: input.plan, effectiveAt: account.cycleEndsAt });
+      await transaction.auditLog.create({ data: auditData({ actorId: user.id, action: "billing.subscription.upgrade", entityType: "BillingAccount", entityId: account.id, metadata: { from: account.plan, to: input.plan, creditsAdded: plan.includedCredits }, request }) });
+    });
+    return NextResponse.json({ immediate: true, plan: input.plan, creditsAdded: plan.includedCredits });
   } catch (error) {
     return apiError(error);
   }
