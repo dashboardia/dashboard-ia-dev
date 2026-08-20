@@ -89,7 +89,7 @@ export async function POST(request) {
     });
     environment = await db.devEnvironment.update({
       where: { id: environment.id },
-      data: { externalId: remote.id, status: remote.status, requestedAt: new Date() },
+      data: { externalId: remote.id, status: remote.status, activity: remote.activity, requestedAt: new Date() },
     });
     await db.auditLog.create({
       data: auditData({ actorId: user.id, projectId: project.id, action: "environment.create", entityType: "DevEnvironment", entityId: environment.id, metadata: { branchName: input.branchName, runtime: detected.runtime, creditCost: settings.environmentCreditCost }, request }),

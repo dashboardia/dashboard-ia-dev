@@ -462,6 +462,7 @@ model DevEnvironment {
   creditCharge    Json?
   adjustments     Json?
   credentials     Json?
+  activity        Json?
   error           String?              @db.Text
   requestedAt     DateTime             @default(now())
   startedAt       DateTime?

@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, ChevronDown, Clock3, Code2, Coins, Download, FileText, GitBranch, TerminalSquare, Zap } from "lucide-react";
+import { Activity, ArrowLeft, ChevronDown, CircleCheck, CircleDotDashed, CircleX, Clock3, Code2, Coins, Download, FileText, GitBranch, TerminalSquare, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -19,6 +19,7 @@ import DiffViewer from "./diff-viewer";
 import ExecutionConversation from "./execution-conversation";
 
 const cancellableStatuses = ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"];
+const activeExecutionStatuses = new Set(["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"]);
 
 function duration(execution) {
   if (!execution.startedAt) return "Não iniciada";
@@ -58,6 +59,8 @@ export default async function ExecutionPage({ params }) {
   const shouldAutoOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.pullRequest && !execution.cancelRequestedAt;
   const interrupted = ["CANCELLED", "STOPPED"].includes(execution.status) || Boolean(execution.cancelRequestedAt);
   const explainedError = execution.error ? explainError(execution.error) : null;
+  const progressLogs = execution.logs.slice(-5);
+  const executionActive = activeExecutionStatuses.has(execution.status) && !execution.cancelRequestedAt;
 
   return (
     <AppShell user={user}>
@@ -75,6 +78,11 @@ export default async function ExecutionPage({ params }) {
           <div><GitBranch size={17} /><span><small>Branch</small><strong>{execution.branchName ?? "Aguardando worker"}</strong></span></div>
           <div><Clock3 size={17} /><span><small>Duração</small><strong>{duration(execution)}</strong></span></div>
           <div><Zap size={17} /><span><small>Tokens</small><strong>{(execution.inputTokens ?? 0) + (execution.outputTokens ?? 0) || "—"}</strong></span></div>
+        </section>
+
+        <section className={`execution-live-progress ${execution.error ? "failed" : executionActive ? "active" : "completed"}`}>
+          <header><span>{execution.error ? <CircleX size={18} /> : executionActive ? <CircleDotDashed className="spin-slow" size={18} /> : <CircleCheck size={18} />}</span><div><strong>{execution.error ? "Execução interrompida" : executionActive ? "Acompanhamento ao vivo" : "Execução concluída"}</strong><small>{executionActive ? "A página recebe novas etapas automaticamente, sem piscar." : "Resumo factual das últimas etapas executadas."}</small></div><em>{execution.stage}</em></header>
+          <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
         </section>
 
         <div className="execution-review-grid">

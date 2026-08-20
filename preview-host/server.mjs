@@ -88,6 +88,27 @@ async function patchState(id, values) {
   return writeState(id, { ...await readState(id), ...values });
 }
 
+async function recordActivity(id, key, message, status = "RUNNING") {
+  const state = await readState(id);
+  const now = new Date().toISOString();
+  const activity = (Array.isArray(state.activity) ? state.activity : []).map((entry) => (
+    entry.status === "RUNNING" && entry.key !== key ? { ...entry, status: "COMPLETED", completedAt: now } : entry
+  )).filter((entry) => entry.key !== key);
+  const entry = { key, message, status, at: now, ...(status !== "RUNNING" ? { completedAt: now } : {}) };
+  activity.push(entry);
+  return writeState(id, { ...state, activity: activity.slice(-10) });
+}
+
+async function failActivity(id, message) {
+  const state = await readState(id);
+  const now = new Date().toISOString();
+  const activity = (Array.isArray(state.activity) ? state.activity : []).map((entry) => (
+    entry.status === "RUNNING" ? { ...entry, status: "FAILED", completedAt: now } : entry
+  ));
+  activity.push({ key: "failed", message, status: "FAILED", at: now, completedAt: now });
+  return writeState(id, { ...state, activity: activity.slice(-10) });
+}
+
 async function docker(args, timeout = 120_000) {
   return execFile("docker", args, { timeout, maxBuffer: 4 * 1024 * 1024 });
 }
@@ -109,6 +130,7 @@ async function buildPreviewImage(id, generatedDockerfile, sourceDirectory) {
         status: "BUILDING",
         error: `Falha transitória no Docker; nova tentativa ${attempt + 1} de ${maximumAttempts}.`,
       });
+      await recordActivity(id, "building", `Falha transitória no Docker; repetindo o build (${attempt + 1}/${maximumAttempts})`);
       await new Promise((resolve) => setTimeout(resolve, attempt * 5_000));
     }
   }
@@ -213,11 +235,13 @@ async function deployPreview(id, configuration) {
     const queuedState = await readState(id).catch(() => null);
     if (queuedState?.status !== "QUEUED" || new Date(queuedState.expiresAt).getTime() <= Date.now()) return;
     await patchState(id, { status: "BUILDING", startedAt: new Date().toISOString(), error: null });
+    await recordActivity(id, "extracting", "Extraindo e organizando o código da branch");
     await mkdir(sourceDirectory, { recursive: true });
     const extractArguments = ["-xzf", path.join(directory, "source.tar.gz"), "-C", sourceDirectory, "--no-same-owner", "--no-same-permissions"];
     if (configuration.stripComponents === 1) extractArguments.push("--strip-components=1");
     await execFile("tar", extractArguments, { timeout: 90_000 });
     const normalizedDirectories = await normalizeExtractedRepository(sourceDirectory, expectedRepositoryPaths(configuration));
+    await recordActivity(id, "detecting", `Stack ${configuration.runtime} detectada; preparando comandos e variáveis`);
     if (normalizedDirectories.length) {
       await patchState(id, {
         adjustments: [{
@@ -241,6 +265,7 @@ async function deployPreview(id, configuration) {
     const generatedDockerfile = path.join(directory, "Dockerfile");
     await writeFile(generatedDockerfile, buildPreviewDockerfile(configuration), { mode: 0o600 });
     await removeRuntime(id);
+    await recordActivity(id, "building", "Instalando dependências e construindo a imagem Docker");
     try {
       await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
     } catch (firstBuildError) {
@@ -255,6 +280,8 @@ async function deployPreview(id, configuration) {
         adjustments: [...(currentState?.adjustments ?? []), ...buildAdjustments],
         error: null,
       });
+      await recordActivity(id, "repairing", "Aplicando correções temporárias para concluir o build");
+      await recordActivity(id, "building", "Reconstruindo a imagem com os ajustes temporários");
       await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
     }
     const afterBuild = await readState(id).catch(() => null);
@@ -266,7 +293,9 @@ async function deployPreview(id, configuration) {
     let entryPath = "/";
     for (let attempt = 1; attempt <= maximumRuntimeAttempts; attempt += 1) {
       await patchState(id, { status: "DEPLOYING", imageReference: previewImageName(id), runtimeAttempt: attempt });
+      await recordActivity(id, "starting", `Iniciando o container isolado${attempt > 1 ? ` (tentativa ${attempt})` : ""}`);
       try {
+        await recordActivity(id, "checking", "Verificando a porta e procurando uma rota navegável");
         entryPath = await startPreviewRuntime(id, configuration);
         break;
       } catch (runtimeError) {
@@ -281,9 +310,12 @@ async function deployPreview(id, configuration) {
           adjustments: [...(currentState?.adjustments ?? []), ...runtimeAdjustments],
           error: null,
         });
+        await recordActivity(id, "repairing-runtime", "Ajustando a inicialização com base nos logs do container");
+        await recordActivity(id, "building-runtime", "Reconstruindo a imagem após o ajuste de inicialização");
         await buildPreviewImage(id, generatedDockerfile, sourceDirectory);
       }
     }
+    await recordActivity(id, "ready", "Ambiente publicado e pronto para uso", "COMPLETED");
     await patchState(id, {
       status: "READY",
       readyAt: new Date().toISOString(),
@@ -296,6 +328,7 @@ async function deployPreview(id, configuration) {
     const buildOutput = dockerErrorText(error).slice(-16_000);
     await removeRuntime(id);
     await patchState(id, { status: "FAILED", credentials: null, error: buildOutput || "Falha desconhecida ao publicar o preview" }).catch(() => null);
+    await failActivity(id, "A publicação falhou; os detalhes técnicos estão disponíveis abaixo").catch(() => null);
     await rm(directory, { recursive: true, force: true }).catch(() => null);
   }
 }
@@ -321,7 +354,9 @@ function enqueuePreview(id, configuration) {
 async function expirePreview(id, state) {
   if (["EXPIRED", "FAILED"].includes(state.status)) return;
   await patchState(id, { status: "STOPPING" });
+  await recordActivity(id, "stopping", "Encerrando e removendo os recursos temporários");
   await removeRuntime(id);
+  await recordActivity(id, "expired", "Ambiente temporário encerrado", "COMPLETED");
   await patchState(id, { status: "EXPIRED", url: null, credentials: null, stoppedAt: new Date().toISOString() });
   await rm(workPath(id), { recursive: true, force: true });
 }
@@ -345,6 +380,7 @@ async function recoverInterruptedBuilds() {
     if (state && ["QUEUED", "BUILDING", "DEPLOYING"].includes(state.status)) {
       await removeRuntime(id);
       await patchState(id, { status: "FAILED", credentials: null, error: "O host de previews reiniciou durante a publicação. Solicite uma nova execução." });
+      await failActivity(id, "A publicação foi interrompida pela reinicialização do host").catch(() => null);
     }
   }));
 }
@@ -384,6 +420,7 @@ async function handleApi(request, response, url) {
     credentials: null,
     error: null,
     adjustments: [],
+    activity: [{ key: "queued", message: "Código recebido e aguardando uma vaga para o build", status: "RUNNING", at: now.toISOString() }],
     requestedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + configuration.ttlMinutes * 60_000).toISOString(),
   });
