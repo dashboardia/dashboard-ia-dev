@@ -7,7 +7,7 @@ import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
 import { createGitHubPullRequest, findOpenGitHubPullRequest, getProjectGitHubAccessToken } from "../lib/github.js";
 import { getGlobalSettings } from "../lib/global-settings.js";
-import { applyDetectedRuntime, detectWorkspaceProjectRuntime } from "../lib/project-runtime.js";
+import { applyDetectedRuntime, detectWorkspaceProjectRuntime, detectedRuntimeReplacesConfiguration } from "../lib/project-runtime.js";
 import {
   cleanWorkspace,
   cleanValidationArtifacts,
@@ -434,11 +434,15 @@ export async function processExecution(executionId, workerId) {
       where: { id: execution.demand.projectId },
     });
     const detectedRuntime = await detectWorkspaceProjectRuntime(projectDirectory);
-    const resolvedProject = applyDetectedRuntime(savedProject, detectedRuntime);
+    const replaceExistingRuntime = detectedRuntimeReplacesConfiguration(savedProject, detectedRuntime);
+    const resolvedProject = applyDetectedRuntime(savedProject, detectedRuntime, { replaceExisting: replaceExistingRuntime });
     const runtimeFields = ["installCommand", "lintCommand", "testCommand", "buildCommand", "previewCommand", "previewPort"];
     const detectedConfiguration = Object.fromEntries(runtimeFields
-      .filter((field) => savedProject[field] == null && resolvedProject[field] != null)
+      .filter((field) => savedProject[field] !== resolvedProject[field] && (replaceExistingRuntime || savedProject[field] == null))
       .map((field) => [field, resolvedProject[field]]));
+    if (replaceExistingRuntime && savedProject.workingDirectory !== resolvedProject.workingDirectory) {
+      detectedConfiguration.workingDirectory = resolvedProject.workingDirectory;
+    }
     if (Object.keys(detectedConfiguration).length) {
       await db.project.update({ where: { id: savedProject.id }, data: detectedConfiguration });
       await log(executionId, "validation", `Configuração ${detectedRuntime.runtime} detectada após a implementação`, "info", detectedConfiguration);

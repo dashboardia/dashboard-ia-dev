@@ -26,6 +26,23 @@ test("gera Dockerfile Node que publica em todas as interfaces", () => {
   assert.match(result, /npm start -- --hostname 0\.0\.0\.0/);
 });
 
+test("gera ambiente ASP.NET Core com a versão detectada do SDK", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "DOTNET_8",
+    installCommand: "dotnet restore",
+    buildCommand: "dotnet build -c Release --no-restore",
+    previewCommand: "dotnet run -c Release --no-build --no-launch-profile --urls http://127.0.0.1:$PORT",
+    port: 8080,
+  });
+
+  assert.match(result, /^FROM mcr\.microsoft\.com\/dotnet\/sdk:8\.0/m);
+  assert.match(result, /dotnet restore/);
+  assert.match(result, /dotnet build -c Release --no-restore/);
+  assert.match(result, /dotnet run -c Release --no-build/);
+  assert.match(result, /http:\/\/0\.0\.0\.0:\$PORT/);
+  assert.match(result, /EXPOSE 8080/);
+});
+
 test("instala dependências Python do monorepo em ambiente virtual", () => {
   const result = buildPreviewDockerfile({
     runtime: "MONOREPO_PYTHON_FASTAPI_NODE",

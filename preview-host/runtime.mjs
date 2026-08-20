@@ -89,6 +89,7 @@ export function previewUpstreamPath(requestUrl, entryPath = "/") {
 function runtimeImage(runtime) {
   if (runtime?.startsWith("PYTHON_")) return "python:3.12-slim";
   if (runtime?.startsWith("MONOREPO_")) return "node:22-bookworm";
+  if (/^DOTNET_\d+$/.test(runtime)) return `mcr.microsoft.com/dotnet/sdk:${runtime.slice("DOTNET_".length)}.0`;
   return RUNTIME_IMAGES[runtime] || RUNTIME_IMAGES.NODE;
 }
 
