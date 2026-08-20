@@ -32,6 +32,33 @@ test("configura credenciais e seed reconhecidos sem alterar os arquivos", async 
   }
 });
 
+test("ativa o contrato obrigatório de acesso demonstrativo do Dashboardia", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-demo-access-"));
+  const contract = path.join(root, ".dashboardia/demo-access.json");
+  await mkdir(path.dirname(contract), { recursive: true });
+  await writeFile(contract, JSON.stringify({
+    version: 1,
+    seedCommand: "java -jar tools/demo-seed.jar",
+  }));
+  try {
+    const result = await prepareDemoAccess({
+      sourceDirectory: root,
+      credentials: { username: "demo", email: "demo@example.test", password: "Safe-123" },
+    });
+    assert.deepEqual(result.environment, {
+      DASHBOARDIA_DEMO_MODE: "true",
+      DASHBOARDIA_DEMO_USERNAME: "demo",
+      DASHBOARDIA_DEMO_EMAIL: "demo@example.test",
+      DASHBOARDIA_DEMO_PASSWORD: "Safe-123",
+    });
+    assert.equal(result.credentials.status, "READY");
+    assert.equal(result.credentials.source, ".dashboardia/demo-access.json");
+    assert.equal(result.seedCommand, "java -jar tools/demo-seed.jar");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("identifica credenciais já criadas por um bootstrap Java", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-demo-access-"));
   const file = path.join(root, "src/main/java/br/com/app/bootstrap/DemoDataBootstrap.java");
@@ -95,7 +122,7 @@ test("identifica credenciais passadas a uma fábrica de massa Java", async () =>
   }
 });
 
-test("informa claramente quando o projeto não oferece massa de demonstração", async () => {
+test("informa claramente quando uma branch antiga ainda não oferece massa de demonstração", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-demo-access-"));
   await writeFile(path.join(root, "app.py"), "print('sem autenticação configurável')");
   try {

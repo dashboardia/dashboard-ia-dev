@@ -89,4 +89,23 @@ describe("agent policy", () => {
     expect(prompt).toContain("autorizou expressamente a criação do projeto do zero");
     expect(prompt).toContain("Crie toda a estrutura executável necessária");
   });
+
+  it("torna obrigatório o contrato de acesso demonstrativo em aplicações autenticadas", () => {
+    const demand = {
+      project,
+      type: "FEATURE",
+      priority: "NORMAL",
+      title: "Adicionar painel autenticado",
+      description: "Criar login e área administrativa.",
+      acceptanceCriteria: "Administrador consegue acessar o painel.",
+      visualValidation: true,
+      visualPaths: ["/login"],
+    };
+
+    const prompt = buildAgentPrompt(demand, "STANDARD");
+
+    expect(prompt).toContain("é obrigatório criar um acesso administrativo");
+    expect(prompt).toContain("DASHBOARDIA_DEMO_PASSWORD");
+    expect(prompt).toContain(".dashboardia/demo-access.json");
+  });
 });

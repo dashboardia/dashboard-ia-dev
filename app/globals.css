@@ -141,6 +141,7 @@ nav em { margin-left:auto; font-style:normal; background:#6d4aff; color:white; w
 .spin-slow { animation:spin 1.8s linear infinite; }
 .environment-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:0; padding-top:2px; }
 .environment-actions button, .environment-actions a { align-items: center; display: inline-flex; gap: 7px; }
+.environment-stop-button { min-height:34px; padding:0 13px; border:1px solid color-mix(in srgb,var(--danger) 34%,var(--line)); border-radius:9px; color:var(--danger); background:color-mix(in srgb,var(--danger) 7%,var(--soft)); font-size:9px; font-weight:800; cursor:pointer; transition:border-color .18s ease,background .18s ease,transform .18s ease; }.environment-stop-button:hover { border-color:color-mix(in srgb,var(--danger) 62%,var(--line)); background:color-mix(in srgb,var(--danger) 13%,var(--soft)); transform:translateY(-1px); }.environment-stop-button:disabled { opacity:.55; cursor:not-allowed; transform:none; }
 .environment-error { color:var(--danger); font-size:9px; }.environment-error summary { cursor:pointer; font-weight:700; }.environment-error pre { margin-top:8px; max-height:220px; overflow:auto; padding:10px; border-radius:8px; color:var(--muted); background:var(--soft); white-space:pre-wrap; }
 .environment-adjustments { background: color-mix(in srgb, var(--success, #16a34a) 8%, transparent); border: 1px solid color-mix(in srgb, var(--success, #16a34a) 30%, transparent); border-radius: 12px; padding: 11px 13px; }
 .environment-adjustments summary { cursor: pointer; font-size: .86rem; font-weight: 700; }

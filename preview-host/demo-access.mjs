@@ -7,8 +7,16 @@ const USER_KEYS = ["ADMIN_USER", "ADMIN_USERNAME", "DEFAULT_ADMIN_USER", "DEFAUL
 const EMAIL_KEYS = ["ADMIN_EMAIL", "DEFAULT_ADMIN_EMAIL", "INITIAL_ADMIN_EMAIL", "DEMO_EMAIL", "TEST_EMAIL", "DJANGO_SUPERUSER_EMAIL"];
 const PASSWORD_KEYS = ["ADMIN_PASS", "ADMIN_PASSWORD", "DEFAULT_ADMIN_PASS", "DEFAULT_ADMIN_PASSWORD", "INITIAL_ADMIN_PASS", "INITIAL_ADMIN_PASSWORD", "DEMO_PASS", "DEMO_PASSWORD", "TEST_PASS", "TEST_PASSWORD", "DJANGO_SUPERUSER_PASSWORD"];
 const SEED_KEYS = ["DASHBOARDIA_DEMO_MODE", "DEMO_MODE", "SEED_DEMO_DATA", "LOAD_SAMPLE_DATA", "SEED_DATA"];
-const DEMO_PATH = /(?:^|\/)(?:DemoDataBootstrap\.(?:java|kt)|(?:demo[_-]?(?:data|seed)|seed(?:_data)?|data|import)\.(?:js|ts|py|sql)|fixtures\/[^/]+\.(?:json|ya?ml))$/i;
-const DISCOVERY_PATH = /(?:^|\/)(?:package\.json|manage\.py|config\.(?:js|ts|py)|\.env(?:\.example)?|application(?:-[^/]+)?\.(?:properties|ya?ml)|DemoDataBootstrap\.(?:java|kt)|(?:demo[_-]?(?:data|seed)|seed(?:_data)?|data|import)\.(?:js|ts|py|sql)|fixtures\/[^/]+\.(?:json|ya?ml))$/i;
+const CONTRACT_PATH = /(?:^|\/)\.dashboardia\/demo-access\.json$/i;
+const INITIALIZER_NAME = /[^/]*(?:bootstrap|initializer|seeder|data[_-]?loader|fixture)\.(?:java|kt|js|ts|py)$/i;
+const DEMO_PATH = new RegExp(`(?:^|/)(?:DemoDataBootstrap\\.(?:java|kt)|${INITIALIZER_NAME.source}|(?:demo[_-]?(?:data|seed)|seed(?:_data)?|data|import)\\.(?:js|ts|py|sql)|fixtures/[^/]+\\.(?:json|ya?ml))$`, "i");
+const DISCOVERY_PATH = new RegExp(`(?:^|/)(?:package\\.json|manage\\.py|config\\.(?:js|ts|py)|\\.env(?:\\.example)?|application(?:-[^/]+)?\\.(?:properties|ya?ml)|${INITIALIZER_NAME.source}|DemoDataBootstrap\\.(?:java|kt)|(?:demo[_-]?(?:data|seed)|seed(?:_data)?|data|import)\\.(?:js|ts|py|sql)|fixtures/[^/]+\\.(?:json|ya?ml)|\\.dashboardia/demo-access\\.json)$`, "i");
+const STANDARD_DEMO_ENVIRONMENT = {
+  enabled: "DASHBOARDIA_DEMO_MODE",
+  username: "DASHBOARDIA_DEMO_USERNAME",
+  email: "DASHBOARDIA_DEMO_EMAIL",
+  password: "DASHBOARDIA_DEMO_PASSWORD",
+};
 
 async function searchableFiles(root) {
   const pending = [root];
@@ -90,6 +98,29 @@ function demoAccessPayload({ status, username = null, email = null, password = n
   return { status, username, email, password, message, source };
 }
 
+function validEnvironmentKey(value, fallback) {
+  return /^[A-Z][A-Z0-9_]{1,63}$/.test(String(value || "")) ? String(value) : fallback;
+}
+
+function demoAccessContract(files) {
+  const file = files.find((candidate) => CONTRACT_PATH.test(candidate.path));
+  if (!file) return null;
+  try {
+    const value = JSON.parse(file.content);
+    if (value?.version !== 1) return null;
+    return {
+      file: file.path,
+      enabledEnv: validEnvironmentKey(value.enabledEnv, STANDARD_DEMO_ENVIRONMENT.enabled),
+      usernameEnv: validEnvironmentKey(value.usernameEnv, STANDARD_DEMO_ENVIRONMENT.username),
+      emailEnv: validEnvironmentKey(value.emailEnv, STANDARD_DEMO_ENVIRONMENT.email),
+      passwordEnv: validEnvironmentKey(value.passwordEnv, STANDARD_DEMO_ENVIRONMENT.password),
+      seedCommand: typeof value.seedCommand === "string" && value.seedCommand.trim() ? value.seedCommand.trim() : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function relativeCommandPrefix(filePath, workingDirectory) {
   const packageDirectory = path.posix.dirname(filePath.replaceAll("\\", "/"));
   const normalizedWorkingDirectory = (workingDirectory || ".").replaceAll("\\", "/").replace(/^\.\//, "");
@@ -133,6 +164,31 @@ function detectedSeedCommand(files, workingDirectory) {
 export async function prepareDemoAccess({ sourceDirectory, workingDirectory = ".", credentials }) {
   if (!credentials?.username || !credentials?.password) return { environment: {}, credentials: null, adjustments: [], seedCommand: null };
   const files = await searchableFiles(sourceDirectory);
+  const contract = demoAccessContract(files);
+  if (contract) {
+    return {
+      environment: {
+        [contract.enabledEnv]: "true",
+        [contract.usernameEnv]: credentials.username,
+        [contract.emailEnv]: credentials.email,
+        [contract.passwordEnv]: credentials.password,
+      },
+      credentials: demoAccessPayload({
+        status: "READY",
+        username: credentials.username,
+        email: credentials.email,
+        password: credentials.password,
+        message: "Acesso e massa de demonstração criados automaticamente para este ambiente.",
+        source: contract.file,
+      }),
+      adjustments: [{
+        code: "DASHBOARDIA_DEMO_CONTRACT",
+        file: contract.file,
+        summary: "O contrato de demonstração do projeto foi ativado somente no container temporário.",
+      }],
+      seedCommand: contract.seedCommand,
+    };
+  }
   const source = files.map((file) => file.content).join("\n");
   const demoFiles = files.filter((file) => DEMO_PATH.test(file.path));
   const userKeys = referencedKeys(source, USER_KEYS);
