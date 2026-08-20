@@ -137,6 +137,7 @@
 .billing-page .plan-change-copy small,.billing-page .plan-change-note { color:var(--billing-muted); }
 .billing-page .plan-change-note,.billing-page .plan-change-message { padding:0 3px; font-size:8px; line-height:1.45; }
 .billing-page .plan-change-message { color:var(--billing-accent); font-weight:700; }
+.execution-credit-explanation { margin:12px 0 0; padding:10px 12px; border-radius:8px; color:var(--muted); background:var(--soft); font-size:9px; line-height:1.55; }
 .billing-page .credit-pack-grid article { border-color:var(--billing-border); color:var(--billing-text); background:var(--billing-surface-raised); }
 .billing-page .credit-pack-grid strong { color:var(--billing-heading); }
 .billing-page .credit-pack-grid span { color:var(--billing-muted); }

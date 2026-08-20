@@ -596,6 +596,7 @@ model ExecutionCreditReservation {
   consumedCredits  Int                     @default(0)
   uncoveredCredits Int                     @default(0)
   allocations      Json
+  estimateMetadata Json?
   execution        Execution               @relation(fields: [executionId], references: [id], onDelete: Cascade)
   account          BillingAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
   settledAt        DateTime?

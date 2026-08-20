@@ -32,6 +32,14 @@ function duration(execution) {
   return `${minutes}min ${remaining}s`;
 }
 
+function creditEstimateExplanation(reservation) {
+  if (!reservation.estimateMetadata) return "Esta execução começou com a regra anterior de reserva fixa. Novas execuções usam uma estimativa calculada pelo pedido.";
+  if (reservation.estimateMetadata.method === "HISTORY_AND_SCOPE") {
+    return `Calculado pelo escopo informado e pelo histórico de ${reservation.estimateMetadata.sampleSize} execução(ões) do mesmo tipo e modelo.`;
+  }
+  return "Calculado pelo modelo escolhido, tipo, volume do pedido e necessidade de validação visual.";
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function ExecutionPage({ params }) {
@@ -115,7 +123,7 @@ export default async function ExecutionPage({ params }) {
           <details className="financial-details"><summary>Ver composição e fórmula</summary><div><span>IA ajustada: <strong>{formatBrlCents(execution.financialSnapshot.adjustedAiCostBrlCents)}</strong></span><span>Worker ({execution.financialSnapshot.workerDurationSeconds}s): <strong>{formatBrlCents(execution.financialSnapshot.workerCostBrlCents)}</strong></span><span>Validação visual: <strong>{formatBrlCents(execution.financialSnapshot.visualValidationCostBrlCents)}</strong></span><span>Modelo: <strong>{execution.financialSnapshot.model}</strong></span><span>Fórmula: <strong>{execution.financialSnapshot.formulaVersion}</strong></span></div></details>
         </section>}
 
-        {execution.creditReservation && <section className="form-card detail-card full-card execution-credit-card"><div className="card-heading"><div><h2>Créditos da execução</h2><p>A reserva protege o saldo antes de iniciar; o excedente é devolvido ao concluir.</p></div><Coins size={20} /></div><div className="financial-summary-grid"><span><small>Reservados</small><strong>{execution.creditReservation.reservedCredits}</strong></span><span><small>Consumidos</small><strong>{execution.creditReservation.consumedCredits}</strong></span><span><small>Devolvidos</small><strong>{Math.max(0, execution.creditReservation.reservedCredits - execution.creditReservation.consumedCredits)}</strong></span><span><small>Situação</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em processamento" : execution.creditReservation.status === "SETTLED" ? "Liquidado" : "Devolvido"}</strong></span></div></section>}
+        {execution.creditReservation && <section className="form-card detail-card full-card execution-credit-card"><div className="card-heading"><div><h2>Estimativa de créditos</h2><p>A reserva não é uma cobrança: ela protege um limite aproximado enquanto o trabalho é executado.</p></div><Coins size={20} /></div><div className="financial-summary-grid"><span><small>Limite protegido</small><strong>Até {execution.creditReservation.reservedCredits}</strong></span><span><small>Uso real</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em cálculo" : execution.creditReservation.consumedCredits}</strong></span><span><small>Saldo liberado</small><strong>{execution.creditReservation.status === "RESERVED" ? "Após concluir" : Math.max(0, execution.creditReservation.reservedCredits - execution.creditReservation.consumedCredits)}</strong></span><span><small>Situação</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em execução" : execution.creditReservation.status === "SETTLED" ? "Consumo calculado" : "Reserva liberada"}</strong></span></div><p className="execution-credit-explanation">{creditEstimateExplanation(execution.creditReservation)} Ao concluir, somente o uso real é cobrado e todo o restante fica disponível novamente.</p></section>}
 
         {execution.demand.type === "DOCUMENTATION" && execution.summary && <section className="form-card detail-card full-card documentation-download-card">
           <div className="card-heading"><div><h2>Documentação de negócio</h2><p>Arquivos formatados para compartilhar, apresentar ou arquivar.</p></div><FileText size={20} /></div>
