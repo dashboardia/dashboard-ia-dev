@@ -70,10 +70,8 @@ test("compila e publica o WAR completo quando um projeto Maven tinha fallback es
   assert.match(result, /target\/\*\.war/);
   assert.match(result, /ROOT\.war/);
   assert.match(result, /jar -xf \/tmp\/ROOT\.war/);
-  assert.match(result, /dashboardia-entrypoint/);
-  assert.match(result, /if \[ ! -f/);
-  assert.match(result, /cp \/tmp\/dashboardia-entrypoint\/index\.html/);
-  assert.match(result, /ln -sfn \.\.\/\.\./);
+  assert.doesNotMatch(result, /dashboardia-entrypoint/);
+  assert.doesNotMatch(result, /index\.html/);
   assert.match(result, /port="3000"/);
   assert.match(result, /CMD \["catalina\.sh","run"\]/);
   assert.doesNotMatch(result, /python3 -m http\.server/);
@@ -93,7 +91,7 @@ test("compila Maven no diretório detectado sem perder a publicação do WAR", (
   assert.match(result, /mvn -B -DskipTests package/);
   assert.match(result, /^FROM tomcat:9\.0-jdk8-temurin/m);
   assert.match(result, /find \. -type f -path/);
-  assert.match(result, /entrypoint='sistema-web\/index\.html'/);
+  assert.doesNotMatch(result, /entrypoint=/);
 });
 
 test("o próprio Dockerfile localiza um pom aninhado quando recebe Maven na raiz", () => {
