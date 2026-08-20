@@ -34,6 +34,15 @@ function editablePlan(plan) {
   return Object.fromEntries(Object.entries(plan).map(([key, value]) => [key, value ?? ""]));
 }
 
+function normalizeCatalogCode(value) {
+  return String(value).toUpperCase().trimStart().replace(/\s+/g, "_").replace(/[^A-Z0-9_-]/g, "");
+}
+
+function responseFailure(result, fallback) {
+  const issue = result.fields?.[0];
+  return { field: issue?.path || null, message: issue?.message ?? result.error ?? fallback };
+}
+
 function moneyFromCents(cents, digits = 4) {
   if (cents == null || !Number.isFinite(Number(cents))) return "Sem medição";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: digits }).format(Number(cents) / 100);
@@ -54,11 +63,13 @@ export default function CatalogManager({ initialPlans, initialPacks, creditValue
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [fieldError, setFieldError] = useState(null);
   const [message, setMessage] = useState("");
   const [packs, setPacks] = useState(initialPacks);
   const [editingPack, setEditingPack] = useState(null);
   const [packSaving, setPackSaving] = useState(false);
   const [packError, setPackError] = useState("");
+  const [packFieldError, setPackFieldError] = useState(null);
   const [packMessage, setPackMessage] = useState("");
   const targetCostPerCreditCents = Math.max(1, creditValueCents * (100 - targetGrossMarginPercent) / 100);
   const orderedPlans = useMemo(() => [...plans].sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name)), [plans]);
@@ -66,25 +77,30 @@ export default function CatalogManager({ initialPlans, initialPacks, creditValue
 
   function startCreate() {
     setError("");
+    setFieldError(null);
     setMessage("");
     setEditing({ ...emptyPlan, _creating: true });
   }
 
   function startEdit(plan) {
     setError("");
+    setFieldError(null);
     setMessage("");
     setEditing({ ...editablePlan(plan), _creating: false });
   }
 
   function change(event) {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
-    setEditing((current) => ({ ...current, [event.target.name]: event.target.name === "code" ? String(value).toUpperCase() : value }));
+    const name = event.target.name;
+    if (fieldError?.field === name) setFieldError(null);
+    setEditing((current) => ({ ...current, [name]: name === "code" ? normalizeCatalogCode(value) : value }));
   }
 
   async function save(event) {
     event.preventDefault();
     setSaving(true);
     setError("");
+    setFieldError(null);
     setMessage("");
     const creating = editing._creating;
     try {
@@ -94,7 +110,12 @@ export default function CatalogManager({ initialPlans, initialPacks, creditValue
         body: JSON.stringify(editing),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.fields?.[0]?.message ?? result.error ?? "Não foi possível salvar o plano");
+      if (!response.ok) {
+        const failure = responseFailure(result, "Não foi possível salvar o plano");
+        if (failure.field) setFieldError(failure);
+        else setError(failure.message);
+        return;
+      }
       setPlans((current) => creating ? [...current, result.plan] : current.map((plan) => plan.code === result.plan.code ? result.plan : plan));
       setEditing(null);
       setMessage(creating ? "Plano criado." : "Plano atualizado.");
@@ -129,25 +150,30 @@ export default function CatalogManager({ initialPlans, initialPacks, creditValue
 
   function startCreatePack() {
     setPackError("");
+    setPackFieldError(null);
     setPackMessage("");
     setEditingPack({ ...emptyPack, _creating: true });
   }
 
   function startEditPack(pack) {
     setPackError("");
+    setPackFieldError(null);
     setPackMessage("");
     setEditingPack({ ...editablePlan(pack), _creating: false });
   }
 
   function changePack(event) {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
-    setEditingPack((current) => ({ ...current, [event.target.name]: event.target.name === "code" ? String(value).toUpperCase() : value }));
+    const name = event.target.name;
+    if (packFieldError?.field === name) setPackFieldError(null);
+    setEditingPack((current) => ({ ...current, [name]: name === "code" ? normalizeCatalogCode(value) : value }));
   }
 
   async function savePack(event) {
     event.preventDefault();
     setPackSaving(true);
     setPackError("");
+    setPackFieldError(null);
     setPackMessage("");
     const creating = editingPack._creating;
     try {
@@ -157,7 +183,12 @@ export default function CatalogManager({ initialPlans, initialPacks, creditValue
         body: JSON.stringify(editingPack),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.fields?.[0]?.message ?? result.error ?? "Não foi possível salvar o pacote");
+      if (!response.ok) {
+        const failure = responseFailure(result, "Não foi possível salvar o pacote");
+        if (failure.field) setPackFieldError(failure);
+        else setPackError(failure.message);
+        return;
+      }
       setPacks((current) => creating ? [...current, result.pack] : current.map((pack) => pack.code === result.pack.code ? result.pack : pack));
       setEditingPack(null);
       setPackMessage(creating ? "Pacote criado." : "Pacote atualizado.");
@@ -229,11 +260,11 @@ export default function CatalogManager({ initialPlans, initialPacks, creditValue
     {editing && <form className="plan-editor" onSubmit={save}>
       <div className="card-heading"><div><h3>{editing._creating ? "Criar plano" : `Editar ${editing.name}`}</h3><p>Os valores salvos passam a ser a fonte oficial da cobrança e dos limites.</p></div><button type="button" className="icon-button" onClick={() => setEditing(null)}><X size={17} /></button></div>
       <div className="form-grid three-columns">
-        <label><span>Código</span><input name="code" value={editing.code} onChange={change} disabled={!editing._creating} placeholder="PRO" maxLength={32} /><small>Não poderá ser alterado depois.</small></label>
+        <label className={fieldError?.field === "code" ? "field-invalid" : undefined}><span>Código</span><input name="code" value={editing.code} onChange={change} disabled={!editing._creating} placeholder="GO_1000" maxLength={32} aria-invalid={fieldError?.field === "code"} />{fieldError?.field === "code" ? <small className="field-error">{fieldError.message}</small> : <small>Sem espaços. Eles viram _ automaticamente. Ex.: GO_1000.</small>}</label>
         <label><span>Nome</span><input name="name" value={editing.name} onChange={change} maxLength={60} required /></label>
         <label><span>Ordem</span><input name="sortOrder" type="number" min="0" max="10000" value={editing.sortOrder} onChange={change} /></label>
         <label className="wide-field"><span>Descrição</span><input name="description" value={editing.description} onChange={change} maxLength={240} /></label>
-        <label><span>Mensalidade (centavos)</span><input name="priceCents" type="number" min="0" value={editing.priceCents} onChange={change} /><small>29700 = R$ 297,00.</small></label>
+        <label className={fieldError?.field === "priceCents" ? "field-invalid" : undefined}><span>Mensalidade (centavos)</span><input name="priceCents" type="number" min="0" value={editing.priceCents} onChange={change} aria-invalid={fieldError?.field === "priceCents"} />{fieldError?.field === "priceCents" ? <small className="field-error">{fieldError.message}</small> : <small>{editing.priceCents === "" ? "Ex.: 5000 = R$ 50,00." : `${editing.priceCents} = ${moneyFromCents(editing.priceCents, 2)}.`}</small>}</label>
         <label><span>Créditos mensais</span><input name="includedCredits" type="number" min="0" value={editing.includedCredits} onChange={change} /></label>
         <label><span>Limite de projetos</span><input name="projectLimit" type="number" min="1" value={editing.projectLimit} onChange={change} /></label>
         <label><span>Execuções paralelas</span><input name="parallelExecutionLimit" type="number" min="1" value={editing.parallelExecutionLimit} onChange={change} /></label>
@@ -243,6 +274,7 @@ export default function CatalogManager({ initialPlans, initialPacks, creditValue
         <label><input name="active" type="checkbox" checked={Boolean(editing.active)} onChange={change} />Plano ativo</label>
         <label><input name="public" type="checkbox" checked={Boolean(editing.public)} onChange={change} />Exibir para contratação</label>
       </div>
+      {fieldError && !["code", "priceCents"].includes(fieldError.field) && <div className="form-error inline-form-error">{fieldError.message}</div>}
       <div className="form-actions"><button className="primary" type="submit" disabled={saving}><Save size={16} />{saving ? "Salvando..." : "Salvar plano"}</button></div>
     </form>}
     {error && <div className="form-error">{error}</div>}
@@ -264,14 +296,15 @@ export default function CatalogManager({ initialPlans, initialPacks, creditValue
     {editingPack && <form className="plan-editor" onSubmit={savePack}>
       <div className="card-heading"><div><h3>{editingPack._creating ? "Criar pacote" : `Editar ${editingPack.name}`}</h3><p>A compra sempre soma esse lote ao saldo existente do cliente.</p></div><button type="button" className="icon-button" onClick={() => setEditingPack(null)}><X size={17} /></button></div>
       <div className="form-grid three-columns">
-        <label><span>Código</span><input name="code" value={editingPack.code} onChange={changePack} disabled={!editingPack._creating} placeholder="CREDITS_5000" maxLength={32} /></label>
+        <label className={packFieldError?.field === "code" ? "field-invalid" : undefined}><span>Código</span><input name="code" value={editingPack.code} onChange={changePack} disabled={!editingPack._creating} placeholder="CREDITS_5000" maxLength={32} aria-invalid={packFieldError?.field === "code"} />{packFieldError?.field === "code" ? <small className="field-error">{packFieldError.message}</small> : <small>Sem espaços. Eles viram _ automaticamente.</small>}</label>
         <label><span>Nome</span><input name="name" value={editingPack.name} onChange={changePack} maxLength={60} required /></label>
         <label><span>Ordem</span><input name="sortOrder" type="number" min="0" max="10000" value={editingPack.sortOrder} onChange={changePack} /></label>
         <label><span>Quantidade de créditos</span><input name="credits" type="number" min="1" value={editingPack.credits} onChange={changePack} required /></label>
-        <label><span>Preço (centavos)</span><input name="priceCents" type="number" min="1" value={editingPack.priceCents} onChange={changePack} required /><small>10000 = R$ 100,00.</small></label>
+        <label className={packFieldError?.field === "priceCents" ? "field-invalid" : undefined}><span>Preço (centavos)</span><input name="priceCents" type="number" min="1" value={editingPack.priceCents} onChange={changePack} required aria-invalid={packFieldError?.field === "priceCents"} />{packFieldError?.field === "priceCents" ? <small className="field-error">{packFieldError.message}</small> : <small>{editingPack.priceCents === "" ? "Ex.: 10000 = R$ 100,00." : `${editingPack.priceCents} = ${moneyFromCents(editingPack.priceCents, 2)}.`}</small>}</label>
         <label><span>Validade (meses)</span><input name="validityMonths" type="number" min="1" max="120" value={editingPack.validityMonths} onChange={changePack} required /></label>
       </div>
       <div className="plan-editor-toggles"><label><input name="active" type="checkbox" checked={Boolean(editingPack.active)} onChange={changePack} />Pacote ativo</label><label><input name="public" type="checkbox" checked={Boolean(editingPack.public)} onChange={changePack} />Exibir para compra</label></div>
+      {packFieldError && !["code", "priceCents"].includes(packFieldError.field) && <div className="form-error inline-form-error">{packFieldError.message}</div>}
       <div className="form-actions"><button className="primary" type="submit" disabled={packSaving}><Save size={16} />{packSaving ? "Salvando..." : "Salvar pacote"}</button></div>
     </form>}
     {packError && <div className="form-error">{packError}</div>}
