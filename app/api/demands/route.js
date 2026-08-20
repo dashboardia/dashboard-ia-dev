@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireProjectRole, requireUser } from "../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../lib/api";
 import { auditData } from "../../../lib/audit";
+import { assertProjectAiModelAccess } from "../../../lib/billing";
 import { db } from "../../../lib/db";
 import { projectAccessWhere } from "../../../lib/projects";
 import { demandInputSchema } from "../../../lib/validation";
@@ -44,6 +45,7 @@ export async function POST(request) {
       ? { ...input, visualValidation: false, visualPaths: [] }
       : input;
     const { user } = await requireProjectRole(input.projectId, "DEVELOPER");
+    await assertProjectAiModelAccess(input.projectId, normalizedInput.aiModel);
     const demand = await db.$transaction(async (transaction) => {
       const created = await transaction.demand.create({
         data: {

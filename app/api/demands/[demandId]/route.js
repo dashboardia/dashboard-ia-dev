@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { AccessDeniedError, getProjectRole, isAtLeastProjectRole, requireUser } from "../../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../../lib/api";
 import { auditData } from "../../../../lib/audit";
+import { assertProjectAiModelAccess } from "../../../../lib/billing";
 import { db } from "../../../../lib/db";
 import { demandUpdateSchema } from "../../../../lib/validation";
 
@@ -47,6 +48,7 @@ export async function PATCH(request, context) {
     const normalizedInput = input.type === "DOCUMENTATION"
       ? { ...input, visualValidation: false, visualPaths: [] }
       : input;
+    if (normalizedInput.aiModel) await assertProjectAiModelAccess(demand.projectId, normalizedInput.aiModel);
     const updated = await db.$transaction(async (transaction) => {
       const current = await transaction.demand.findUniqueOrThrow({ where: { id: demandId }, select: { status: true } });
       if (!["DRAFT", "PENDING_APPROVAL"].includes(current.status)) {

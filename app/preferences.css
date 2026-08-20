@@ -29,6 +29,8 @@
 [data-theme="dark"] .model-options strong { color:#f3f4f8; }
 [data-theme="dark"] .model-options em { color:#b59bff; }
 [data-theme="dark"] .model-options small { color:#bec1cb; }
+[data-theme="dark"] .model-options>label.locked { background:#14161c; border-color:#454854; opacity:.76; }[data-theme="dark"] .model-options .model-lock { color:#f0bb6c; }[data-theme="dark"] .model-plan-notice { color:#f1d68f; background:#2a2416; border-color:#584a25; }[data-theme="dark"] .model-plan-notice a { color:#b59bff; }
+[data-theme="dark"] .model-cost-summary { color:#c5c7d0; }
 [data-theme="dark"] .visual-validation-option { background:#171920; border-color:#30333d; }
 [data-theme="dark"] .visual-validation-option:hover { background:#1c1f27; border-color:#494352; }
 [data-theme="dark"] .visual-validation-option strong { color:#f3f4f8; }

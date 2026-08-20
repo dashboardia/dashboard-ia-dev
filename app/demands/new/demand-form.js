@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { usePreferences } from "../../../components/preferences-provider";
-import { AI_MODELS, DEFAULT_AI_MODEL } from "../../../lib/ai-models";
+import { AI_MODELS, DEFAULT_AI_MODEL, FREE_PLAN_AI_MODEL } from "../../../lib/ai-models";
 import { getDemandCopy } from "../../../lib/demand-copy";
 
 export default function DemandForm({ projects, initialProjectId }) {
   const { locale } = usePreferences();
   const copy = getDemandCopy(locale);
   const router = useRouter();
+  const initialProject = projects.find((project) => project.id === initialProjectId);
   const [form, setForm] = useState({
     projectId: projects.some((project) => project.id === initialProjectId) ? initialProjectId : "",
     title: "",
@@ -21,7 +22,7 @@ export default function DemandForm({ projects, initialProjectId }) {
     priority: "NORMAL",
     visualValidation: false,
     visualPaths: "/",
-    aiModel: DEFAULT_AI_MODEL,
+    aiModel: initialProject?.lunaOnly ? FREE_PLAN_AI_MODEL : DEFAULT_AI_MODEL,
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -29,7 +30,10 @@ export default function DemandForm({ projects, initialProjectId }) {
 
   function change(event) {
     const { name, type, checked, value } = event.target;
-    setForm((current) => name === "type" && value === "DOCUMENTATION"
+    const projectRequiresLuna = name === "projectId" && projects.find((project) => project.id === value)?.lunaOnly;
+    setForm((current) => projectRequiresLuna
+      ? { ...current, projectId: value, aiModel: FREE_PLAN_AI_MODEL }
+      : name === "type" && value === "DOCUMENTATION"
       ? { ...current, type: value, aiModel: "gpt-5.6-luna", visualValidation: false, visualPaths: "/" }
       : { ...current, [name]: type === "checkbox" ? checked : value });
   }
@@ -52,6 +56,8 @@ export default function DemandForm({ projects, initialProjectId }) {
   }
 
   if (!projects.length) return <div className="form-card resource-empty"><strong>{copy.noProjects}</strong><span>{copy.noProjectsHelp}</span></div>;
+  const selectedProject = projects.find((project) => project.id === form.projectId);
+  const lunaOnly = Boolean(selectedProject?.lunaOnly);
 
   return (
     <form className="form-card" onSubmit={submit}>
@@ -70,8 +76,10 @@ export default function DemandForm({ projects, initialProjectId }) {
       <fieldset className="model-selector full-field">
         <legend>{copy.aiModel}</legend>
         <p>{copy.aiModelHelp}</p>
+        <div className="model-cost-summary">{copy.modelCostSummary}</div>
+        {lunaOnly && <div className="model-plan-notice">{copy.freeModelNotice} <a href="/billing">{copy.viewPlans}</a></div>}
         <div className="model-options">
-          {AI_MODELS.map((option) => <label className={form.aiModel === option.value ? "selected" : ""} key={option.value}><input type="radio" name="aiModel" value={option.value} checked={form.aiModel === option.value} onChange={change} /><span><strong>{copy.models[option.value][0]}</strong><em>{option.model}</em><small>{copy.models[option.value][1]}</small></span></label>)}
+          {AI_MODELS.map((option) => { const locked = lunaOnly && option.value !== FREE_PLAN_AI_MODEL; return <label className={`${form.aiModel === option.value ? "selected" : ""}${locked ? " locked" : ""}`} key={option.value}><input type="radio" name="aiModel" value={option.value} checked={form.aiModel === option.value} onChange={change} disabled={locked} /><span><strong>{copy.models[option.value][0]}</strong><em>{option.model}</em><small>{copy.models[option.value][1]}</small><b>{copy.modelCost.replace("{multiplier}", option.relativeAiCost.toLocaleString(locale))}</b>{locked && <small className="model-lock">{copy.modelLocked}</small>}</span></label>; })}
         </div>
       </fieldset>
       {form.type !== "DOCUMENTATION" && <label className="visual-validation-option"><input name="visualValidation" type="checkbox" checked={form.visualValidation} onChange={change} /><span><strong>{copy.visualValidation}</strong><small>{copy.visualValidationHelp}</small></span></label>}

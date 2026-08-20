@@ -4,9 +4,9 @@ import { FileCode2, LoaderCircle, Pencil, Save, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { AI_MODELS, DEFAULT_AI_MODEL, getAiModel } from "../../../lib/ai-models";
+import { AI_MODELS, DEFAULT_AI_MODEL, FREE_PLAN_AI_MODEL, getAiModel } from "../../../lib/ai-models";
 
-function initialForm(demand) {
+function initialForm(demand, lunaOnly = false) {
   return {
     title: demand.title,
     description: demand.description,
@@ -15,14 +15,14 @@ function initialForm(demand) {
     priority: demand.priority,
     visualValidation: demand.visualValidation,
     visualPaths: Array.isArray(demand.visualPaths) ? demand.visualPaths.join("\n") : "/",
-    aiModel: demand.aiModel ?? DEFAULT_AI_MODEL,
+    aiModel: lunaOnly ? FREE_PLAN_AI_MODEL : demand.aiModel ?? DEFAULT_AI_MODEL,
   };
 }
 
-export default function DemandEditCard({ demand, canEdit }) {
+export default function DemandEditCard({ demand, canEdit, lunaOnly = false }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState(() => initialForm(demand));
+  const [form, setForm] = useState(() => initialForm(demand, lunaOnly));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -34,7 +34,7 @@ export default function DemandEditCard({ demand, canEdit }) {
   }
 
   function cancel() {
-    setForm(initialForm(demand));
+    setForm(initialForm(demand, lunaOnly));
     setError("");
     setEditing(false);
   }
@@ -51,7 +51,7 @@ export default function DemandEditCard({ demand, canEdit }) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Não foi possível atualizar a demanda");
-      setForm(initialForm(result.demand));
+      setForm(initialForm(result.demand, lunaOnly));
       setEditing(false);
       router.refresh();
     } catch (submitError) {
@@ -67,7 +67,8 @@ export default function DemandEditCard({ demand, canEdit }) {
         <div className="card-heading"><div><h2>Descrição</h2><p>Contexto enviado para a execução</p></div><span className="card-heading-actions">{canEdit && <button type="button" onClick={() => setEditing(true)}><Pencil size={14} />Editar</button>}<FileCode2 size={20} /></span></div>
         <p>{demand.description}</p>
         {demand.acceptanceCriteria && <><h3>Critérios de aceite</h3><p>{demand.acceptanceCriteria}</p></>}
-        <h3>Modelo de IA</h3><p>{getAiModel(demand.aiModel).label} · {getAiModel(demand.aiModel).model}</p>
+        <h3>Modelo de IA</h3><p>{getAiModel(demand.aiModel).label} · {getAiModel(demand.aiModel).model} · custo de IA estimado {getAiModel(demand.aiModel).relativeAiCost}× Luna</p>
+        {lunaOnly && demand.aiModel !== FREE_PLAN_AI_MODEL && <div className="model-plan-notice">Este modelo exige um plano Studio ou superior. No plano gratuito, altere para Luna antes de executar.</div>}
       </section>
     );
   }
@@ -85,9 +86,11 @@ export default function DemandEditCard({ demand, canEdit }) {
         <label className="full-field"><span>Critérios de aceite</span><textarea name="acceptanceCriteria" value={form.acceptanceCriteria} onChange={change} rows={4} /></label>
         <fieldset className="model-selector full-field">
           <legend>Modelo de IA</legend>
-          <p>Escolha o nível de capacidade adequado para esta demanda.</p>
+          <p>Compare capacidade e custo relativo para um volume semelhante de tokens.</p>
+          <div className="model-cost-summary">Terra ≈ 10× Luna · Sol ≈ 25× Luna e 2,5× Terra. O total real varia conforme o uso.</div>
+          {lunaOnly && <div className="model-plan-notice">No plano gratuito, somente Luna está disponível. <a href="/billing">Ver planos</a></div>}
           <div className="model-options">
-            {AI_MODELS.map((option) => <label className={form.aiModel === option.value ? "selected" : ""} key={option.value}><input type="radio" name="aiModel" value={option.value} checked={form.aiModel === option.value} onChange={change} /><span><strong>{option.label}</strong><em>{option.model}</em><small>{option.description}</small></span></label>)}
+            {AI_MODELS.map((option) => { const locked = lunaOnly && option.value !== FREE_PLAN_AI_MODEL; return <label className={`${form.aiModel === option.value ? "selected" : ""}${locked ? " locked" : ""}`} key={option.value}><input type="radio" name="aiModel" value={option.value} checked={form.aiModel === option.value} onChange={change} disabled={locked} /><span><strong>{option.label}</strong><em>{option.model}</em><small>{option.description}</small><b>Custo de IA estimado: {option.relativeAiCost}× Luna</b>{locked && <small className="model-lock">Requer plano Studio ou superior.</small>}</span></label>; })}
           </div>
         </fieldset>
         {form.type !== "DOCUMENTATION" && <label className="visual-validation-option"><input name="visualValidation" type="checkbox" checked={form.visualValidation} onChange={change} /><span><strong>Exigir validação visual</strong><small>Gera evidências em desktop e celular, sem substituir a aprovação do código.</small></span></label>}

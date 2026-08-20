@@ -1,6 +1,7 @@
 import AppShell from "../../../components/app-shell";
 import SectionHeader from "../../../components/section-header";
 import { getDemandCopy } from "../../../lib/demand-copy";
+import { planIsPaid } from "../../../lib/billing-plans";
 import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
 import DemandForm from "./demand-form";
@@ -15,15 +16,24 @@ export default async function NewDemandPage({ searchParams }) {
     where: user.globalRole === "ADMIN"
       ? { status: "ACTIVE" }
       : { status: "ACTIVE", members: { some: { userId: user.id, role: { in: ["MANAGER", "DEVELOPER"] } } } },
-    select: { id: true, name: true, repositoryFullName: true },
+    select: {
+      id: true,
+      name: true,
+      repositoryFullName: true,
+      createdBy: { select: { globalRole: true, billingAccount: { select: { plan: true, planDefinition: { select: { priceCents: true, includedCredits: true } } } } } },
+    },
     orderBy: { name: "asc" },
   });
+  const projectsWithModelAccess = projects.map(({ createdBy, ...project }) => ({
+    ...project,
+    lunaOnly: user.globalRole !== "ADMIN" && createdBy.globalRole !== "ADMIN" && createdBy.billingAccount?.plan !== "CUSTOM" && !planIsPaid(createdBy.billingAccount?.planDefinition),
+  }));
 
   return (
     <AppShell user={user}>
       <div className="section-page narrow-page">
         <SectionHeader backHref="/demands" backLabel={copy.page.back} eyebrow={copy.page.eyebrow} title={copy.page.title} description={copy.page.description} />
-        <DemandForm projects={projects} initialProjectId={params?.projectId ?? ""} />
+        <DemandForm projects={projectsWithModelAccess} initialProjectId={params?.projectId ?? ""} />
       </div>
     </AppShell>
   );
