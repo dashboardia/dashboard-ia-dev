@@ -173,7 +173,21 @@ function buildMavenWarDockerfile(configuration) {
 export function buildPreviewDockerfile(configuration) {
   const runtime = String(configuration.runtime || "UNKNOWN");
   const staticHttpServer = isStaticHttpServer(configuration.previewCommand);
-  const pythonMonorepo = runtime.startsWith("MONOREPO_");
+  const monorepo = runtime.startsWith("MONOREPO_");
+  const configuredCommands = [
+    configuration.installCommand,
+    configuration.buildCommand,
+    configuration.previewCommand,
+    configuration.auxiliaryPreviewCommand,
+  ].filter(Boolean).join("\n");
+  const needsPython = monorepo && (
+    runtime.includes("PYTHON_")
+    || /(?:^|[;&|\s])(?:python3?|pip3?|uvicorn|flask)(?:\s|$)/i.test(configuredCommands)
+  );
+  const needsMaven = monorepo && (
+    runtime.includes("JAVA_MAVEN")
+    || /(?:^|[;&|\s])(?:\.\/)?mvn(?:w)?(?:\s|$)/i.test(configuredCommands)
+  );
 
   // Projetos Maven empacotados como WAR precisam executar a aplicação inteira.
   // Um comando HTTP estático configurado anteriormente é apenas um fallback de
@@ -184,8 +198,14 @@ export function buildPreviewDockerfile(configuration) {
   }
 
   const lines = [`FROM ${runtimeImage(staticHttpServer ? "STATIC" : runtime)}`];
-  if (pythonMonorepo) {
-    lines.push("RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && rm -rf /var/lib/apt/lists/*");
+  const systemPackages = [
+    ...(needsPython ? ["python3", "python3-pip", "python3-venv"] : []),
+    ...(needsMaven ? ["maven", "openjdk-17-jdk-headless"] : []),
+  ];
+  if (systemPackages.length) {
+    lines.push(`RUN apt-get update && apt-get install -y --no-install-recommends ${systemPackages.join(" ")} && rm -rf /var/lib/apt/lists/*`);
+  }
+  if (needsPython) {
     lines.push(
       "RUN python3 -m venv /opt/dashboardia-venv",
       "ENV VIRTUAL_ENV=/opt/dashboardia-venv",
@@ -196,11 +216,11 @@ export function buildPreviewDockerfile(configuration) {
   // Um servidor HTTP estático não depende da stack principal do repositório.
   // Não execute comandos legados/incompatíveis (por exemplo npm em uma imagem
   // Maven) quando o cliente escolheu publicar diretamente os arquivos HTML.
-  const installCommand = pythonMonorepo ? withPythonVirtualEnvironment(configuration.installCommand) : configuration.installCommand;
-  const buildCommand = pythonMonorepo ? withPythonVirtualEnvironment(configuration.buildCommand) : configuration.buildCommand;
+  const installCommand = needsPython ? withPythonVirtualEnvironment(configuration.installCommand) : configuration.installCommand;
+  const buildCommand = needsPython ? withPythonVirtualEnvironment(configuration.buildCommand) : configuration.buildCommand;
   const normalizedPrimaryCommand = normalizePreviewCommand(configuration.previewCommand);
   const combinedCommand = combinedPreviewCommand(normalizedPrimaryCommand, configuration.auxiliaryPreviewCommand, configuration.auxiliaryPreviewPort);
-  const previewCommand = pythonMonorepo ? withPythonVirtualEnvironment(combinedCommand) : combinedCommand;
+  const previewCommand = needsPython ? withPythonVirtualEnvironment(combinedCommand) : combinedCommand;
   const install = shellInstruction("RUN", staticHttpServer ? null : installCommand);
   const build = shellInstruction("RUN", staticHttpServer ? null : buildCommand);
   if (install) lines.push(install);

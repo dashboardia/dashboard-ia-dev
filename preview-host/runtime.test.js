@@ -65,6 +65,26 @@ test("instala dependências Python do monorepo em ambiente virtual", () => {
   assert.match(result, /npm --prefix frontend run dev/);
 });
 
+test("instala Maven e JDK no monorepo Java com frontend Node", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "MONOREPO_JAVA_MAVEN_NODE",
+    installCommand: "npm --prefix frontend ci",
+    buildCommand: "mvn -B -DskipTests package && npm --prefix frontend run build",
+    previewCommand: "npm --prefix frontend run dev -- --host 127.0.0.1 --port $PORT",
+    auxiliaryPreviewCommand: "mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=$PORT",
+    auxiliaryPreviewPort: 8080,
+    port: 5173,
+  });
+
+  assert.match(result, /^FROM node:22-bookworm/m);
+  assert.match(result, /apt-get install -y --no-install-recommends maven openjdk-17-jdk-headless/);
+  assert.doesNotMatch(result, /python3|dashboardia-venv/);
+  assert.match(result, /mvn -B -DskipTests package/);
+  assert.match(result, /npm --prefix frontend run build/);
+  assert.match(result, /mvn spring-boot:run/);
+  assert.match(result, /auxiliary_pid=\$!/);
+});
+
 test("mantém comandos não confiáveis dentro do JSON da instrução", () => {
   const result = buildPreviewDockerfile({
     runtime: "NODE",
