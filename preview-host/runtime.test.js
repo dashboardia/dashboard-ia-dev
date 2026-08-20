@@ -99,6 +99,18 @@ test("usa Maven e runtime compatíveis com Java 21", () => {
   assert.match(result, /mvn spring-boot:run/);
 });
 
+test("protege ambientes persistidos com Java 7 usando a imagem compatível do JDK 8", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "JAVA_MAVEN_7",
+    buildCommand: "mvn -B -DskipTests package",
+    previewCommand: "mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=$PORT",
+    port: 8080,
+  });
+
+  assert.match(result, /^FROM maven:3\.8\.8-eclipse-temurin-8/m);
+  assert.doesNotMatch(result, /eclipse-temurin-7|jdk7-temurin/);
+});
+
 test("mantém comandos não confiáveis dentro do JSON da instrução", () => {
   const result = buildPreviewDockerfile({
     runtime: "NODE",

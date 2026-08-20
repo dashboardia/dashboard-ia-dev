@@ -95,7 +95,8 @@ function runtimeImage(runtime) {
 }
 
 function javaVersionFromRuntime(runtime) {
-  return String(runtime || "").match(/JAVA_MAVEN_(\d+)/)?.[1] ?? "8";
+  const declared = Number(String(runtime || "").match(/JAVA_MAVEN_(\d+)/)?.[1] ?? 8);
+  return String(Number.isInteger(declared) ? Math.max(8, declared) : 8);
 }
 
 function mavenImage(javaVersion) {
