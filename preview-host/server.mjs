@@ -10,6 +10,7 @@ import {
   buildPreviewDockerfile,
   isTransientDockerError,
   isPreviewReadyStatus,
+  probePreviewHttp,
   previewUpstreamHeaders,
   previewContainerName,
   previewImageName,
@@ -145,7 +146,7 @@ async function removeRuntime(id, removeImage = true) {
 
 async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
   const startedAt = Date.now();
-  const url = `http://${previewContainerName(id)}:${previewPort}/`;
+  const hostname = previewContainerName(id);
   let lastHttpStatus = null;
   while (Date.now() - startedAt < timeoutMs) {
     const state = await docker(["inspect", "--format", "{{.State.Status}}", previewContainerName(id)]).catch(() => ({ stdout: "missing" }));
@@ -154,13 +155,8 @@ async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
       throw new Error(`O container encerrou antes de ficar pronto\n${logs.stdout}${logs.stderr}`.slice(-12_000));
     }
     try {
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(3_000),
-        redirect: "manual",
-        headers: previewUpstreamHeaders({}, previewPort),
-      });
-      lastHttpStatus = response.status;
-      if (isPreviewReadyStatus(response.status)) return;
+      lastHttpStatus = await probePreviewHttp(hostname, previewPort);
+      if (isPreviewReadyStatus(lastHttpStatus)) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 1_500));
   }

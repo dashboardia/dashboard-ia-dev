@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import http from "node:http";
 import { test } from "vitest";
 import {
   buildPreviewDockerfile,
   isTransientDockerError,
   isPreviewReadyStatus,
+  probePreviewHttp,
   previewUpstreamHeaders,
   previewContainerName,
   previewNetworkName,
@@ -121,6 +123,20 @@ test("usa IP local aceito pelo Vite no upstream sem perder o domínio público o
     accept: "text/html",
     "x-forwarded-host": "preview.example.com",
   });
+});
+
+test("sonda o preview com o Host local aceito pelo Vite", async () => {
+  const server = http.createServer((request, response) => {
+    const expectedHost = `127.0.0.1:${server.address().port}`;
+    response.writeHead(request.headers.host === expectedHost ? 204 : 403).end();
+  });
+  await new Promise((resolve) => server.listen(0, "localhost", resolve));
+  try {
+    const status = await probePreviewHttp("localhost", server.address().port);
+    assert.equal(status, 204);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("mantém servidor estático em repositório realmente estático", () => {

@@ -1,3 +1,5 @@
+import http from "node:http";
+
 const RUNTIME_IMAGES = {
   NODE: "node:22-bookworm-slim",
   JAVA_MAVEN: "maven:3.8.8-eclipse-temurin-8",
@@ -58,6 +60,24 @@ export function previewUpstreamHeaders(headers = {}, port) {
     // localhost recebido por proxy podem resultar em HTTP 403.
     host: `127.0.0.1:${port}`,
   };
+}
+
+export function probePreviewHttp(hostname, port, timeoutMs = 3_000) {
+  return new Promise((resolve, reject) => {
+    const request = http.request({
+      hostname,
+      port,
+      path: "/",
+      method: "GET",
+      headers: previewUpstreamHeaders({}, port),
+    }, (response) => {
+      response.resume();
+      resolve(response.statusCode || 0);
+    });
+    request.setTimeout(timeoutMs, () => request.destroy(new Error("Timeout ao verificar o preview")));
+    request.on("error", reject);
+    request.end();
+  });
 }
 
 function runtimeImage(runtime) {
