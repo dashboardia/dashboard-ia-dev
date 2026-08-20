@@ -3,7 +3,6 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 
 import AppShell from "../../../components/app-shell";
-import AutoRefresh from "../../../components/auto-refresh";
 import SectionHeader from "../../../components/section-header";
 import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
@@ -31,12 +30,10 @@ export default async function DemandPage({ params }) {
   const role = await getProjectRole(user, demand.projectId);
   if (!role) redirect("/demands");
   const canEdit = ["DRAFT", "PENDING_APPROVAL"].includes(demand.status) && (demand.createdBy.id === user.id || role === "MANAGER");
-  const live = demand.executions.some((execution) => ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"].includes(execution.status) && !execution.cancelRequestedAt);
 
   return (
     <AppShell user={user}>
       <div className="section-page">
-        <AutoRefresh active={live} />
         <SectionHeader backHref="/demands" eyebrow={`${demand.project.name} · ${typeLabels[demand.type]}`} title={demand.title} description={`Criada por ${demand.createdBy.name ?? demand.createdBy.githubLogin}`} action={role === "MANAGER" && demand.status === "PENDING_APPROVAL" ? <ApproveButton demandId={demand.id} /> : role === "MANAGER" && ["APPROVED", "FAILED", "STOPPED"].includes(demand.status) ? <StartAnalysisButton demandId={demand.id} /> : null} />
         <div className="detail-grid demand-detail-grid">
           <DemandEditCard demand={{ id: demand.id, title: demand.title, description: demand.description, acceptanceCriteria: demand.acceptanceCriteria, type: demand.type, priority: demand.priority, visualValidation: demand.visualValidation, visualPaths: demand.visualPaths, aiModel: demand.aiModel }} canEdit={canEdit} />

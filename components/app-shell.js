@@ -27,6 +27,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import ActionCenter from "./action-center";
+import AutoRefresh from "./auto-refresh";
 import GlobalSearch from "./global-search";
 import { PreferencesProvider, usePreferences } from "./preferences-provider";
 import SupportChat from "./support-chat";
@@ -68,6 +69,7 @@ function AppShellContent({ children, user = null, setupMode = false }) {
 
   return (
     <main className="shell">
+      <AutoRefresh active={!setupMode && Boolean(user)} interval={5000} showIndicator={false} />
       <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <Link href="/" className="brand"><span className="brand-mark"><Code2 size={19} /></span><span>Forgeboard</span></Link>
         <button className="close" onClick={() => setSidebarOpen(false)} aria-label={t("closeMenu")}><X /></button>

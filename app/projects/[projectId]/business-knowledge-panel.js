@@ -1,7 +1,7 @@
 "use client";
 
 import { BookOpenCheck, Check, LoaderCircle, Plus, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const STATUS_LABELS = {
   CANDIDATE: "Aguardando aprovação",
@@ -16,6 +16,11 @@ export default function BusinessKnowledgePanel({ projectId, initialEntries }) {
   const [busyId, setBusyId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const synchronization = window.setTimeout(() => setEntries(initialEntries), 0);
+    return () => window.clearTimeout(synchronization);
+  }, [initialEntries]);
 
   async function request(url, options) {
     const response = await fetch(url, options);

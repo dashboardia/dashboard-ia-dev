@@ -53,7 +53,7 @@ export default function ActionCenter({ disabled = false }) {
     const initialLoad = window.setTimeout(() => load(controller.signal), 0);
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") load(controller.signal);
-    }, 60000);
+    }, 5000);
     return () => {
       controller.abort();
       window.clearTimeout(initialLoad);

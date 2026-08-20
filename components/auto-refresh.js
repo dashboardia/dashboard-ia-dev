@@ -4,7 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export default function AutoRefresh({ active, interval = 3000, revisionUrl = null, revision = null }) {
+export default function AutoRefresh({ active, interval = 5000, revisionUrl = null, revision = null, showIndicator = true }) {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const lastRefreshAt = useRef(0);
@@ -16,7 +16,7 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
     if (!active || document.visibilityState === "hidden" || inFlight.current) return;
     inFlight.current = true;
     lastRefreshAt.current = Date.now();
-    setRefreshing(true);
+    if (showIndicator) setRefreshing(true);
     try {
       if (revisionUrl) {
         const separator = revisionUrl.includes("?") ? "&" : "?";
@@ -42,9 +42,9 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
     } finally {
       inFlight.current = false;
       window.clearTimeout(indicatorTimer.current);
-      indicatorTimer.current = window.setTimeout(() => setRefreshing(false), 700);
+      if (showIndicator) indicatorTimer.current = window.setTimeout(() => setRefreshing(false), 700);
     }
-  }, [active, revisionUrl, router]);
+  }, [active, revisionUrl, router, showIndicator]);
 
   useEffect(() => {
     currentRevision.current = revision;
@@ -71,6 +71,6 @@ export default function AutoRefresh({ active, interval = 3000, revisionUrl = nul
     };
   }, [active, refresh]);
 
-  if (!active) return null;
+  if (!active || !showIndicator) return null;
   return <div className="live-update"><RefreshCw className={refreshing ? "spin" : ""} size={13} /><span>Atualizando automaticamente</span></div>;
 }

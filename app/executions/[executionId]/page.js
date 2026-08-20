@@ -3,14 +3,12 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import AppShell from "../../../components/app-shell";
-import AutoRefresh from "../../../components/auto-refresh";
 import SectionHeader from "../../../components/section-header";
 import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
 import { redactSensitiveData } from "../../../lib/redaction";
 import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error-messages";
-import { isExecutionLive, isExecutionSettling } from "../../../lib/execution-refresh";
 import { formatBrlCents } from "../../../lib/financial-shadow";
 import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings";
 import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-button";
@@ -59,28 +57,11 @@ export default async function ExecutionPage({ params }) {
   const canCancel = role === "MANAGER" && cancellableStatuses.includes(execution.status) && !execution.cancelRequestedAt;
   const shouldAutoOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.pullRequest && !execution.cancelRequestedAt;
   const interrupted = ["CANCELLED", "STOPPED"].includes(execution.status) || Boolean(execution.cancelRequestedAt);
-  const live = isExecutionLive(execution.status, Boolean(execution.cancelRequestedAt)) || isExecutionSettling(execution);
   const explainedError = execution.error ? explainError(execution.error) : null;
 
   return (
     <AppShell user={user}>
       <div className="section-page execution-detail-page">
-        <AutoRefresh active={live} revisionUrl={`/api/executions/${execution.id}/refresh`} revision={[
-          execution.updatedAt,
-          execution.status,
-          execution.stage,
-          execution.branchName,
-          execution.baseSha,
-          execution.headSha,
-          execution.inputTokens,
-          execution.outputTokens,
-          execution.adjustmentCount,
-          execution.logs.at(-1)?.id,
-          execution.artifacts.at(-1)?.id,
-          execution.messages.at(-1)?.id,
-          execution.pullRequest?.updatedAt,
-          execution.creditReservation?.updatedAt,
-        ].map((value) => value instanceof Date ? value.toISOString() : String(value ?? "")).join("|")} />
         <SectionHeader
           backHref="/executions"
           eyebrow={`${execution.demand.project.name} · ${execution.stage}`}

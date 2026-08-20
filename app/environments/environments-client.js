@@ -15,6 +15,11 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const synchronization = window.setTimeout(() => setEnvironments(initialEnvironments), 0);
+    return () => window.clearTimeout(synchronization);
+  }, [initialEnvironments]);
+
+  useEffect(() => {
     if (!environments.some((environment) => ACTIVE.has(environment.status))) return undefined;
     const timer = window.setInterval(async () => {
       const updated = await Promise.all(environments.map(async (environment) => {
