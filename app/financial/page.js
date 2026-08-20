@@ -10,14 +10,13 @@ import { requirePageAdmin } from "../../lib/page-access";
 
 export const dynamic = "force-dynamic";
 
-const planLabels = { TRIAL: "Teste", STUDIO: "Studio", AGENCY: "Agência", CUSTOM: "Personalizado" };
-
 export default async function FinancialPage() {
   const user = await requirePageAdmin();
   const [accounts, snapshots] = await Promise.all([
     db.billingAccount.findMany({
       include: {
         owner: { select: { name: true, email: true, githubLogin: true } },
+        planDefinition: { select: { name: true } },
         checkouts: { where: { status: "PAID" }, select: { amountCents: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -45,7 +44,7 @@ export default async function FinancialPage() {
         <div className="data-head"><span>Cliente</span><span>Plano</span><span>Pago</span><span>OpenAI</span><span>Custo total</span><span>Resultado</span></div>
         {clients.map((client) => <Link className="data-row financial-client-link" href={`/financial/${client.userId}`} aria-label={`Abrir detalhes financeiros de ${client.name}`} key={client.userId}>
           <span className="table-title"><i><CircleDollarSign size={16} /></i><strong>{client.name}</strong><small>{client.email} · {client.executions} execução(ões)</small></span>
-          <span><em className="status-pill">{planLabels[client.plan] ?? client.plan}</em></span>
+          <span><em className="status-pill">{client.planName}</em></span>
           <span><strong>{formatBrlCents(client.paidBrlCents)}</strong></span>
           <span title={client.models.join(", ") || "Sem uso medido"}><strong>{formatBrlCents(client.aiCostBrlCents)}</strong><small>{client.models.join(", ") || "—"}</small></span>
           <span><strong>{formatBrlCents(client.totalInternalCostBrlCents)}</strong><small>worker {formatBrlCents(client.workerCostBrlCents)}</small></span>

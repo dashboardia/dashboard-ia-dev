@@ -11,7 +11,6 @@ import { requirePageAdmin } from "../../../lib/page-access";
 
 export const dynamic = "force-dynamic";
 
-const planLabels = { TRIAL: "Teste", STUDIO: "Studio", AGENCY: "Agência", CUSTOM: "Personalizado" };
 const checkoutKindLabels = { PLAN: "Assinatura", CREDIT_PACK: "Pacote de créditos" };
 const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit", timeZone: "UTC" });
 const dateFormatter = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" });
@@ -28,6 +27,7 @@ export default async function ClientFinancialPage({ params }) {
       where: { ownerUserId: userId },
       include: {
         owner: { select: { name: true, email: true, githubLogin: true } },
+        planDefinition: { select: { name: true } },
         checkouts: {
           where: { status: "PAID" },
           select: { id: true, kind: true, targetPlan: true, creditAmount: true, amountCents: true, paidAt: true, createdAt: true },
@@ -52,7 +52,7 @@ export default async function ClientFinancialPage({ params }) {
 
   return <AppShell user={user}><div className="section-page financial-page financial-detail-page">
     <Link className="financial-back-link" href="/financial"><ArrowLeft size={14} /> Voltar ao financeiro</Link>
-    <SectionHeader eyebrow="DETALHAMENTO FINANCEIRO" title={client.name} description={`${client.email} · ${planLabels[client.plan] ?? client.plan} · ${client.executions} execução(ões) com custo medido`} />
+    <SectionHeader eyebrow="DETALHAMENTO FINANCEIRO" title={client.name} description={`${client.email} · ${client.planName} · ${client.executions} execução(ões) com custo medido`} />
 
     <section className="financial-kpis">
       <article><Landmark size={18} /><span><small>Recebido confirmado</small><strong>{formatBrlCents(client.paidBrlCents)}</strong><em>{account.checkouts.length} pagamento(s) pago(s)</em></span></article>

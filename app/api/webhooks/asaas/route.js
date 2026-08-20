@@ -5,6 +5,7 @@ import { asaasCheckoutLookup } from "../../../../lib/asaas-webhook";
 import { activatePlan, addMonths, grantCredits } from "../../../../lib/billing";
 import { db } from "../../../../lib/db";
 import { env } from "../../../../lib/env";
+import { getBillingPlan, planIsPaid } from "../../../../lib/billing-plans";
 
 function tokenIsValid(received) {
   if (!env.ASAAS_WEBHOOK_TOKEN || !received) return false;
@@ -42,6 +43,7 @@ async function processCheckoutEvent(transaction, payload) {
         sourceRef: order.id,
         providerCustomerId,
         providerSubscriptionId,
+        includedCredits: order.creditAmount,
       });
     }
   } else {
@@ -88,7 +90,8 @@ async function processPaymentEvent(transaction, payload) {
   if (!["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"].includes(payload.event)) return;
   const cycleIsRenewal = !account.cycleStartedAt || account.cycleStartedAt < new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
   const renewalPlan = account.pendingPlan || account.plan;
-  if (cycleIsRenewal && ["STUDIO", "AGENCY"].includes(renewalPlan)) {
+  const renewalPlanDefinition = await getBillingPlan(renewalPlan, transaction);
+  if (cycleIsRenewal && planIsPaid(renewalPlanDefinition)) {
     await activatePlan(transaction, {
       account,
       planCode: renewalPlan,

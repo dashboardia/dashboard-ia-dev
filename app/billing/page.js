@@ -4,7 +4,7 @@ import Link from "next/link";
 import AppShell from "../../components/app-shell";
 import SectionHeader from "../../components/section-header";
 import { getBillingOverview } from "../../lib/billing";
-import { BILLING_PLANS, CREDIT_PACKS, formatPlanPrice } from "../../lib/billing-plans";
+import { formatPlanPrice, getCreditPacks, listBillingPlans, planIsPaid } from "../../lib/billing-plans";
 import { db } from "../../lib/db";
 import { getConfigurationStatus } from "../../lib/env";
 import { formatDateTime, getGlobalSettings } from "../../lib/global-settings";
@@ -30,11 +30,15 @@ function daysRemaining(date) {
 export default async function BillingPage({ searchParams }) {
   const user = await requirePageUser();
   const params = await searchParams;
-  const [overview, settings] = await Promise.all([
+  const [overview, settings, publicPlans] = await Promise.all([
     getBillingOverview(user),
     getGlobalSettings(),
+    listBillingPlans(db, { includeInactive: false, publicOnly: true }),
   ]);
   const account = overview.account;
+  const paidAccount = planIsPaid(overview.plan);
+  const creditPacks = getCreditPacks(settings.creditValueCents);
+  const pendingPlan = account.pendingPlan ? await db.billingPlanCatalog.findUnique({ where: { code: account.pendingPlan } }) : null;
   const usagePeriodStart = account.plan === "TRIAL" ? account.trialStartedAt : account.cycleStartedAt;
   const [transactions, reservations, interactionTransactions, consumedSummary] = await Promise.all([
     db.creditTransaction.findMany({
@@ -89,7 +93,7 @@ export default async function BillingPage({ searchParams }) {
   const endDate = account.plan === "TRIAL" ? account.trialEndsAt : account.cycleEndsAt;
   const remainingDays = daysRemaining(endDate);
   const awaitingCheckoutConfirmation = params?.checkout === "success"
-    && !(account.status === "ACTIVE" && ["STUDIO", "AGENCY"].includes(account.plan));
+    && !(account.status === "ACTIVE" && paidAccount);
   const usageByDemand = reservations.reduce((usage, reservation) => {
     const demand = reservation.execution.demand;
     const current = usage.get(demand.id) ?? {
@@ -121,7 +125,7 @@ export default async function BillingPage({ searchParams }) {
     {params?.welcome === "1" && <div className="billing-notice success"><ShieldCheck size={18} /><span><strong>Seu teste de 7 dias começou.</strong> Você recebeu 300 créditos e pode conectar 1 projeto sem informar cartão.</span></div>}
     {awaitingCheckoutConfirmation && <div className="billing-notice"><CreditCard size={18} /><span><strong>Confirmando pagamento.</strong> Esta página será atualizada automaticamente após a confirmação segura do Asaas.</span></div>}
     {params?.checkout === "success" && !awaitingCheckoutConfirmation && <div className="billing-notice success"><ShieldCheck size={18} /><span><strong>Pagamento confirmado.</strong> Seu plano já está ativo.</span></div>}
-    {account.pendingPlan && <div className="billing-notice"><CalendarDays size={18} /><span><strong>Troca de plano agendada.</strong> O plano {BILLING_PLANS[account.pendingPlan].name} entra em vigor no próximo ciclo confirmado.</span></div>}
+    {pendingPlan && <div className="billing-notice"><CalendarDays size={18} /><span><strong>Troca de plano agendada.</strong> O plano {pendingPlan.name} entra em vigor no próximo ciclo confirmado.</span></div>}
     {!configuration.asaas && user.globalRole !== "ADMIN" && <div className="billing-notice warning"><span><strong>Checkout em configuração.</strong> O administrador precisa informar as variáveis do Asaas antes das contratações.</span></div>}
 
     <section className="billing-overview-card">
@@ -134,14 +138,14 @@ export default async function BillingPage({ searchParams }) {
     <details className="billing-section billing-collapsible billing-usage"><summary className="billing-collapsible-header"><span><Coins size={20} /></span><div><h2>Uso de créditos</h2><p>Saldo e consumo no ciclo atual.</p></div><ChevronDown size={18} /></summary><div className="billing-collapsible-content"><div className="billing-usage-summary"><span><small>Disponíveis</small><strong>{overview.availableCredits == null ? "Ilimitados" : overview.availableCredits.toLocaleString("pt-BR")}</strong></span><span><small>Consumidos</small><strong>{consumedCredits.toLocaleString("pt-BR")}</strong></span><span><small>Reservados</small><strong>{overview.reservedCredits.toLocaleString("pt-BR")}</strong></span></div><div className="billing-demand-usage">{demandUsage.map((demand) => <Link href={`/demands/${demand.id}`} key={demand.id}><span><strong>{demand.title}</strong><small>{demand.projectName} · {demand.executions} execução(ões){demand.interactions ? ` · ${demand.interactions} ajuste(s)` : ""}</small></span><em>{demand.consumedCredits.toLocaleString("pt-BR")} créditos</em></Link>)}{!demandUsage.length && <p className="list-empty">Nenhum crédito foi consumido neste ciclo.</p>}</div></div></details>
 
     <section className="billing-section"><div className="card-heading"><div><h2>Planos</h2><p>Escolha conforme a quantidade de projetos e execuções simultâneas.</p></div><CreditCard size={20} /></div><div className="billing-plan-grid">
-      {[BILLING_PLANS.STUDIO, BILLING_PLANS.AGENCY].map((plan) => <article className={`billing-plan ${account.plan === plan.code ? "current" : ""}`} key={plan.code}><span className="plan-name">{plan.name}</span><strong>{formatPlanPrice(plan.priceCents)}<small>/mês</small></strong><ul><li><Coins size={15} />{plan.includedCredits.toLocaleString("pt-BR")} créditos mensais</li><li><FolderGit2 size={15} />Até {plan.projectLimit} projetos</li><li><Gauge size={15} />{plan.parallelExecutionLimit} execuções simultâneas</li><li><Check size={15} />Usuários ilimitados</li></ul>{account.plan === plan.code && account.status === "ACTIVE" ? <span className="current-plan-label">Plano atual</span> : account.status === "ACTIVE" && ["STUDIO", "AGENCY"].includes(account.plan) ? <ChangePlanButton plan={plan.code} /> : <CheckoutButton kind="PLAN" value={plan.code} disabled={!configuration.asaas || user.globalRole === "ADMIN"}>Assinar {plan.name}</CheckoutButton>}</article>)}
+      {publicPlans.map((plan) => <article className={`billing-plan ${account.plan === plan.code ? "current" : ""}`} key={plan.code}><span className="plan-name">{plan.name}</span><strong>{formatPlanPrice(plan.priceCents)}<small>/mês</small></strong><ul><li><Coins size={15} />{plan.includedCredits.toLocaleString("pt-BR")} créditos mensais</li><li><FolderGit2 size={15} />Até {plan.projectLimit} projetos</li><li><Gauge size={15} />{plan.parallelExecutionLimit} execuções simultâneas</li><li><Check size={15} />Usuários ilimitados</li></ul>{account.plan === plan.code && account.status === "ACTIVE" ? <span className="current-plan-label">Plano atual</span> : account.status === "ACTIVE" && paidAccount ? <ChangePlanButton plan={plan.code} /> : <CheckoutButton kind="PLAN" value={plan.code} disabled={!configuration.asaas || user.globalRole === "ADMIN"}>Assinar {plan.name}</CheckoutButton>}</article>)}
       <article className="billing-plan custom"><span className="plan-name">Sob medida</span><strong>Comercial</strong><ul><li><Check size={15} />Limites personalizados</li><li><Check size={15} />Volume e operação dedicados</li><li><Check size={15} />Acompanhamento comercial</li></ul>{configuration.asaas && process.env.BILLING_CONTACT_URL ? <a className="secondary-button" href={process.env.BILLING_CONTACT_URL}>Falar sobre o plano</a> : <span className="current-plan-label">Fale com o administrador</span>}</article>
     </div></section>
 
-    {account.status === "ACTIVE" && ["STUDIO", "AGENCY"].includes(account.plan) && <section className="billing-section"><div className="card-heading"><div><h2>Créditos adicionais</h2><p>Mesmo valor unitário de R$ 0,10; validade de 12 meses e assinatura ativa obrigatória.</p></div><Coins size={20} /></div><div className="credit-pack-grid">{CREDIT_PACKS.map((pack) => <article key={pack.code}><strong>{pack.credits.toLocaleString("pt-BR")}</strong><span>créditos</span><em>{formatPlanPrice(pack.priceCents)}</em><CheckoutButton kind="CREDIT_PACK" value={pack.code} disabled={!configuration.asaas}>Comprar</CheckoutButton></article>)}</div></section>}
+    {account.status === "ACTIVE" && paidAccount && <section className="billing-section"><div className="card-heading"><div><h2>Créditos adicionais</h2><p>Valor unitário de {formatPlanPrice(settings.creditValueCents, 2)}; validade de 12 meses e assinatura ativa obrigatória.</p></div><Coins size={20} /></div><div className="credit-pack-grid">{creditPacks.map((pack) => <article key={pack.code}><strong>{pack.credits.toLocaleString("pt-BR")}</strong><span>créditos</span><em>{formatPlanPrice(pack.priceCents)}</em><CheckoutButton kind="CREDIT_PACK" value={pack.code} disabled={!configuration.asaas}>Comprar</CheckoutButton></article>)}</div></section>}
 
     <details className="billing-section billing-collapsible billing-history"><summary className="billing-collapsible-header"><span><CalendarDays size={20} /></span><div><h2>Movimentações</h2><p>Histórico auditável de concessões, reservas, consumo e devoluções.</p></div><ChevronDown size={18} /></summary><div className="billing-collapsible-content">{transactions.map((transaction) => <span key={transaction.id}><time>{formatDateTime(transaction.createdAt, settings.timeZone)}</time><strong>{transaction.description || transaction.type}</strong><em className={transaction.amount < 0 ? "negative" : "positive"}>{transaction.amount > 0 ? "+" : ""}{transaction.amount} créditos</em></span>)}{!transactions.length && <p className="list-empty">Nenhuma movimentação registrada.</p>}</div></details>
 
-    {account.status === "ACTIVE" && ["STUDIO", "AGENCY"].includes(account.plan) && <section className="billing-cancel"><p>Ao cancelar, novas cobranças são interrompidas. Histórico e downloads permanecem disponíveis; execuções ficam bloqueadas após o fim do ciclo.</p><CancelSubscriptionButton /></section>}
+    {account.status === "ACTIVE" && paidAccount && <section className="billing-cancel"><p>Ao cancelar, novas cobranças são interrompidas. Histórico e downloads permanecem disponíveis; execuções ficam bloqueadas após o fim do ciclo.</p><CancelSubscriptionButton /></section>}
   </div></AppShell>;
 }

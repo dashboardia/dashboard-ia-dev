@@ -123,13 +123,6 @@ enum HealthStatus {
   UNKNOWN
 }
 
-enum BillingPlan {
-  TRIAL
-  STUDIO
-  AGENCY
-  CUSTOM
-}
-
 enum BillingStatus {
   TRIALING
   PENDING
@@ -480,12 +473,34 @@ model DevEnvironment {
   @@index([requestedById, createdAt])
 }
 
+model BillingPlanCatalog {
+  code                   String            @id
+  name                   String
+  description            String?
+  priceCents             Int?
+  includedCredits        Int?
+  projectLimit           Int?
+  parallelExecutionLimit Int?
+  trialDays              Int?
+  active                 Boolean           @default(true)
+  public                 Boolean           @default(true)
+  structural             Boolean           @default(false)
+  sortOrder              Int               @default(0)
+  currentAccounts        BillingAccount[]  @relation("CurrentBillingPlan")
+  pendingAccounts        BillingAccount[]  @relation("PendingBillingPlan")
+  checkouts              BillingCheckout[]
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  @@index([active, public, sortOrder])
+}
+
 model BillingAccount {
   id                     String                       @id @default(cuid())
   ownerUserId            String                       @unique
   trialIdentity          String                       @unique
-  plan                   BillingPlan                  @default(TRIAL)
-  pendingPlan            BillingPlan?
+  plan                   String                       @default("TRIAL")
+  pendingPlan            String?
   status                 BillingStatus                @default(TRIALING)
   trialStartedAt         DateTime?
   trialEndsAt            DateTime?
@@ -496,6 +511,8 @@ model BillingAccount {
   providerCustomerId     String?                      @unique
   providerSubscriptionId String?                      @unique
   creditDebt             Int                          @default(0)
+  planDefinition         BillingPlanCatalog           @relation("CurrentBillingPlan", fields: [plan], references: [code], onDelete: Restrict)
+  pendingPlanDefinition  BillingPlanCatalog?          @relation("PendingBillingPlan", fields: [pendingPlan], references: [code], onDelete: Restrict)
   owner                  User                         @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
   creditBuckets          CreditBucket[]
   creditTransactions     CreditTransaction[]
@@ -576,7 +593,7 @@ model BillingCheckout {
   id                 String                @id @default(cuid())
   accountId          String
   kind               BillingCheckoutKind
-  targetPlan         BillingPlan?
+  targetPlan         String?
   creditAmount       Int?
   amountCents        Int
   status             BillingCheckoutStatus @default(PENDING)
@@ -585,6 +602,7 @@ model BillingCheckout {
   expiresAt          DateTime?
   paidAt             DateTime?
   account            BillingAccount        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  planDefinition     BillingPlanCatalog?    @relation(fields: [targetPlan], references: [code], onDelete: Restrict)
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 

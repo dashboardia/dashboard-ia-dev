@@ -6,13 +6,15 @@ import { BillingAccessError, ensureBillingAccount } from "../../../../lib/billin
 import { apiError, assertSameOrigin } from "../../../../lib/api";
 import { auditData } from "../../../../lib/audit";
 import { db } from "../../../../lib/db";
+import { getBillingPlan, planIsPaid } from "../../../../lib/billing-plans";
 
 export async function POST(request) {
   try {
     assertSameOrigin(request);
     const user = await requireUser();
     const account = await ensureBillingAccount(user);
-    if (account.status !== "ACTIVE" || !["STUDIO", "AGENCY"].includes(account.plan)) {
+    const plan = await getBillingPlan(account.plan);
+    if (account.status !== "ACTIVE" || !planIsPaid(plan)) {
       throw new BillingAccessError("Não há assinatura paga ativa para cancelar.", 409);
     }
     await cancelAsaasSubscription(account.providerSubscriptionId);

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "../../../../lib/access";
 import { updateAsaasSubscriptionPlan } from "../../../../lib/asaas";
 import { BillingAccessError, ensureBillingAccount } from "../../../../lib/billing";
-import { getBillingPlan } from "../../../../lib/billing-plans";
+import { findBillingPlan, getBillingPlan, planIsPaid } from "../../../../lib/billing-plans";
 import { apiError, assertSameOrigin } from "../../../../lib/api";
 import { auditData } from "../../../../lib/audit";
 import { db } from "../../../../lib/db";
@@ -15,11 +15,13 @@ export async function POST(request) {
     const user = await requireUser();
     const input = billingChangePlanSchema.parse(await request.json());
     const account = await ensureBillingAccount(user);
-    if (account.status !== "ACTIVE" || !["STUDIO", "AGENCY"].includes(account.plan)) {
+    const currentPlan = await getBillingPlan(account.plan);
+    if (account.status !== "ACTIVE" || !planIsPaid(currentPlan)) {
       throw new BillingAccessError("É necessário ter uma assinatura paga ativa para trocar de plano.", 409);
     }
     if (account.plan === input.plan) throw new BillingAccessError("Este já é o plano atual.", 409);
-    const plan = getBillingPlan(input.plan);
+    const plan = await findBillingPlan(input.plan);
+    if (!planIsPaid(plan) || !plan.active || !plan.public) throw new BillingAccessError("Este plano não está disponível para contratação.", 404, "PLAN_UNAVAILABLE");
     await updateAsaasSubscriptionPlan(account.providerSubscriptionId, plan);
     await db.$transaction([
       db.billingAccount.update({ where: { id: account.id }, data: { pendingPlan: input.plan } }),
