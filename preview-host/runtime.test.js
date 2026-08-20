@@ -76,13 +76,27 @@ test("instala Maven e JDK no monorepo Java com frontend Node", () => {
     port: 5173,
   });
 
-  assert.match(result, /^FROM node:22-bookworm/m);
-  assert.match(result, /apt-get install -y --no-install-recommends maven openjdk-17-jdk-headless/);
+  assert.match(result, /^FROM node:22-bookworm AS node-toolchain/m);
+  assert.match(result, /^FROM maven:3\.8\.8-eclipse-temurin-8/m);
+  assert.match(result, /COPY --from=node-toolchain \/usr\/local \/usr\/local/);
   assert.doesNotMatch(result, /python3|dashboardia-venv/);
   assert.match(result, /mvn -B -DskipTests package/);
   assert.match(result, /npm --prefix frontend run build/);
   assert.match(result, /mvn spring-boot:run/);
   assert.match(result, /auxiliary_pid=\$!/);
+});
+
+test("usa Maven e runtime compatíveis com Java 21", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "JAVA_MAVEN_21",
+    buildCommand: "mvn -B -DskipTests package",
+    previewCommand: "mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=$PORT",
+    port: 8080,
+  });
+
+  assert.match(result, /^FROM maven:3\.9\.9-eclipse-temurin-21/m);
+  assert.match(result, /mvn -B -DskipTests package/);
+  assert.match(result, /mvn spring-boot:run/);
 });
 
 test("mantém comandos não confiáveis dentro do JSON da instrução", () => {

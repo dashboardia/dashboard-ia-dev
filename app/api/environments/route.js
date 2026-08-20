@@ -41,7 +41,7 @@ export async function POST(request) {
       ? detected.workingDirectory ?? "."
       : project.workingDirectory !== "." ? project.workingDirectory : detected.workingDirectory ?? ".";
     const configuration = applyDetectedRuntime(applyWorkingDirectory(project, workingDirectory), detected, { replaceExisting });
-    if (detected.runtime === "JAVA_MAVEN") {
+    if (detected.runtime.startsWith("JAVA_MAVEN")) {
       configuration.buildCommand = mavenBuildCommandInRepository(configuration.buildCommand, workingDirectory);
     }
     if (!configuration.previewCommand || !configuration.previewPort) {

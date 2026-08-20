@@ -89,8 +89,19 @@ export function previewUpstreamPath(requestUrl, entryPath = "/") {
 function runtimeImage(runtime) {
   if (runtime?.startsWith("PYTHON_")) return "python:3.12-slim";
   if (runtime?.startsWith("MONOREPO_")) return "node:22-bookworm";
+  if (runtime?.startsWith("JAVA_MAVEN_")) return mavenImage(javaVersionFromRuntime(runtime));
   if (/^DOTNET_\d+$/.test(runtime)) return `mcr.microsoft.com/dotnet/sdk:${runtime.slice("DOTNET_".length)}.0`;
   return RUNTIME_IMAGES[runtime] || RUNTIME_IMAGES.NODE;
+}
+
+function javaVersionFromRuntime(runtime) {
+  return String(runtime || "").match(/JAVA_MAVEN_(\d+)/)?.[1] ?? "8";
+}
+
+function mavenImage(javaVersion) {
+  return String(javaVersion) === "8"
+    ? "maven:3.8.8-eclipse-temurin-8"
+    : `maven:3.9.9-eclipse-temurin-${javaVersion}`;
 }
 
 function shellInstruction(kind, command) {
@@ -141,9 +152,10 @@ function mavenBuildCommandInRepository(command, workingDirectory = ".") {
 function buildMavenWarDockerfile(configuration) {
   const port = Number(configuration.port) || 8080;
   const buildCommand = mavenBuildCommandInRepository(configuration.buildCommand, configuration.workingDirectory);
+  const javaVersion = javaVersionFromRuntime(configuration.runtime);
 
   return [
-    "FROM maven:3.8.8-eclipse-temurin-8 AS build",
+    `FROM ${mavenImage(javaVersion)} AS build`,
     "WORKDIR /app",
     "COPY . .",
     shellInstruction("RUN", buildCommand),
@@ -152,7 +164,7 @@ function buildMavenWarDockerfile(configuration) {
       'war="$(find . -type f -path "*/target/*.war" ! -name "*sources*" ! -name "*javadoc*" | head -n 1)"; test -n "$war"; cp "$war" /tmp/ROOT.war',
     ),
     "",
-    "FROM tomcat:9.0-jdk8-temurin",
+    `FROM tomcat:9.0-jdk${javaVersion}-temurin`,
     "RUN rm -rf /usr/local/tomcat/webapps/*",
     `RUN sed -i 's/port="8080" protocol="HTTP\\/1.1"/port="${port}" protocol="HTTP\\/1.1"/' /usr/local/tomcat/conf/server.xml`,
     "COPY --from=build /tmp/ROOT.war /tmp/ROOT.war",
@@ -193,14 +205,19 @@ export function buildPreviewDockerfile(configuration) {
   // Um comando HTTP estático configurado anteriormente é apenas um fallback de
   // captura visual e não deve esconder controllers, services, JSPs ou o banco
   // embarcado da aplicação durante a revisão do cliente.
-  if (runtime === "JAVA_MAVEN" && staticHttpServer) {
+  if (runtime.startsWith("JAVA_MAVEN") && staticHttpServer) {
     return buildMavenWarDockerfile(configuration);
   }
 
-  const lines = [`FROM ${runtimeImage(staticHttpServer ? "STATIC" : runtime)}`];
+  const lines = needsMaven
+    ? [
+        "FROM node:22-bookworm AS node-toolchain",
+        `FROM ${mavenImage(javaVersionFromRuntime(runtime))}`,
+        "COPY --from=node-toolchain /usr/local /usr/local",
+      ]
+    : [`FROM ${runtimeImage(staticHttpServer ? "STATIC" : runtime)}`];
   const systemPackages = [
     ...(needsPython ? ["python3", "python3-pip", "python3-venv"] : []),
-    ...(needsMaven ? ["maven", "openjdk-17-jdk-headless"] : []),
   ];
   if (systemPackages.length) {
     lines.push(`RUN apt-get update && apt-get install -y --no-install-recommends ${systemPackages.join(" ")} && rm -rf /var/lib/apt/lists/*`);
