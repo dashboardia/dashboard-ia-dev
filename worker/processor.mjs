@@ -23,6 +23,7 @@ import { auditData } from "../lib/audit.js";
 import { calculateLiveUsageCredits, saveFinancialSnapshot } from "../lib/financial-shadow.js";
 import { getExecutionCreditBudget, settleExecutionCredits } from "../lib/billing.js";
 import { getBusinessKnowledgeContext } from "../lib/business-knowledge.js";
+import { repositoryHasUsableProject } from "../lib/repository-content.js";
 import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
 import { remoteFetchRefspec, remoteTrackingRef } from "./git-refs.mjs";
 
@@ -248,6 +249,14 @@ export async function processExecution(executionId, workerId) {
       repositoryUrl,
       workspace,
     ], { cwd: workspaceRoot, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
+
+    const trackedFiles = (await runProcess("git", ["ls-files"], { cwd: workspace })).stdout
+      .split(/\r?\n/)
+      .map((file) => file.trim())
+      .filter(Boolean);
+    if (!repositoryHasUsableProject(trackedFiles)) {
+      throw new Error(`A branch ${sourceBranch} não contém arquivos de um projeto que o agente possa alterar. Faça merge do Pull Request que contém o código na branch principal e tente novamente. Nenhum crédito foi cobrado.`);
+    }
 
     const branchName = isFollowUp ? execution.branchName : `forgeboard/demand-${execution.demandId.slice(-8)}-${execution.id.slice(-6)}`;
     const documentationOnly = execution.demand.type === "DOCUMENTATION";

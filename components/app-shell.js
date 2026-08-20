@@ -18,6 +18,7 @@ import {
   ServerCog,
   Settings,
   WalletCards,
+  BadgeDollarSign,
   Users,
   X,
 } from "lucide-react";
@@ -83,6 +84,7 @@ function AppShellContent({ children, user = null, setupMode = false }) {
         <div className="sidebar-bottom">
           {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/users"}><Users size={18} />{t("users")}</Link>}
           {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/audit"}><History size={18} />{t("audit")}</Link>}
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/financial"}><BadgeDollarSign size={18} />{t("financial")}</Link>}
           <Link href={setupMode ? "/login" : "/billing"}><WalletCards size={18} />{t("billing")}</Link>
           <Link href={setupMode ? "/login" : "/faq"}><HelpCircle size={18} />{t("faq")}</Link>
           <Link href={setupMode ? "/login" : "/settings"}><Settings size={18} />{t("settings")}</Link>

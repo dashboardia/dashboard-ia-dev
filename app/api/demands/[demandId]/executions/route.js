@@ -7,7 +7,7 @@ import { prepareExecutionBilling } from "../../../../../lib/billing";
 import { db } from "../../../../../lib/db";
 import { env } from "../../../../../lib/env";
 import { queueDemandExecution } from "../../../../../lib/executions";
-import { getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../../../lib/github";
+import { getProjectGitHubAccessToken, RepositoryBranchContentError, verifyRepositoryProjectBranch } from "../../../../../lib/github";
 import { assertPlatformProcessingEnabled } from "../../../../../lib/platform-processing";
 
 export async function POST(request, context) {
@@ -30,8 +30,11 @@ export async function POST(request, context) {
 
     const token = await getProjectGitHubAccessToken(demand.project, user.id);
     try {
-      await verifyRepositoryBranch(token, demand.project.repositoryFullName, demand.project.defaultBranch);
-    } catch {
+      await verifyRepositoryProjectBranch(token, demand.project.repositoryFullName, demand.project.defaultBranch);
+    } catch (error) {
+      if (error instanceof RepositoryBranchContentError) {
+        return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+      }
       return NextResponse.json({
         error: `A branch ${demand.project.defaultBranch} ainda não existe. Crie o primeiro arquivo no repositório antes de iniciar a análise.`,
       }, { status: 409 });
