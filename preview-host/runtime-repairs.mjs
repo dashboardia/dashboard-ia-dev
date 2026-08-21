@@ -1,4 +1,4 @@
-import { lstat, readFile, readdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const MAX_FILES = 5_000;
@@ -69,6 +69,79 @@ async function repairRubyRackHeaderCase(sourceDirectory, runtimeOutput) {
   return adjustments;
 }
 
+function unavailableSpringDatabaseMode(runtimeOutput) {
+  const output = String(runtimeOutput || "");
+  const localDatabaseFailure = /(?:localhost|127\.0\.0\.1)(?::|\/)(?:5432|3306)|connection\s+(?:to\s+)?(?:localhost|127\.0\.0\.1).*refused/i.test(output);
+  if (!localDatabaseFailure) return null;
+  if (/postgresql|org\.postgresql|jdbc:postgresql|:5432/i.test(output)) return "PostgreSQL";
+  if (/mysql|mariadb|com\.mysql|jdbc:mysql|:3306|communications link failure/i.test(output)) return "MySQL";
+  return null;
+}
+
+function addH2Dependency(pomSource) {
+  if (/<groupId>com\.h2database<\/groupId>[\s\S]*?<artifactId>h2<\/artifactId>/i.test(pomSource)) return pomSource;
+  const dependency = [
+    "        <dependency>",
+    "            <groupId>com.h2database</groupId>",
+    "            <artifactId>h2</artifactId>",
+    "            <scope>runtime</scope>",
+    "        </dependency>",
+  ].join("\n");
+  if (/<\/dependencies>/i.test(pomSource)) return pomSource.replace(/<\/dependencies>/i, `${dependency}\n    </dependencies>`);
+  if (/<\/project>/i.test(pomSource)) return pomSource.replace(/<\/project>/i, `    <dependencies>\n${dependency}\n    </dependencies>\n</project>`);
+  return pomSource;
+}
+
+async function repairSpringUnavailableDatabase(sourceDirectory, runtimeOutput) {
+  const mode = unavailableSpringDatabaseMode(runtimeOutput);
+  if (!mode) return [];
+
+  const adjustments = [];
+  for (const pomFile of await sourceFiles(sourceDirectory, "pom.xml")) {
+    const metadata = await lstat(pomFile).catch(() => null);
+    if (!metadata?.isFile() || metadata.size > MAX_SOURCE_BYTES) continue;
+    const originalPom = await readFile(pomFile, "utf8");
+    if (!/spring-boot/i.test(originalPom)) continue;
+
+    const updatedPom = addH2Dependency(originalPom);
+    if (updatedPom !== originalPom) await writeFile(pomFile, updatedPom, "utf8");
+
+    const moduleRoot = path.dirname(pomFile);
+    const resourcesDirectory = path.join(moduleRoot, "src", "main", "resources");
+    await mkdir(resourcesDirectory, { recursive: true });
+    const propertiesFile = path.join(resourcesDirectory, "application.properties");
+    const originalProperties = await readFile(propertiesFile, "utf8").catch(() => "");
+    const marker = "# Dashboardia preview database fallback";
+    if (!originalProperties.includes(marker)) {
+      const h2Mode = mode === "MySQL" ? "MySQL" : "PostgreSQL";
+      const fallbackProperties = [
+        "",
+        marker,
+        `spring.datasource.url=jdbc:h2:mem:dashboardia;MODE=${h2Mode};DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1`,
+        "spring.datasource.driver-class-name=org.h2.Driver",
+        "spring.datasource.username=sa",
+        "spring.datasource.password=",
+        "spring.flyway.enabled=false",
+        "spring.liquibase.enabled=false",
+        "spring.sql.init.mode=never",
+        "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
+        "spring.jpa.hibernate.ddl-auto=update",
+        "",
+      ].join("\n");
+      await writeFile(propertiesFile, `${originalProperties.trimEnd()}${fallbackProperties}`, "utf8");
+    }
+
+    adjustments.push({
+      code: "SPRING_LOCAL_DATABASE_FALLBACK",
+      file: path.relative(sourceDirectory, pomFile),
+      summary: `O banco ${mode} configurado em localhost não estava disponível. A cópia temporária foi adaptada para um banco H2 em memória, mantendo o repositório do cliente intacto.`,
+    });
+    break;
+  }
+
+  return adjustments;
+}
+
 async function repairJavaAuditDates(sourceDirectory, runtimeOutput) {
   if (!/NULL not allowed for column\s+["']?CREATEDAT["']?/i.test(runtimeOutput)) return [];
 
@@ -119,7 +192,12 @@ async function repairSpringRootStaticFallback(sourceDirectory, runtimeOutput) {
   return [];
 }
 
-const REPAIRS = [repairRubyRackHeaderCase, repairJavaAuditDates, repairSpringRootStaticFallback];
+const REPAIRS = [
+  repairRubyRackHeaderCase,
+  repairSpringUnavailableDatabase,
+  repairJavaAuditDates,
+  repairSpringRootStaticFallback,
+];
 
 export async function applyKnownRuntimeRepairs({ sourceDirectory, runtimeOutput }) {
   const adjustments = [];

@@ -27,6 +27,38 @@ test("normaliza header Ruby quando Rack 3 rejeita nomes com maiúsculas", async 
   }
 });
 
+test("troca PostgreSQL local indisponível por H2 somente na cópia temporária do Spring Boot", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-runtime-repair-"));
+  const pom = path.join(root, "pom.xml");
+  await writeFile(pom, [
+    "<project>",
+    "  <parent><artifactId>spring-boot-starter-parent</artifactId></parent>",
+    "  <dependencies>",
+    "    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>",
+    "    <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>",
+    "  </dependencies>",
+    "</project>",
+  ].join("\n"));
+
+  try {
+    const adjustments = await applyKnownRuntimeRepairs({
+      sourceDirectory: root,
+      runtimeOutput: "org.postgresql.util.PSQLException: Connection to localhost:5432 refused",
+    });
+    const updatedPom = await readFile(pom, "utf8");
+    const properties = await readFile(path.join(root, "src/main/resources/application.properties"), "utf8");
+
+    assert.equal(adjustments.length, 1);
+    assert.equal(adjustments[0].code, "SPRING_LOCAL_DATABASE_FALLBACK");
+    assert.match(updatedPom, /<groupId>com\.h2database<\/groupId>/);
+    assert.match(properties, /jdbc:h2:mem:dashboardia;MODE=PostgreSQL/);
+    assert.match(properties, /spring\.flyway\.enabled=false/);
+    assert.match(properties, /spring\.jpa\.hibernate\.ddl-auto=update/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("inicializa datas de auditoria quando o bootstrap Java grava CREATEDAT nulo", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-runtime-repair-"));
   const file = path.join(root, "src/main/java/example/BaseEntity.java");
@@ -56,7 +88,7 @@ test("inicializa datas de auditoria quando o bootstrap Java grava CREATEDAT nulo
   }
 });
 
-test("não altera código Java quando a falha não é de auditoria", async () => {
+test("não altera código Java quando a falha não é de auditoria nem de banco local", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-runtime-repair-"));
   const file = path.join(root, "BaseEntity.java");
   const source = "class BaseEntity { private java.util.Date createdAt; }";
