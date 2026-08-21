@@ -18,6 +18,7 @@ import EvidenceCard from "./evidence-card";
 import DiffViewer from "./diff-viewer";
 import ExecutionConversation from "./execution-conversation";
 import CopyBranchButton from "./copy-branch-button";
+import ResumeExecutionButton from "./resume-execution-button";
 
 const cancellableStatuses = ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"];
 const activeExecutionStatuses = new Set(["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"]);
@@ -65,8 +66,10 @@ export default async function ExecutionPage({ params }) {
   if (!role) redirect("/executions");
   const diff = execution.artifacts.find((artifact) => artifact.type === "diff");
   const canCancel = role === "MANAGER" && cancellableStatuses.includes(execution.status) && !execution.cancelRequestedAt;
+  const canResume = role === "MANAGER" && execution.status === "STOPPED" && !execution.cancelRequestedAt;
   const shouldAutoOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.pullRequest && !execution.cancelRequestedAt;
-  const interrupted = ["CANCELLED", "STOPPED"].includes(execution.status) || Boolean(execution.cancelRequestedAt);
+  const interrupted = execution.status === "CANCELLED" || Boolean(execution.cancelRequestedAt);
+  const stopped = execution.status === "STOPPED";
   const explainedError = execution.error ? explainError(execution.error) : null;
   const progressLogs = execution.logs.slice(-5);
   const executionActive = activeExecutionStatuses.has(execution.status) && !execution.cancelRequestedAt;
@@ -79,7 +82,7 @@ export default async function ExecutionPage({ params }) {
           eyebrow={`${execution.demand.project.name} · ${execution.stage}`}
           title={execution.demand.title}
           description={`Execução ${execution.id.slice(-10)} · solicitada por ${execution.requestedBy.name ?? execution.requestedBy.githubLogin}`}
-          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : interrupted ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar a demanda</Link></div> : null}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
+          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : interrupted ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar a demanda</Link></div> : null}{canResume && <ResumeExecutionButton executionId={execution.id} processingEnabled={settings.executionProcessingEnabled} />}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
         />
 
         <section className="execution-metrics">
@@ -90,7 +93,7 @@ export default async function ExecutionPage({ params }) {
         </section>
 
         <section className={`execution-live-progress ${execution.error ? "failed" : executionActive ? "active" : "completed"}`}>
-          <header><span>{execution.error ? <CircleX size={18} /> : executionActive ? <CircleDotDashed className="spin-slow" size={18} /> : <CircleCheck size={18} />}</span><div><strong>{execution.error ? "Execução interrompida" : executionActive ? "Acompanhamento ao vivo" : "Execução concluída"}</strong><small>{executionActive ? "A página recebe novas etapas automaticamente, sem piscar." : "Resumo factual das últimas etapas executadas."}</small></div><em>{execution.stage}</em></header>
+          <header><span>{execution.error ? <CircleX size={18} /> : executionActive ? <CircleDotDashed className="spin-slow" size={18} /> : stopped ? <CircleDotDashed size={18} /> : <CircleCheck size={18} />}</span><div><strong>{execution.error ? "Execução interrompida" : executionActive ? "Acompanhamento ao vivo" : stopped ? "Execução pausada" : "Execução concluída"}</strong><small>{executionActive ? "A página recebe novas etapas automaticamente, sem piscar." : stopped ? "O administrador pausou o processamento. Quando a plataforma estiver liberada, esta mesma execução pode ser retomada." : "Resumo factual das últimas etapas executadas."}</small></div><em>{execution.stage}</em></header>
           <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
         </section>
 
