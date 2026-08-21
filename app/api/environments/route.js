@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { requireProjectRole } from "../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../lib/api";
 import { auditData } from "../../../lib/audit";
-import { chargeFixedProjectCredits, refundFixedCredits } from "../../../lib/billing";
+import { refundFixedCredits, reserveFixedProjectCredits } from "../../../lib/billing";
 import { db } from "../../../lib/db";
 import { ACTIVE_ENVIRONMENT_STATUSES, environmentExpirationDate } from "../../../lib/dev-environments";
 import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../lib/github";
@@ -59,10 +59,10 @@ export async function POST(request) {
         expiresAt: environmentExpirationDate(settings.environmentTtlMinutes),
       },
     });
-    charge = await chargeFixedProjectCredits({
+    charge = await reserveFixedProjectCredits({
       projectId: project.id,
       credits: settings.environmentCreditCost,
-      description: `Subida do ambiente ${project.name} · ${input.branchName}`,
+      description: `Créditos protegidos para o ambiente ${project.name} · ${input.branchName}`,
       metadata: { environmentId: environment.id, projectId: project.id, branchName: input.branchName },
     });
     await db.devEnvironment.update({ where: { id: environment.id }, data: { creditCharge: charge } });
@@ -99,7 +99,7 @@ export async function POST(request) {
     });
     return NextResponse.json({ environment }, { status: 202 });
   } catch (error) {
-    const refunded = charge ? Boolean(await refundFixedCredits(charge, "Estorno: ambiente não enviado ao host Docker").catch(() => null)) : false;
+    const refunded = charge ? Boolean(await refundFixedCredits(charge, "Liberação: ambiente não enviado ao host Docker").catch(() => null)) : false;
     if (environment) await db.devEnvironment.update({ where: { id: environment.id }, data: { status: "FAILED", error: error instanceof Error ? error.message : String(error), ...(refunded ? { creditRefundedAt: new Date() } : {}) } }).catch(() => null);
     return apiError(error);
   }

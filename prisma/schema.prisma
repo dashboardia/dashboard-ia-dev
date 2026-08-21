@@ -469,6 +469,7 @@ model DevEnvironment {
   port            Int?
   creditCost       Int                  @default(0)
   creditCharge     Json?
+  creditChargedAt  DateTime?
   creditRefundedAt DateTime?
   adjustments      Json?
   credentials      Json?
@@ -820,7 +821,7 @@ model GlobalSettings {
   healthCheckRetentionDays            Int      @default(30)
   previewPreparationTimeoutMinutes    Int      @default(15)
   environmentTtlMinutes               Int      @default(240)
-  environmentCreditCost               Int      @default(300)
+  environmentCreditCost               Int      @default(30)
   environmentMaxPerUser               Int      @default(2)
   executionConversationTimeoutMinutes Int      @default(1440)
   executionConversationMaxAdjustments Int      @default(10)

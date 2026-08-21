@@ -58,6 +58,23 @@ test("inclui o Composer na imagem PHP antes de instalar as dependências", () =>
   assert.match(result, /php -S 0\.0\.0\.0:\$PORT -t public/);
 });
 
+test("localiza automaticamente um projeto PHP em subpasta", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "PHP",
+    workingDirectory: ".",
+    installCommand: "composer install --no-interaction",
+    buildCommand: null,
+    previewCommand: "php -S 127.0.0.1:$PORT -t public",
+    port: 8000,
+  });
+
+  assert.match(result, /find \. -type f/);
+  assert.match(result, /-name composer\.json -o -name index\.php/);
+  assert.match(result, /project_dir=.*dirname/);
+  assert.match(result, /cd \\"\$project_dir\\"; composer install/);
+  assert.match(result, /cd \\"\$project_dir\\"; php -S/);
+});
+
 test("gera ambiente ASP.NET Core com a versão detectada do SDK", () => {
   const result = buildPreviewDockerfile({
     runtime: "DOTNET_8",

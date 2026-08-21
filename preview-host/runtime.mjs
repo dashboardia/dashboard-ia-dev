@@ -218,6 +218,24 @@ function mavenBuildCommandInRepository(command, workingDirectory = ".") {
   ].join("; ");
 }
 
+function phpCommandInRepository(command, workingDirectory = ".") {
+  const configured = String(command || "").trim();
+  if (!configured || /^\(cd\s+.+?\s+&&\s+.+\)$/s.test(configured)) return configured;
+  const composerCommand = /(?:^|[;&|\s])composer(?:\s|$)/i.test(configured);
+  const entryLookup = composerCommand
+    ? 'find . -type f -name composer.json -not -path "*/vendor/*"'
+    : 'find . -type f \\( -name composer.json -o -name index.php \\) -not -path "*/vendor/*"';
+  const localEntryCheck = composerCommand
+    ? '[ ! -f "$project_dir/composer.json" ]'
+    : '[ ! -f "$project_dir/composer.json" ] && [ ! -f "$project_dir/index.php" ] && [ ! -f "$project_dir/public/index.php" ]';
+  return [
+    `project_dir=${shellQuote(workingDirectory || ".")}`,
+    `if ${localEntryCheck}; then entry="$(${entryLookup} -printf '%d %p\\n' | sort -n | head -n 1 | cut -d' ' -f2-)"; test -n "$entry"; project_dir="$(dirname "$entry")"; fi`,
+    'cd "$project_dir"',
+    configured,
+  ].join("; ");
+}
+
 function buildMavenWarDockerfile(configuration) {
   const port = Number(configuration.port) || 8080;
   const buildCommand = mavenBuildCommandInRepository(configuration.buildCommand, configuration.workingDirectory);
@@ -308,10 +326,13 @@ export function buildPreviewDockerfile(configuration) {
   // Um servidor HTTP estático não depende da stack principal do repositório.
   // Não execute comandos legados/incompatíveis (por exemplo npm em uma imagem
   // Maven) quando o cliente escolheu publicar diretamente os arquivos HTML.
-  const installCommand = needsPython ? withPythonVirtualEnvironment(configuration.installCommand) : configuration.installCommand;
-  const buildCommand = needsPython ? withPythonVirtualEnvironment(configuration.buildCommand) : configuration.buildCommand;
+  const scopedInstallCommand = runtime === "PHP" ? phpCommandInRepository(configuration.installCommand, configuration.workingDirectory) : configuration.installCommand;
+  const scopedBuildCommand = runtime === "PHP" ? phpCommandInRepository(configuration.buildCommand, configuration.workingDirectory) : configuration.buildCommand;
+  const installCommand = needsPython ? withPythonVirtualEnvironment(scopedInstallCommand) : scopedInstallCommand;
+  const buildCommand = needsPython ? withPythonVirtualEnvironment(scopedBuildCommand) : scopedBuildCommand;
   const normalizedPrimaryCommand = normalizePreviewCommand(configuration.previewCommand);
-  const combinedCommand = combinedPreviewCommand(normalizedPrimaryCommand, configuration.auxiliaryPreviewCommand, configuration.auxiliaryPreviewPort);
+  const scopedPrimaryCommand = runtime === "PHP" ? phpCommandInRepository(normalizedPrimaryCommand, configuration.workingDirectory) : normalizedPrimaryCommand;
+  const combinedCommand = combinedPreviewCommand(scopedPrimaryCommand, configuration.auxiliaryPreviewCommand, configuration.auxiliaryPreviewPort);
   const previewCommand = needsPython ? withPythonVirtualEnvironment(combinedCommand) : combinedCommand;
   const install = shellInstruction("RUN", staticHttpServer ? null : installCommand);
   const build = shellInstruction("RUN", staticHttpServer ? null : buildCommand);

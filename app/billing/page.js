@@ -141,7 +141,7 @@ export default async function BillingPage({ searchParams }) {
 
     <section className="billing-overview-card">
       <div><small>Plano atual</small><strong>{overview.plan.name}</strong><span className={`billing-status ${account.status.toLowerCase()}`}>{statusLabels[account.status]}</span></div>
-      <div><small>Créditos disponíveis</small><strong>{overview.availableCredits == null ? "Ilimitados" : overview.availableCredits.toLocaleString("pt-BR")}</strong><span>{overview.reservedCredits.toLocaleString("pt-BR")} protegidos em execuções</span></div>
+      <div><small>Créditos disponíveis</small><strong>{overview.availableCredits == null ? "Ilimitados" : overview.availableCredits.toLocaleString("pt-BR")}</strong><span>{overview.reservedCredits.toLocaleString("pt-BR")} protegidos em operações em andamento</span></div>
       <div><small>Projetos</small><strong>{overview.projectCount}{overview.plan.projectLimit ? `/${overview.plan.projectLimit}` : ""}</strong><span>repositórios conectados</span></div>
       <div><small>{account.plan === "TRIAL" ? "Teste" : "Ciclo atual"}</small><strong>{remainingDays == null ? "Contínuo" : `${remainingDays} dia(s)`}</strong><span>{endDate ? `até ${formatDateTime(endDate, settings.timeZone)}` : "sem vencimento"}</span></div>
     </section>
