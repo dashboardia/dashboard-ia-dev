@@ -228,9 +228,12 @@ function phpCommandInRepository(command, workingDirectory = ".") {
   const localEntryCheck = composerCommand
     ? '[ ! -f "$project_dir/composer.json" ]'
     : '[ ! -f "$project_dir/composer.json" ] && [ ! -f "$project_dir/index.php" ] && [ ! -f "$project_dir/public/index.php" ]';
+  const missingEntryAction = composerCommand
+    ? 'echo "Composer ignorado: a branch não possui composer.json"; exit 0'
+    : 'echo "Não foi possível localizar a entrada PHP da aplicação" >&2; exit 1';
   return [
     `project_dir=${shellQuote(workingDirectory || ".")}`,
-    `if ${localEntryCheck}; then entry="$(${entryLookup} -printf '%d %p\\n' | sort -n | head -n 1 | cut -d' ' -f2-)"; test -n "$entry"; project_dir="$(dirname "$entry")"; fi`,
+    `if ${localEntryCheck}; then entry="$(${entryLookup} -printf '%d %p\\n' | sort -n | head -n 1 | cut -d' ' -f2-)"; if [ -z "$entry" ]; then ${missingEntryAction}; fi; project_dir="$(dirname "$entry")"; fi`,
     'cd "$project_dir"',
     configured,
   ].join("; ");
@@ -272,6 +275,7 @@ function buildMavenWarDockerfile(configuration) {
 export function buildPreviewDockerfile(configuration) {
   const runtime = String(configuration.runtime || "UNKNOWN");
   const staticHttpServer = isStaticHttpServer(configuration.previewCommand);
+  const mavenWar = /^(?:\(cd\s+.+?\s+&&\s+)?__MAVEN_WAR__(?:\))?$/i.test(String(configuration.previewCommand || "").trim());
   const monorepo = runtime.startsWith("MONOREPO_");
   const configuredCommands = [
     configuration.installCommand,
@@ -292,7 +296,7 @@ export function buildPreviewDockerfile(configuration) {
   // Um comando HTTP estático configurado anteriormente é apenas um fallback de
   // captura visual e não deve esconder controllers, services, JSPs ou o banco
   // embarcado da aplicação durante a revisão do cliente.
-  if (runtime.startsWith("JAVA_MAVEN") && staticHttpServer) {
+  if (runtime.startsWith("JAVA_MAVEN") && (staticHttpServer || mavenWar)) {
     return buildMavenWarDockerfile(configuration);
   }
 

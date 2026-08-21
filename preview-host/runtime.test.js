@@ -75,6 +75,19 @@ test("localiza automaticamente um projeto PHP em subpasta", () => {
   assert.match(result, /cd \\"\$project_dir\\"; php -S/);
 });
 
+test("não executa Composer quando a branch não possui composer.json", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "PHP",
+    workingDirectory: ".",
+    installCommand: "composer install --no-interaction",
+    buildCommand: null,
+    previewCommand: "php -S 127.0.0.1:$PORT",
+    port: 8000,
+  });
+
+  assert.match(result, /if \[ -z \\"\$entry\\" \]; then echo \\"Composer ignorado: a branch não possui composer\.json\\"; exit 0; fi/);
+});
+
 test("gera ambiente ASP.NET Core com a versão detectada do SDK", () => {
   const result = buildPreviewDockerfile({
     runtime: "DOTNET_8",
@@ -193,6 +206,21 @@ test("compila e publica o WAR completo quando um projeto Maven tinha fallback es
   assert.match(result, /port="3000"/);
   assert.match(result, /CMD \["catalina\.sh","run"\]/);
   assert.doesNotMatch(result, /python3 -m http\.server/);
+});
+
+test("compila e publica o WAR a partir do plano detectado na branch", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "JAVA_MAVEN",
+    workingDirectory: "sistema-web",
+    buildCommand: "(cd sistema-web && mvn -B -DskipTests package)",
+    previewCommand: "(cd sistema-web && __MAVEN_WAR__)",
+    port: 8080,
+  });
+
+  assert.match(result, /^FROM maven:3\.8\.8-eclipse-temurin-8 AS build/m);
+  assert.match(result, /^FROM tomcat:9\.0-jdk8-temurin/m);
+  assert.match(result, /CMD \["catalina\.sh","run"\]/);
+  assert.doesNotMatch(result, /__MAVEN_WAR__/);
 });
 
 test("compila Maven no diretório detectado sem perder a publicação do WAR", () => {

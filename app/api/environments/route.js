@@ -11,7 +11,7 @@ import { ACTIVE_ENVIRONMENT_STATUSES, environmentExpirationDate } from "../../..
 import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../lib/github";
 import { getGlobalSettings } from "../../../lib/global-settings";
 import { createDashboardiaPreview, dashboardiaPreviewConfigured } from "../../../lib/preview-host-client";
-import { applyDetectedRuntime, applyWorkingDirectory, detectGitHubProjectRuntime, detectedRuntimeReplacesConfiguration, mavenBuildCommandInRepository } from "../../../lib/project-runtime";
+import { detectGitHubProjectRuntime, environmentRuntimeConfiguration, mavenBuildCommandInRepository } from "../../../lib/project-runtime";
 import { devEnvironmentInputSchema } from "../../../lib/validation";
 
 export async function POST(request) {
@@ -36,11 +36,8 @@ export async function POST(request) {
     const token = await getProjectGitHubAccessToken(project, user.id);
     await verifyRepositoryBranch(token, project.repositoryFullName, input.branchName);
     const detected = await detectGitHubProjectRuntime(token, project.repositoryFullName, input.branchName);
-    const replaceExisting = detectedRuntimeReplacesConfiguration(project, detected);
-    const workingDirectory = replaceExisting
-      ? detected.workingDirectory ?? "."
-      : project.workingDirectory !== "." ? project.workingDirectory : detected.workingDirectory ?? ".";
-    const configuration = applyDetectedRuntime(applyWorkingDirectory(project, workingDirectory), detected, { replaceExisting });
+    const workingDirectory = detected.workingDirectory ?? ".";
+    const configuration = environmentRuntimeConfiguration(project, detected);
     if (detected.runtime.startsWith("JAVA_MAVEN")) {
       configuration.buildCommand = mavenBuildCommandInRepository(configuration.buildCommand, workingDirectory);
     }
