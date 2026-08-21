@@ -123,26 +123,49 @@ function demoAccessContract(files) {
   }
 }
 
-function relativeCommandPrefix(filePath, workingDirectory) {
+function packageJsonMetadata(file) {
+  if (path.basename(file.path) !== "package.json") return null;
+  try {
+    return JSON.parse(file.content);
+  } catch {
+    return null;
+  }
+}
+
+function rootRelativeNpmCommand(filePath, scriptName) {
   const packageDirectory = path.posix.dirname(filePath.replaceAll("\\", "/"));
-  const normalizedWorkingDirectory = (workingDirectory || ".").replaceAll("\\", "/").replace(/^\.\//, "");
-  const relativeDirectory = path.posix.relative(normalizedWorkingDirectory === "." ? "" : normalizedWorkingDirectory, packageDirectory === "." ? "" : packageDirectory);
-  return relativeDirectory && relativeDirectory !== "." ? ` --prefix ${JSON.stringify(relativeDirectory)}` : "";
+  return packageDirectory && packageDirectory !== "."
+    ? `npm --prefix ${JSON.stringify(packageDirectory)} run ${scriptName}`
+    : `npm run ${scriptName}`;
+}
+
+function packageWithScript(files, scriptName) {
+  return files
+    .map((file) => ({ file, packageJson: packageJsonMetadata(file) }))
+    .filter(({ packageJson }) => packageJson?.scripts?.[scriptName])
+    .sort((left, right) => left.file.path.split("/").length - right.file.path.split("/").length || left.file.path.localeCompare(right.file.path))[0]?.file ?? null;
+}
+
+function normalizedContractSeedCommand(files, seedCommand) {
+  const command = String(seedCommand || "").trim();
+  if (!command) return null;
+  const npmRun = command.match(/^npm(?:\s+--prefix\s+(?:"[^"]+"|'[^']+'|[^\s]+))?\s+run\s+([A-Za-z0-9:_-]+)\s*$/i);
+  if (!npmRun) return command;
+  const packageFile = packageWithScript(files, npmRun[1]);
+  return packageFile ? rootRelativeNpmCommand(packageFile.path, npmRun[1]) : command;
 }
 
 function detectedSeedCommand(files, workingDirectory) {
   for (const file of files.filter((candidate) => path.basename(candidate.path) === "package.json")) {
-    let packageJson;
-    try {
-      packageJson = JSON.parse(file.content);
-    } catch {
-      continue;
-    }
+    const packageJson = packageJsonMetadata(file);
+    if (!packageJson) continue;
     const script = ["seed:demo", "db:seed", "seed", "prisma:seed"].find((name) => packageJson.scripts?.[name]);
-    if (script) return `npm${relativeCommandPrefix(file.path, workingDirectory)} run ${script}`;
+    if (script) return rootRelativeNpmCommand(file.path, script);
     if (packageJson.prisma?.seed) {
-      const prefix = relativeCommandPrefix(file.path, workingDirectory).replace(/^ --prefix /, "");
-      return `${prefix ? `cd ${prefix} && ` : ""}npx prisma db seed`;
+      const packageDirectory = path.posix.dirname(file.path.replaceAll("\\", "/"));
+      return packageDirectory && packageDirectory !== "."
+        ? `cd ${JSON.stringify(packageDirectory)} && npx prisma db seed`
+        : "npx prisma db seed";
     }
   }
   const managePy = files.find((file) => path.basename(file.path) === "manage.py");
@@ -188,7 +211,7 @@ export async function prepareDemoAccess({ sourceDirectory, workingDirectory = ".
         file: contract.file,
         summary: "O contrato de demonstração do projeto foi ativado somente no container temporário.",
       }],
-      seedCommand: contract.seedCommand,
+      seedCommand: normalizedContractSeedCommand(files, contract.seedCommand),
     };
   }
   const source = files.map((file) => file.content).join("\n");
