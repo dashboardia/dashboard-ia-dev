@@ -30,5 +30,5 @@ export default async function EnvironmentsPage({ searchParams }) {
     ? { projectId: requestedProject.id, branchName: query.branch }
     : null;
 
-  return <AppShell user={user}><div className="section-page"><SectionHeader eyebrow="DOCKER · CONTABO" title="Ambientes" description="Suba uma branch do cliente em um container isolado, sem vincular o ambiente à execução de uma demanda." /><EnvironmentsClient initialProjects={projects} initialEnvironments={environments} initialSelection={initialSelection} /></div></AppShell>;
+  return <AppShell user={user}><div className="section-page"><SectionHeader eyebrow="DOCKER" title="Ambientes" description="Suba uma branch do cliente em um container isolado, sem vincular o ambiente à execução de uma demanda." /><EnvironmentsClient initialProjects={projects} initialEnvironments={environments} initialSelection={initialSelection} /></div></AppShell>;
 }

@@ -8,6 +8,7 @@ import { auditData } from "../../../lib/audit";
 import { refundFixedCredits, reserveFixedProjectCredits } from "../../../lib/billing";
 import { db } from "../../../lib/db";
 import { ACTIVE_ENVIRONMENT_STATUSES, environmentExpirationDate } from "../../../lib/dev-environments";
+import { detectEnvironmentRuntimeLabel } from "../../../lib/environment-runtime-label";
 import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../lib/github";
 import { getGlobalSettings } from "../../../lib/global-settings";
 import { assertOperationalAccess } from "../../../lib/operational-access";
@@ -38,13 +39,14 @@ export async function POST(request) {
     const token = await getProjectGitHubAccessToken(project, user.id);
     await verifyRepositoryBranch(token, project.repositoryFullName, input.branchName);
     const detected = await detectGitHubProjectRuntime(token, project.repositoryFullName, input.branchName);
+    const runtimeLabel = await detectEnvironmentRuntimeLabel(token, project.repositoryFullName, input.branchName, detected.runtime);
     const workingDirectory = detected.workingDirectory ?? ".";
     const configuration = environmentRuntimeConfiguration(project, detected);
     if (detected.runtime.startsWith("JAVA_MAVEN")) {
       configuration.buildCommand = mavenBuildCommandInRepository(configuration.buildCommand, workingDirectory);
     }
     if (!configuration.previewCommand || !configuration.previewPort) {
-      return NextResponse.json({ error: `A stack ${detected.runtime} foi detectada, mas não há comando de inicialização. Configure o projeto antes de subir o ambiente.` }, { status: 422 });
+      return NextResponse.json({ error: `A stack ${runtimeLabel} foi detectada, mas não há comando de inicialização. Configure o projeto antes de subir o ambiente.` }, { status: 422 });
     }
 
     environment = await db.devEnvironment.create({
@@ -52,7 +54,7 @@ export async function POST(request) {
         projectId: project.id,
         requestedById: user.id,
         branchName: input.branchName,
-        runtime: detected.runtime,
+        runtime: runtimeLabel,
         port: configuration.previewPort,
         creditCost: settings.environmentCreditCost,
         expiresAt: environmentExpirationDate(settings.environmentTtlMinutes),
@@ -77,6 +79,7 @@ export async function POST(request) {
       archive,
       configuration: {
         runtime: detected.runtime,
+        displayRuntime: runtimeLabel,
         workingDirectory: configuration.workingDirectory,
         installCommand: configuration.installCommand,
         buildCommand: configuration.buildCommand,
@@ -94,7 +97,7 @@ export async function POST(request) {
       data: { externalId: remote.id, status: remote.status, activity: remote.activity, requestedAt: new Date() },
     });
     await db.auditLog.create({
-      data: auditData({ actorId: user.id, projectId: project.id, action: "environment.create", entityType: "DevEnvironment", entityId: environment.id, metadata: { branchName: input.branchName, runtime: detected.runtime, creditCost: settings.environmentCreditCost }, request }),
+      data: auditData({ actorId: user.id, projectId: project.id, action: "environment.create", entityType: "DevEnvironment", entityId: environment.id, metadata: { branchName: input.branchName, runtime: runtimeLabel, buildRuntime: detected.runtime, creditCost: settings.environmentCreditCost }, request }),
     });
     return NextResponse.json({ environment }, { status: 202 });
   } catch (error) {
