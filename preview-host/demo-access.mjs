@@ -155,6 +155,23 @@ function normalizedContractSeedCommand(files, seedCommand) {
   return packageFile ? rootRelativeNpmCommand(packageFile.path, npmRun[1]) : command;
 }
 
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'"'"'`)}'`;
+}
+
+function bestEffortSeedCommand(command) {
+  const normalized = String(command || "").trim();
+  if (!normalized) return null;
+  const warning = "Dashboardia: a massa de demonstração não pôde ser concluída; o ambiente continuará disponível sem bloquear a publicação.";
+  return [
+    "export DASHBOARDIA_SEED_MODE=true",
+    "export PORT=0",
+    "export HOST=127.0.0.1",
+    "export HOSTNAME=127.0.0.1",
+    `timeout 45s /bin/sh -lc ${shellQuote(normalized)} || { status=$?; echo ${shellQuote(warning)} >&2; exit 0; }`,
+  ].join("; ");
+}
+
 function detectedSeedCommand(files, workingDirectory) {
   for (const file of files.filter((candidate) => path.basename(candidate.path) === "package.json")) {
     const packageJson = packageJsonMetadata(file);
@@ -211,7 +228,7 @@ export async function prepareDemoAccess({ sourceDirectory, workingDirectory = ".
         file: contract.file,
         summary: "O contrato de demonstração do projeto foi ativado somente no container temporário.",
       }],
-      seedCommand: normalizedContractSeedCommand(files, contract.seedCommand),
+      seedCommand: bestEffortSeedCommand(normalizedContractSeedCommand(files, contract.seedCommand)),
     };
   }
   const source = files.map((file) => file.content).join("\n");
@@ -222,7 +239,7 @@ export async function prepareDemoAccess({ sourceDirectory, workingDirectory = ".
   const seedKeys = referencedKeys(source, SEED_KEYS);
   const authSecretKeys = referencedKeys(source, AUTH_SECRET_KEYS);
   const environment = {};
-  const seedCommand = detectedSeedCommand(files, workingDirectory);
+  const seedCommand = bestEffortSeedCommand(detectedSeedCommand(files, workingDirectory));
 
   for (const key of userKeys) environment[key] = credentials.username;
   for (const key of emailKeys) environment[key] = credentials.email;

@@ -53,7 +53,9 @@ test("ativa o contrato obrigatório de acesso demonstrativo do Dashboardia", asy
     });
     assert.equal(result.credentials.status, "READY");
     assert.equal(result.credentials.source, ".dashboardia/demo-access.json");
-    assert.equal(result.seedCommand, "java -jar tools/demo-seed.jar");
+    assert.match(result.seedCommand, /PORT=0/);
+    assert.match(result.seedCommand, /timeout 45s/);
+    assert.match(result.seedCommand, /java -jar tools\/demo-seed\.jar/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -160,7 +162,9 @@ test("detecta e prepara o comando de seed de um monorepo Node", async () => {
       workingDirectory: ".",
       credentials: { username: "demo", email: "demo@example.test", password: "Safe-123" },
     });
-    assert.equal(result.seedCommand, "npm --prefix \"backend\" run seed:demo");
+    assert.match(result.seedCommand, /PORT=0/);
+    assert.match(result.seedCommand, /npm --prefix "backend" run seed:demo/);
+    assert.match(result.seedCommand, /ambiente continuará disponível sem bloquear a publicação/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
