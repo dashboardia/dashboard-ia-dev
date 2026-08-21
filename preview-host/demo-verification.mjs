@@ -84,16 +84,42 @@ function diagnosticStatus(responses) {
   return `HTTP ${[...new Set(statuses)].join("/")}`;
 }
 
-export async function verifyOrCreateDemoAccess({ hostname, port, credentials }) {
+function technicalDiagnostic(responses) {
+  return responses.map((response) => [
+    `POST ${response.path}: ${response.status || response.error || "sem resposta"}`,
+    response.body?.trim() || null,
+  ].filter(Boolean).join("\n")).join("\n").slice(-8_000);
+}
+
+async function attemptLoginWithRetries({ hostname, port, credentials, attempts, retryDelayMs }) {
+  const responses = [];
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = await attemptRequests({
+      hostname,
+      port,
+      paths: LOGIN_PATHS,
+      payloads: loginPayloads(credentials),
+    });
+    responses.push(...result.responses);
+    if (result.success) return { success: result.success, responses };
+    const transientFailure = result.responses.some((response) => response.status === 0 || response.status >= 500);
+    if (!transientFailure || attempt === attempts) break;
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+  }
+  return { success: null, responses };
+}
+
+export async function verifyOrCreateDemoAccess({ hostname, port, credentials, loginAttempts = 3, retryDelayMs = 1_500 }) {
   if (!credentials?.username || !credentials?.password) {
     return { verified: false, credentials, diagnostic: null };
   }
 
-  const login = await attemptRequests({
+  const login = await attemptLoginWithRetries({
     hostname,
     port,
-    paths: LOGIN_PATHS,
-    payloads: loginPayloads(credentials),
+    credentials,
+    attempts: loginAttempts,
+    retryDelayMs,
   });
   if (login.success) {
     return {
@@ -115,11 +141,12 @@ export async function verifyOrCreateDemoAccess({ hostname, port, credentials }) 
     payloads: registrationPayloads(credentials),
   });
   if (registration.success) {
-    const retry = await attemptRequests({
+    const retry = await attemptLoginWithRetries({
       hostname,
       port,
-      paths: LOGIN_PATHS,
-      payloads: loginPayloads(credentials),
+      credentials,
+      attempts: loginAttempts,
+      retryDelayMs,
     });
     if (retry.success) {
       return {
@@ -137,6 +164,7 @@ export async function verifyOrCreateDemoAccess({ hostname, port, credentials }) 
   }
 
   const diagnostic = diagnosticStatus([...login.responses, ...registration.responses]);
+  const technical = technicalDiagnostic([...login.responses, ...registration.responses]);
   return {
     verified: false,
     credentials: {
@@ -148,5 +176,6 @@ export async function verifyOrCreateDemoAccess({ hostname, port, credentials }) 
       source: credentials.source ?? null,
     },
     diagnostic,
+    technicalDiagnostic: technical,
   };
 }

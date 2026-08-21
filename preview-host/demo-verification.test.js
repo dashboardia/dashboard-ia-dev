@@ -26,7 +26,7 @@ test("só libera as credenciais depois que a API confirma o login", async () => 
       const payload = JSON.parse(body);
       response.writeHead(request.url === "/api/auth/login" && payload.username === "demo" && payload.senha === "Demo-123!" ? 200 : 404).end("{}");
     });
-  }, (port) => verifyOrCreateDemoAccess({ hostname: "127.0.0.1", port, credentials: credentials() }));
+  }, (port) => verifyOrCreateDemoAccess({ hostname: "127.0.0.1", port, credentials: credentials(), retryDelayMs: 1 }));
 
   assert.equal(result.verified, true);
   assert.equal(result.credentials.password, "Demo-123!");
@@ -47,7 +47,7 @@ test("cria o usuário por uma rota de cadastro e confirma o login", async () => 
         response.writeHead(request.url === "/api/auth/login" ? 401 : 404).end("{}");
       }
     });
-  }, (port) => verifyOrCreateDemoAccess({ hostname: "127.0.0.1", port, credentials: credentials() }));
+  }, (port) => verifyOrCreateDemoAccess({ hostname: "127.0.0.1", port, credentials: credentials(), retryDelayMs: 1 }));
 
   assert.equal(result.verified, true);
   assert.equal(result.credentials.password, "Demo-123!");
@@ -57,10 +57,31 @@ test("não exibe uma senha quando a API retorna erro", async () => {
   const result = await withServer((request, response) => {
     request.resume();
     request.on("end", () => response.writeHead(request.url === "/api/auth/login" ? 500 : 404).end("{}"));
-  }, (port) => verifyOrCreateDemoAccess({ hostname: "127.0.0.1", port, credentials: credentials() }));
+  }, (port) => verifyOrCreateDemoAccess({ hostname: "127.0.0.1", port, credentials: credentials(), retryDelayMs: 1 }));
 
   assert.equal(result.verified, false);
   assert.equal(result.credentials.status, "VERIFICATION_FAILED");
   assert.equal(result.credentials.password, null);
   assert.match(result.credentials.message, /HTTP 500\/404/);
+  assert.match(result.technicalDiagnostic, /POST \/api\/auth\/login: 500/);
+});
+
+test("aguarda o bootstrap concluir quando o primeiro login retorna erro transitório", async () => {
+  let attempts = 0;
+  const result = await withServer((request, response) => {
+    request.resume();
+    request.on("end", () => {
+      if (request.url !== "/api/auth/login") return response.writeHead(404).end("{}");
+      attempts += 1;
+      return response.writeHead(attempts <= 4 ? 500 : 200).end("{}");
+    });
+  }, (port) => verifyOrCreateDemoAccess({
+    hostname: "127.0.0.1",
+    port,
+    credentials: credentials(),
+    retryDelayMs: 1,
+  }));
+
+  assert.equal(result.verified, true);
+  assert.ok(attempts >= 5);
 });

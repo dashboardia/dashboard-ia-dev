@@ -348,13 +348,32 @@ async function deployPreview(id, configuration) {
         }
         if (configuration.demoAccessCredentials?.password) {
           await recordActivity(id, "verifying-demo-access", "Validando o acesso de demonstração pela API do ambiente");
+          const preparedCredentials = configuration.demoAccessCredentials;
           const verification = await verifyOrCreateDemoAccess({
             hostname: previewContainerName(id),
             port: configuration.port,
-            credentials: configuration.demoAccessCredentials,
+            credentials: preparedCredentials,
           });
-          configuration.demoAccessCredentials = verification.credentials;
           if (!verification.verified) {
+            const logs = await docker(["logs", "--tail", "240", previewContainerName(id)]).catch(() => ({ stdout: "", stderr: "" }));
+            const runtimeOutput = [verification.technicalDiagnostic, logs.stdout, logs.stderr].filter(Boolean).join("\n");
+            if (attempt < maximumRuntimeAttempts) {
+              const runtimeAdjustments = await applyKnownRuntimeRepairs({ sourceDirectory, runtimeOutput });
+              if (runtimeAdjustments.length) {
+                const currentState = await readState(id).catch(() => null);
+                await patchState(id, {
+                  status: "BUILDING",
+                  adjustments: [...(currentState?.adjustments ?? []), ...runtimeAdjustments],
+                  error: null,
+                });
+                await recordActivity(id, "repairing-demo-access", `Corrigindo a autenticação demonstrativa (tentativa ${attempt + 1}/${maximumRuntimeAttempts})`);
+                await removeRuntime(id);
+                await recordActivity(id, "building-demo-access", "Reconstruindo o ambiente para validar novamente o login");
+                await buildPreviewImage(id, buildFile, sourceDirectory, configuration.runtime);
+                continue;
+              }
+            }
+            configuration.demoAccessCredentials = verification.credentials;
             const currentState = await readState(id).catch(() => null);
             await patchState(id, {
               adjustments: [...(currentState?.adjustments ?? []), {
@@ -365,6 +384,7 @@ async function deployPreview(id, configuration) {
             });
             await recordActivity(id, "verifying-demo-access", "A API não confirmou as credenciais demonstrativas", "FAILED");
           } else {
+            configuration.demoAccessCredentials = verification.credentials;
             await recordActivity(id, "verifying-demo-access", "Acesso de demonstração criado e validado", "COMPLETED");
           }
         }
