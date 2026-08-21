@@ -2,6 +2,7 @@ import { CalendarDays, Check, ChevronDown, Coins, CreditCard, FolderGit2, Gauge,
 import Link from "next/link";
 
 import AppShell from "../../components/app-shell";
+import AutoRefresh from "../../components/auto-refresh";
 import SectionHeader from "../../components/section-header";
 import { getBillingOverview } from "../../lib/billing";
 import { formatPlanPrice, listBillingPlans, listCreditPacks, planChangeKind, planIsPaid } from "../../lib/billing-plans";
@@ -92,8 +93,17 @@ export default async function BillingPage({ searchParams }) {
   const configuration = getConfigurationStatus();
   const endDate = account.plan === "TRIAL" ? account.trialEndsAt : account.cycleEndsAt;
   const remainingDays = daysRemaining(endDate);
-  const awaitingCheckoutConfirmation = params?.checkout === "success"
-    && !(account.status === "ACTIVE" && paidAccount);
+  const callbackOrder = typeof params?.order === "string" ? await db.billingCheckout.findFirst({
+    where: { id: params.order, accountId: account.id },
+    select: { status: true, kind: true },
+  }) : null;
+  const checkoutReturn = ["success", "plan", "credits"].includes(params?.checkout);
+  const awaitingCheckoutConfirmation = checkoutReturn && (callbackOrder
+    ? callbackOrder.status === "PENDING"
+    : !(account.status === "ACTIVE" && paidAccount));
+  const checkoutConfirmed = checkoutReturn && (callbackOrder
+    ? callbackOrder.status === "PAID"
+    : account.status === "ACTIVE" && paidAccount);
   const usageByDemand = reservations.reduce((usage, reservation) => {
     const demand = reservation.execution.demand;
     const current = usage.get(demand.id) ?? {
@@ -121,10 +131,11 @@ export default async function BillingPage({ searchParams }) {
   const consumedCredits = Math.abs(consumedSummary._sum.amount ?? 0);
 
   return <AppShell user={user}><div className="section-page billing-page">
+    <AutoRefresh active={awaitingCheckoutConfirmation} interval={3000} showIndicator={false} />
     <SectionHeader eyebrow="ASSINATURA" title="Plano e créditos" description="Controle de acesso, saldo de créditos e cobrança do Dashboard IA." />
     {params?.welcome === "1" && <div className="billing-notice success"><ShieldCheck size={18} /><span><strong>Seu teste de 7 dias começou.</strong> Você recebeu 300 créditos e pode conectar 1 projeto sem informar cartão.</span></div>}
     {awaitingCheckoutConfirmation && <div className="billing-notice"><CreditCard size={18} /><span><strong>Confirmando pagamento.</strong> Esta página será atualizada automaticamente após a confirmação segura do Asaas.</span></div>}
-    {params?.checkout === "success" && !awaitingCheckoutConfirmation && <div className="billing-notice success"><ShieldCheck size={18} /><span><strong>Pagamento confirmado.</strong> Seu plano já está ativo.</span></div>}
+    {checkoutConfirmed && <div className="billing-notice success"><ShieldCheck size={18} /><span><strong>Pagamento confirmado.</strong> {callbackOrder?.kind === "CREDIT_PACK" || params?.checkout === "credits" ? "Os créditos foram adicionados ao seu saldo." : "Seu plano já está ativo."}</span></div>}
     {pendingPlan && <div className="billing-notice"><CalendarDays size={18} /><span><strong>Troca de plano agendada.</strong> O plano {pendingPlan.name} entra em vigor no próximo ciclo confirmado.</span></div>}
     {!configuration.asaas && user.globalRole !== "ADMIN" && <div className="billing-notice warning"><span><strong>Checkout em configuração.</strong> O administrador precisa informar as variáveis do Asaas antes das contratações.</span></div>}
 
@@ -142,7 +153,7 @@ export default async function BillingPage({ searchParams }) {
       <article className="billing-plan custom"><span className="plan-name">Sob medida</span><strong>Comercial</strong><ul><li><Check size={15} />Limites personalizados</li><li><Check size={15} />Volume e operação dedicados</li><li><Check size={15} />Acompanhamento comercial</li></ul>{configuration.asaas && process.env.BILLING_CONTACT_URL ? <a className="secondary-button" href={process.env.BILLING_CONTACT_URL}>Falar sobre o plano</a> : <span className="current-plan-label">Fale com o administrador</span>}</article>
     </div></section>
 
-    {account.status === "ACTIVE" && paidAccount && <section className="billing-section"><div className="card-heading"><div><h2>Créditos adicionais</h2><p>Pacotes definidos no catálogo; o saldo comprado é somado ao atual.</p></div><Coins size={20} /></div><div className="credit-pack-grid">{creditPacks.map((pack) => <article key={pack.code}><strong>{pack.credits.toLocaleString("pt-BR")}</strong><span>créditos · válidos por {pack.validityMonths} meses</span><em>{formatPlanPrice(pack.priceCents)}</em><CheckoutButton kind="CREDIT_PACK" value={pack.code} disabled={!configuration.asaas}>Comprar</CheckoutButton></article>)}</div></section>}
+    {user.globalRole !== "ADMIN" && <section className="billing-section"><div className="card-heading"><div><h2>Recarga avulsa via Pix</h2><p>Não exige plano ativo. Os créditos comprados são somados ao saldo e, sem assinatura, seguem os limites do acesso gratuito.</p></div><Coins size={20} /></div><div className="credit-pack-grid">{creditPacks.map((pack) => <article key={pack.code}><strong>{pack.credits.toLocaleString("pt-BR")}</strong><span>créditos · válidos por {pack.validityMonths} meses</span><em>{formatPlanPrice(pack.priceCents)}</em><CheckoutButton kind="CREDIT_PACK" value={pack.code} disabled={!configuration.asaas}>Recarregar via Pix</CheckoutButton></article>)}</div></section>}
 
     <details className="billing-section billing-collapsible billing-history"><summary className="billing-collapsible-header"><span><CalendarDays size={20} /></span><div><h2>Movimentações</h2><p>Histórico auditável de concessões, reservas, consumo e devoluções.</p></div><ChevronDown size={18} /></summary><div className="billing-collapsible-content">{transactions.map((transaction) => <span key={transaction.id}><time>{formatDateTime(transaction.createdAt, settings.timeZone)}</time><strong>{transaction.description || transaction.type}</strong><em className={transaction.amount < 0 ? "negative" : "positive"}>{transaction.amount > 0 ? "+" : ""}{transaction.amount} créditos</em></span>)}{!transactions.length && <p className="list-empty">Nenhuma movimentação registrada.</p>}</div></details>
 

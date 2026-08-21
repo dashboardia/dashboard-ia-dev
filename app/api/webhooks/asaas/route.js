@@ -80,6 +80,9 @@ async function processPaymentEvent(transaction, payload) {
     ? await transaction.billingAccount.findFirst({ where: { OR: accountFilters } })
     : null;
   if (!account) return;
+  // Recargas avulsas por Pix são liquidadas pelo CHECKOUT_PAID. Um pagamento
+  // destacado nunca deve reativar a assinatura anterior da conta.
+  if (!payment.subscription) return;
   if (!account.providerSubscriptionId && payment.subscription) {
     await transaction.billingAccount.update({ where: { id: account.id }, data: { providerSubscriptionId: payment.subscription } });
   }

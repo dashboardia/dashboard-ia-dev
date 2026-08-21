@@ -20,9 +20,6 @@ export async function POST(request) {
     if (input.kind === "PLAN" && account.status === "ACTIVE" && planIsPaid(currentPlan)) {
       throw new BillingAccessError("Já existe uma assinatura ativa. Cancele a renovação atual antes de contratar outro plano.", 409, "ACTIVE_SUBSCRIPTION");
     }
-    if (input.kind === "CREDIT_PACK" && account.status !== "ACTIVE") {
-      throw new BillingAccessError("Créditos adicionais exigem uma assinatura Studio ou Agência ativa.");
-    }
     const plan = input.kind === "PLAN" ? await findBillingPlan(input.plan) : null;
     const pack = input.kind === "CREDIT_PACK" ? await findCreditPack(input.pack) : null;
     if (input.kind === "PLAN" && (!planIsPaid(plan) || !plan.active || !plan.public)) throw new BillingAccessError("Este plano não está disponível para contratação.", 404, "PLAN_UNAVAILABLE");
