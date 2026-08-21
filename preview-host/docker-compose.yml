@@ -2,6 +2,7 @@ services:
   preview-host:
     container_name: dashboardia-preview-host
     build: .
+    image: dashboardia-preview-host:local
     restart: unless-stopped
     environment:
       PORT: "8080"
@@ -19,6 +20,27 @@ services:
     networks:
       - public
       - preview
+
+  validation-host:
+    container_name: dashboardia-validation-host
+    image: dashboardia-preview-host:local
+    command: ["node", "validation-server.mjs"]
+    restart: unless-stopped
+    depends_on:
+      - preview-host
+    environment:
+      PORT: "8081"
+      PREVIEW_HOST_TOKEN: ${PREVIEW_HOST_TOKEN}
+      VALIDATION_DATA_DIRECTORY: /var/lib/dashboardia-validations
+      VALIDATION_MAX_ARCHIVE_MB: ${VALIDATION_MAX_ARCHIVE_MB:-64}
+      VALIDATION_MAX_PARALLEL: ${VALIDATION_MAX_PARALLEL:-2}
+      VALIDATION_RETENTION_HOURS: ${VALIDATION_RETENTION_HOURS:-24}
+      VALIDATION_MAX_OUTPUT_KB: ${VALIDATION_MAX_OUTPUT_KB:-96}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - validation-data:/var/lib/dashboardia-validations
+    networks:
+      - public
 
   caddy:
     image: caddy:2.10-alpine
@@ -47,5 +69,6 @@ networks:
 
 volumes:
   preview-data:
+  validation-data:
   caddy-data:
   caddy-config:
