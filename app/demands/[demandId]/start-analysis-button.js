@@ -22,7 +22,7 @@ export default function StartAnalysisButton({ demandId }) {
     if (!response.ok) {
       if (data.code === "EMPTY_PROJECT_BRANCH") {
         setEmptyRepository(true);
-        setError("A branch está sem código. Confirme abaixo para o Dashboardia criar o projeto completo do zero.");
+        setError("Esta branch está vazia. Para continuar, confirme a criação do projeto a partir desta branch.");
       } else setError(data.error ?? "Não foi possível enfileirar a execução");
       setLoading(false);
       return;
@@ -31,5 +31,13 @@ export default function StartAnalysisButton({ demandId }) {
     setLoading(false);
   }
 
-  return <div className="action-stack"><button className="primary" type="button" onClick={start} disabled={loading}>{loading ? <LoaderCircle className="spin" size={15} /> : emptyRepository ? <FolderPlus size={15} /> : <Sparkles size={15} />} {loading ? "Enfileirando..." : emptyRepository ? "Criar projeto do zero" : "Iniciar execução"}</button>{error && <small className="inline-error">{error}</small>}</div>;
+  return (
+    <div className="action-stack">
+      {error && <small className="inline-error">{error}</small>}
+      <button className="primary" type="button" onClick={start} disabled={loading}>
+        {loading ? <LoaderCircle className="spin" size={15} /> : emptyRepository ? <FolderPlus size={15} /> : <Sparkles size={15} />}
+        {loading ? "Enfileirando..." : emptyRepository ? "Confirmar criação do projeto" : "Iniciar execução"}
+      </button>
+    </div>
+  );
 }
