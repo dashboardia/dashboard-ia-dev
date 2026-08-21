@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
-import { asaasCheckoutLookup } from "../../../../lib/asaas-webhook";
+import { asaasCheckoutCustomerId, asaasCheckoutLookup } from "../../../../lib/asaas-webhook";
 import { activatePlan, addMonths, grantCredits } from "../../../../lib/billing";
 import { db } from "../../../../lib/db";
 import { env } from "../../../../lib/env";
@@ -32,7 +32,7 @@ async function processCheckoutEvent(transaction, payload) {
   }
   if (payload.event !== "CHECKOUT_PAID") return { action: "checkout_ignored", checkoutId: order.id };
 
-  const providerCustomerId = payload.checkout?.customer || null;
+  const providerCustomerId = asaasCheckoutCustomerId(payload);
   const providerSubscriptionId = payload.checkout?.subscription?.id || payload.checkout?.subscriptionId || null;
   if (order.kind === "PLAN") {
     const planIsActive = order.account.status === "ACTIVE" && order.account.plan === order.targetPlan;
@@ -80,8 +80,6 @@ async function processPaymentEvent(transaction, payload) {
     ? await transaction.billingAccount.findFirst({ where: { OR: accountFilters } })
     : null;
   if (!account) return;
-  // Recargas avulsas por Pix são liquidadas pelo CHECKOUT_PAID. Um pagamento
-  // destacado nunca deve reativar a assinatura anterior da conta.
   if (!payment.subscription) return;
   if (!account.providerSubscriptionId && payment.subscription) {
     await transaction.billingAccount.update({ where: { id: account.id }, data: { providerSubscriptionId: payment.subscription } });
@@ -118,8 +116,6 @@ export async function POST(request) {
       const existing = await transaction.billingWebhookEvent.findUnique({
         where: { provider_providerEventId: { provider: "ASAAS", providerEventId: payload.id } },
       });
-      // Eventos de checkout sao idempotentes pelo status do pedido e podem ser
-      // reenviados para recuperar uma conciliacao que ocorreu antes da correcao.
       if (existing?.processedAt && !payload.event.startsWith("CHECKOUT_")) return { action: "event_deduplicated" };
       const event = existing || await transaction.billingWebhookEvent.create({
         data: { provider: "ASAAS", providerEventId: payload.id, eventType: payload.event, payload },
