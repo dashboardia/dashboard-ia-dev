@@ -27,12 +27,11 @@ export function isTransientDockerError(error) {
   return TRANSIENT_DOCKER_ERRORS.some((pattern) => pattern.test(output));
 }
 
-export function railpackPrepareArguments({ sourceDirectory, planFile, infoFile, rustProject = false }) {
+export function railpackPrepareArguments({ sourceDirectory, planFile, infoFile }) {
   return [
     "prepare",
     "--plan-out", planFile,
     "--info-out", infoFile,
-    ...(rustProject ? ["--env", "RAILPACK_RUST_VERSION=1.89"] : []),
     sourceDirectory,
   ];
 }

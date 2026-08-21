@@ -25,6 +25,7 @@ import { applyKnownBuildRepairs } from "./build-repairs.mjs";
 import { prepareDemoAccess } from "./demo-access.mjs";
 import { verifyOrCreateDemoAccess } from "./demo-verification.mjs";
 import { applyKnownRuntimeRepairs } from "./runtime-repairs.mjs";
+import { ensureRustToolchainVersion } from "./railpack.mjs";
 import { expectedRepositoryPaths, normalizeExtractedRepository } from "./archive.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -133,8 +134,8 @@ async function buildPreviewImage(id, buildFile, sourceDirectory, runtime) {
       if (runtime === "RAILPACK") {
         const planFile = path.join(path.dirname(buildFile), "railpack-plan.json");
         const infoFile = path.join(path.dirname(buildFile), "railpack-info.json");
-        const rustProject = await readFile(path.join(sourceDirectory, "Cargo.toml"), "utf8").then(() => true).catch(() => false);
-        await execFile("railpack", railpackPrepareArguments({ sourceDirectory, planFile, infoFile, rustProject }), {
+        await ensureRustToolchainVersion(sourceDirectory);
+        await execFile("railpack", railpackPrepareArguments({ sourceDirectory, planFile, infoFile }), {
           timeout: 120_000,
           maxBuffer: 4 * 1024 * 1024,
         });

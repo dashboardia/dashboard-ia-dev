@@ -16,17 +16,15 @@ import {
   validPreviewId,
 } from "./runtime.mjs";
 
-test("fixa Rust moderno no Railpack apenas quando o projeto não declarou outra fonte prioritária", () => {
+test("gera os argumentos do Railpack sem transformar configuração em segredo de build", () => {
   assert.deepEqual(railpackPrepareArguments({
     sourceDirectory: "/tmp/source",
     planFile: "/tmp/plan.json",
     infoFile: "/tmp/info.json",
-    rustProject: true,
   }), [
     "prepare",
     "--plan-out", "/tmp/plan.json",
     "--info-out", "/tmp/info.json",
-    "--env", "RAILPACK_RUST_VERSION=1.89",
     "/tmp/source",
   ]);
 });
