@@ -8,6 +8,7 @@ import { db } from "../../../../../lib/db";
 import { env } from "../../../../../lib/env";
 import { queueDemandExecution } from "../../../../../lib/executions";
 import { getProjectGitHubAccessToken, RepositoryBranchContentError, verifyRepositoryProjectBranch } from "../../../../../lib/github";
+import { assertOperationalAccess } from "../../../../../lib/operational-access";
 import { assertPlatformProcessingEnabled } from "../../../../../lib/platform-processing";
 
 export async function POST(request, context) {
@@ -27,6 +28,7 @@ export async function POST(request, context) {
       include: { project: { select: { repositoryFullName: true, defaultBranch: true, githubInstallationId: true } } },
     });
     const { user } = await requireProjectRole(demand.projectId, "MANAGER");
+    assertOperationalAccess(user);
     if (!["APPROVED", "FAILED", "STOPPED"].includes(demand.status)) {
       return NextResponse.json({ error: "A demanda precisa estar aprovada para entrar na fila" }, { status: 409 });
     }

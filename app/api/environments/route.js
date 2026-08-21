@@ -10,6 +10,7 @@ import { db } from "../../../lib/db";
 import { ACTIVE_ENVIRONMENT_STATUSES, environmentExpirationDate } from "../../../lib/dev-environments";
 import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../lib/github";
 import { getGlobalSettings } from "../../../lib/global-settings";
+import { assertOperationalAccess } from "../../../lib/operational-access";
 import { createDashboardiaPreview, dashboardiaPreviewConfigured } from "../../../lib/preview-host-client";
 import { detectGitHubProjectRuntime, environmentRuntimeConfiguration, mavenBuildCommandInRepository } from "../../../lib/project-runtime";
 import { devEnvironmentInputSchema } from "../../../lib/validation";
@@ -22,6 +23,7 @@ export async function POST(request) {
     if (!dashboardiaPreviewConfigured()) return NextResponse.json({ error: "O host Docker de ambientes ainda não está configurado" }, { status: 503 });
     const input = devEnvironmentInputSchema.parse(await request.json());
     const { user } = await requireProjectRole(input.projectId, "MANAGER");
+    assertOperationalAccess(user);
     const [project, settings] = await Promise.all([
       db.project.findUniqueOrThrow({ where: { id: input.projectId } }),
       getGlobalSettings(),
