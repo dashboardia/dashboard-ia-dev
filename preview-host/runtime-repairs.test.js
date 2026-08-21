@@ -33,6 +33,36 @@ test("corrige comando de seed Node quando o prefixo aponta para fora do projeto"
   }
 });
 
+test("substitui dotenv ausente por variáveis já injetadas no preview Node", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-runtime-repair-"));
+  const file = path.join(root, "server/index.js");
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, [
+    'import dotenv from "dotenv";',
+    "dotenv.config();",
+    'export const port = process.env.PORT || 3000;',
+  ].join("\n"));
+
+  try {
+    const adjustments = await applyKnownRuntimeRepairs({
+      sourceDirectory: root,
+      runtimeOutput: [
+        "Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'dotenv' imported from /app/server/index.js",
+        "Node.js v22.23.2",
+      ].join("\n"),
+    });
+    const result = await readFile(file, "utf8");
+
+    assert.equal(adjustments.length, 1);
+    assert.equal(adjustments[0].code, "NODE_DOTENV_PREVIEW_ENV");
+    assert.doesNotMatch(result, /from ["']dotenv["']/);
+    assert.match(result, /parsed: process\.env/);
+    assert.match(result, /dotenv\.config\(\)/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("normaliza header Ruby quando Rack 3 rejeita nomes com maiúsculas", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-runtime-repair-"));
   const file = path.join(root, "app.rb");
@@ -49,6 +79,33 @@ test("normaliza header Ruby quando Rack 3 rejeita nomes com maiúsculas", async 
     assert.equal(adjustments[0].code, "RUBY_RACK_LOWERCASE_HEADERS");
     assert.match(result, /"content-type"/);
     assert.doesNotMatch(result, /"Content-Type"/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("usa H2 temporário quando Spring depende de PostgreSQL local indisponível", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-runtime-repair-"));
+  const pom = path.join(root, "pom.xml");
+  await writeFile(pom, [
+    "<project>",
+    "  <parent><artifactId>spring-boot-starter-parent</artifactId></parent>",
+    "  <dependencies></dependencies>",
+    "</project>",
+  ].join("\n"));
+
+  try {
+    const adjustments = await applyKnownRuntimeRepairs({
+      sourceDirectory: root,
+      runtimeOutput: "org.postgresql.util.PSQLException: Connection to localhost:5432 refused",
+    });
+    const pomResult = await readFile(pom, "utf8");
+    const properties = await readFile(path.join(root, "src/main/resources/application.properties"), "utf8");
+
+    assert.equal(adjustments.length, 1);
+    assert.equal(adjustments[0].code, "SPRING_LOCAL_DATABASE_FALLBACK");
+    assert.match(pomResult, /com\.h2database/);
+    assert.match(properties, /jdbc:h2:mem:dashboardia;MODE=PostgreSQL/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
