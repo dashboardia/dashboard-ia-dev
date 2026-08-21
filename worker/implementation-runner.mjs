@@ -37,7 +37,10 @@ process.on("message", async (message) => {
         applyPatchTool({ editor, needsApproval: false }),
       ],
     });
-    const result = await run(agent, message.prompt, {
+    const agentInput = message.attachments?.length
+      ? [{ role: "user", content: [{ type: "input_text", text: message.prompt }, ...message.attachments] }]
+      : message.prompt;
+    const result = await run(agent, agentInput, {
       maxTurns: message.policy?.maxTurns ?? 36,
       signal: controller.signal,
       stream: true,

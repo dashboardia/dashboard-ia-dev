@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { attachmentInputItem } from "../lib/attachment-input.js";
 import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
 import { createGitHubPullRequest, findOpenGitHubPullRequest, getProjectGitHubAccessToken } from "../lib/github.js";
@@ -24,6 +25,7 @@ import { calculateLiveUsageCredits, saveFinancialSnapshot } from "../lib/financi
 import { getExecutionCreditBudget, settleExecutionCredits } from "../lib/billing.js";
 import { getBusinessKnowledgeContext } from "../lib/business-knowledge.js";
 import { repositoryHasUsableProject } from "../lib/repository-content.js";
+import { getPrivateObject } from "../lib/visual-storage.js";
 import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
 import { remoteFetchRefspec, remoteTrackingRef } from "./git-refs.mjs";
 
@@ -95,7 +97,7 @@ async function assertExecutionActive(executionId) {
   if (current?.cancelRequestedAt) throw new ExecutionCancelledError();
 }
 
-function startImplementationAgent({ projectDirectory, prompt, model, policy, creditBudget, creditBudgetContext, creditCostPolicy }) {
+function startImplementationAgent({ projectDirectory, prompt, attachments = [], model, policy, creditBudget, creditBudgetContext, creditCostPolicy }) {
   const child = fork(new URL("./implementation-runner.mjs", import.meta.url), [], {
     env: process.env,
     stdio: ["ignore", "ignore", "pipe", "ipc"],
@@ -122,7 +124,7 @@ function startImplementationAgent({ projectDirectory, prompt, model, policy, cre
       clearTimeout(forceKillTimer);
       if (!settled) reject(new Error(stderr || `O subprocesso do agente foi encerrado (${signal || code})`));
     });
-    child.send({ type: "run", projectDirectory, prompt, model, policy, creditBudget, creditBudgetContext, creditCostPolicy });
+    child.send({ type: "run", projectDirectory, prompt, attachments, model, policy, creditBudget, creditBudgetContext, creditCostPolicy });
   });
 
   return {
@@ -213,7 +215,7 @@ export async function processExecution(executionId, workerId) {
     settings = await getGlobalSettings();
     execution = await db.execution.findUniqueOrThrow({
       where: { id: executionId },
-      include: { demand: { include: { project: true } }, pullRequest: true, financialSnapshot: true, messages: { orderBy: { createdAt: "asc" } } },
+      include: { demand: { include: { project: true } }, pullRequest: true, financialSnapshot: true, messages: { orderBy: { createdAt: "asc" }, include: { attachments: { orderBy: { createdAt: "asc" } } } } },
     });
     inputTokens = Math.max(0, execution.inputTokens ?? 0);
     outputTokens = Math.max(0, execution.outputTokens ?? 0);
@@ -310,8 +312,16 @@ export async function processExecution(executionId, workerId) {
       targetGrossMarginPercent: settings.targetGrossMarginPercent,
     } : null;
     const conversationContext = isFollowUp
-      ? execution.messages.map((message) => `${message.role === "USER" ? "Cliente" : message.role === "AGENT" ? "Agente" : "Sistema"}: ${message.content}`).join("\n\n")
+      ? execution.messages.map((message) => `${message.role === "USER" ? "Cliente" : message.role === "AGENT" ? "Agente" : "Sistema"}: ${message.content}${message.attachments.length ? `\nAnexos: ${message.attachments.map((attachment) => attachment.name).join(", ")}` : ""}`).join("\n\n")
       : "";
+    const latestUserMessage = [...execution.messages].reverse().find((message) => message.role === "USER");
+    const agentAttachments = isFollowUp && latestUserMessage?.attachments.length
+      ? await Promise.all(latestUserMessage.attachments.map(async (attachment) => {
+          const object = await getPrivateObject(attachment.storageKey);
+          const data = await object.Body.transformToByteArray();
+          return attachmentInputItem({ name: attachment.name, mimeType: attachment.mimeType, data });
+        }))
+      : [];
     const agentPrompt = isFollowUp
       ? [
           "Continue a execução já entregue na branch atual e no mesmo Pull Request.",
@@ -324,6 +334,7 @@ export async function processExecution(executionId, workerId) {
     const createImplementationAgent = () => startImplementationAgent({
       projectDirectory,
       prompt: agentPrompt,
+      attachments: agentAttachments,
       model: selectedModel,
       policy: agentPolicy,
       creditBudget,
@@ -400,7 +411,7 @@ export async function processExecution(executionId, workerId) {
     const statusResult = await runProcess("git", ["status", "--porcelain"], { cwd: workspace });
     if (!statusResult.stdout.trim()) {
       if (isFollowUp) {
-        const expiresAt = new Date(Date.now() + settings.executionConversationTimeoutMinutes * 60_000);
+        const expiresAt = new Date(Date.now() + Math.max(24 * 60, settings.executionConversationTimeoutMinutes) * 60_000);
         const finishedAt = new Date();
         await db.$transaction(async (transaction) => {
           await transaction.execution.update({ where: { id: executionId }, data: { status: "AWAITING_CLIENT", stage: "PUBLISH", summary, inputTokens, outputTokens, lockedAt: null, lockedBy: null, conversationExpiresAt: expiresAt, lastInteractionAt: new Date() } });
@@ -642,7 +653,7 @@ export async function processExecution(executionId, workerId) {
           outputTokens,
           lockedAt: null,
           lockedBy: null,
-          conversationExpiresAt: new Date(Date.now() + settings.executionConversationTimeoutMinutes * 60_000),
+          conversationExpiresAt: new Date(Date.now() + Math.max(24 * 60, settings.executionConversationTimeoutMinutes) * 60_000),
           lastInteractionAt: new Date(),
         },
       });

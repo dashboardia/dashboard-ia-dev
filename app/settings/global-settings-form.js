@@ -173,7 +173,7 @@ export default function GlobalSettingsForm({ initialSettings, workerInstances = 
           <label><span>Duração do ambiente (min)</span><input name="environmentTtlMinutes" type="number" min="15" max="1440" value={form.environmentTtlMinutes} onChange={change} /><small>Tempo de vida do container antes da expiração automática.</small></label>
           <label><span>Custo por ambiente (créditos)</span><input name="environmentCreditCost" type="number" min="0" max="100000" value={form.environmentCreditCost} onChange={change} /><small>Valor fixo cobrado ao aceitar uma nova subida.</small></label>
           <label><span>Ambientes por usuário</span><input name="environmentMaxPerUser" type="number" min="1" max="20" value={form.environmentMaxPerUser} onChange={change} /><small>Quantidade máxima de ambientes ativos por usuário.</small></label>
-          <label><span>Inatividade da execução (min)</span><input name="executionConversationTimeoutMinutes" type="number" min="15" max="10080" value={form.executionConversationTimeoutMinutes} onChange={change} /><small>Padrão: 180 minutos antes do encerramento automático.</small></label>
+          <label><span>Inatividade da execução (min)</span><input name="executionConversationTimeoutMinutes" type="number" min="1440" max="10080" value={form.executionConversationTimeoutMinutes} onChange={change} /><small>Mínimo: 1.440 minutos (24 horas) sem interação do usuário.</small></label>
           <label><span>Máximo de ajustes</span><input name="executionConversationMaxAdjustments" type="number" min="1" max="100" value={form.executionConversationMaxAdjustments} onChange={change} /><small>Limite de respostas do cliente dentro da mesma execução.</small></label>
         </div>
       </div>

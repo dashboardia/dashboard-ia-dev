@@ -409,9 +409,23 @@ model ExecutionMessage {
   content     String               @db.Text
   execution   Execution            @relation(fields: [executionId], references: [id], onDelete: Cascade)
   author      User?                @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  attachments ExecutionMessageAttachment[]
   createdAt   DateTime             @default(now())
 
   @@index([executionId, createdAt])
+}
+
+model ExecutionMessageAttachment {
+  id          String           @id @default(cuid())
+  messageId   String
+  name        String
+  mimeType    String
+  sizeBytes   Int
+  storageKey  String           @unique
+  message     ExecutionMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+
+  @@index([messageId])
 }
 
 model PreviewEnvironment {
@@ -806,7 +820,7 @@ model GlobalSettings {
   environmentTtlMinutes               Int      @default(240)
   environmentCreditCost               Int      @default(300)
   environmentMaxPerUser               Int      @default(2)
-  executionConversationTimeoutMinutes Int      @default(180)
+  executionConversationTimeoutMinutes Int      @default(1440)
   executionConversationMaxAdjustments Int      @default(10)
   financialShadowEnabled              Boolean  @default(true)
   usdToBrlCents                       Int      @default(600)

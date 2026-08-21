@@ -57,7 +57,7 @@ export default async function ExecutionPage({ params }) {
       pullRequest: true,
       financialSnapshot: true,
       creditReservation: true,
-      messages: { orderBy: { createdAt: "asc" } },
+      messages: { orderBy: { createdAt: "asc" }, include: { attachments: { orderBy: { createdAt: "asc" } } } },
     },
   });
   if (!execution) notFound();

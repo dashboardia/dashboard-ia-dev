@@ -87,7 +87,7 @@ export async function POST(request, context) {
             lockedBy: null,
             finishedAt: null,
             lastInteractionAt: new Date(),
-            conversationExpiresAt: new Date(Date.now() + settings.executionConversationTimeoutMinutes * 60_000),
+            conversationExpiresAt: new Date(Date.now() + Math.max(24 * 60, settings.executionConversationTimeoutMinutes) * 60_000),
           },
         });
         if (updated.count !== 1) throw new Error("A trava da abertura do Pull Request expirou");
