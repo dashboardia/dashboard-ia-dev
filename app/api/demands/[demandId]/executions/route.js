@@ -28,7 +28,7 @@ export async function POST(request, context) {
       include: { project: { select: { repositoryFullName: true, defaultBranch: true, githubInstallationId: true } } },
     });
     const { user } = await requireProjectRole(demand.projectId, "MANAGER");
-    assertOperationalAccess(user);
+    await assertOperationalAccess(user);
     if (!["APPROVED", "FAILED", "STOPPED"].includes(demand.status)) {
       return NextResponse.json({ error: "A demanda precisa estar aprovada para entrar na fila" }, { status: 409 });
     }
