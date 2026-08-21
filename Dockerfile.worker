@@ -22,9 +22,15 @@ ENV PIP_NO_CACHE_DIR=1
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /ms-playwright /ms-playwright
-COPY --chown=node:node . .
-RUN ./node_modules/.bin/prisma generate
-RUN npx playwright install-deps chromium
+
+# O código da plataforma pertence ao root e fica somente leitura para o usuário
+# do worker. Código de repositórios clientes é manipulado apenas nos workspaces
+# temporários em /tmp, evitando persistência dentro da própria aplicação.
+COPY --chown=root:root . .
+RUN ./node_modules/.bin/prisma generate \
+  && npx playwright install-deps chromium \
+  && chmod -R a-w /app \
+  && chmod -R a+rX /app
 
 USER node
 CMD ["npm", "run", "worker:start"]
