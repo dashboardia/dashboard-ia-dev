@@ -1,0 +1,49 @@
+[data-theme="dark"] .financial-settings {
+  background:#12141a !important;
+  border:1px solid #2a2d36 !important;
+  color:#f5f6fa !important;
+  box-shadow:none !important;
+}
+
+[data-theme="dark"] .financial-settings .card-heading,
+[data-theme="dark"] .financial-settings .card-heading>div {
+  background:transparent !important;
+  color:#f5f6fa !important;
+}
+
+[data-theme="dark"] .financial-settings .card-heading h3,
+[data-theme="dark"] .financial-settings .card-heading h2 {
+  color:#f7f8fb !important;
+}
+
+[data-theme="dark"] .financial-settings .card-heading p {
+  color:#a7abb7 !important;
+}
+
+[data-theme="dark"] .financial-settings .form-grid>label {
+  background:#171920 !important;
+  border-color:#30333d !important;
+  color:#eef0f6 !important;
+}
+
+[data-theme="dark"] .financial-settings .form-grid>label>span {
+  color:#eef0f6 !important;
+}
+
+[data-theme="dark"] .financial-settings .form-grid>label>small {
+  color:#aeb2bf !important;
+}
+
+[data-theme="dark"] .financial-settings input,
+[data-theme="dark"] .financial-settings select,
+[data-theme="dark"] .financial-settings textarea {
+  background:#171920 !important;
+  border-color:#343844 !important;
+  color:#f0f1f5 !important;
+}
+
+[data-theme="dark"] .financial-settings .financial-shadow-toggle {
+  background:#171920 !important;
+  border-color:#343844 !important;
+  color:#eef0f6 !important;
+}

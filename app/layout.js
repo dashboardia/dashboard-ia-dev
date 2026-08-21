@@ -1,6 +1,6 @@
 import "./globals.css";
 import "./preferences.css";
-import "./settings/settings.css";
+import "./settings-theme-fix.css";
 
 export const metadata = {
   title: "Dashboard IA",
