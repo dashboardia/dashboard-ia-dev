@@ -6,6 +6,27 @@ import { test } from "vitest";
 
 import { applyKnownRuntimeRepairs } from "./runtime-repairs.mjs";
 
+test("normaliza header Ruby quando Rack 3 rejeita nomes com maiúsculas", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-runtime-repair-"));
+  const file = path.join(root, "app.rb");
+  await writeFile(file, 'run ->(_env) { [200, { "Content-Type" => "text/html" }, ["ok"]] }\n');
+
+  try {
+    const adjustments = await applyKnownRuntimeRepairs({
+      sourceDirectory: root,
+      runtimeOutput: "Rack::Lint::LintError: uppercase character in header name: Content-Type (Rack::Lint::LintError)",
+    });
+    const result = await readFile(file, "utf8");
+
+    assert.equal(adjustments.length, 1);
+    assert.equal(adjustments[0].code, "RUBY_RACK_LOWERCASE_HEADERS");
+    assert.match(result, /"content-type"/);
+    assert.doesNotMatch(result, /"Content-Type"/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("inicializa datas de auditoria quando o bootstrap Java grava CREATEDAT nulo", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "dashboardia-runtime-repair-"));
   const file = path.join(root, "src/main/java/example/BaseEntity.java");

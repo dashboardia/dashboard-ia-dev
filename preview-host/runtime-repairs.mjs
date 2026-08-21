@@ -30,6 +30,45 @@ function initializeDateField(source, fieldName) {
   return source.replace(pattern, (_, visibility, type, field) => `${visibility}${type}${field} = new ${type}();`);
 }
 
+function escapedPattern(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function repairRubyRackHeaderCase(sourceDirectory, runtimeOutput) {
+  const headerNames = [...String(runtimeOutput || "").matchAll(/uppercase character in header name:\s*([^\s()]+)/gi)]
+    .map((match) => match[1]?.trim())
+    .filter(Boolean);
+  if (!headerNames.length) return [];
+
+  const uniqueHeaders = [...new Set(headerNames)];
+  const adjustments = [];
+  for (const file of await sourceFiles(sourceDirectory, ".rb")) {
+    const metadata = await lstat(file).catch(() => null);
+    if (!metadata?.isFile() || metadata.size > MAX_SOURCE_BYTES) continue;
+    const original = await readFile(file, "utf8");
+    let updated = original;
+    const changedHeaders = [];
+
+    for (const headerName of uniqueHeaders) {
+      const lowerHeader = headerName.toLowerCase();
+      const quotedHeader = new RegExp(`(["'])${escapedPattern(headerName)}\\1`, "g");
+      const next = updated.replace(quotedHeader, (literal, quote) => `${quote}${lowerHeader}${quote}`);
+      if (next !== updated) changedHeaders.push(headerName);
+      updated = next;
+    }
+
+    if (updated === original) continue;
+    await writeFile(file, updated, "utf8");
+    adjustments.push({
+      code: "RUBY_RACK_LOWERCASE_HEADERS",
+      file: path.relative(sourceDirectory, file),
+      summary: `Normalizados headers Rack para minúsculas na cópia temporária (${changedHeaders.join(", ")}) para compatibilidade com Rack 3.`,
+    });
+  }
+
+  return adjustments;
+}
+
 async function repairJavaAuditDates(sourceDirectory, runtimeOutput) {
   if (!/NULL not allowed for column\s+["']?CREATEDAT["']?/i.test(runtimeOutput)) return [];
 
@@ -80,7 +119,7 @@ async function repairSpringRootStaticFallback(sourceDirectory, runtimeOutput) {
   return [];
 }
 
-const REPAIRS = [repairJavaAuditDates, repairSpringRootStaticFallback];
+const REPAIRS = [repairRubyRackHeaderCase, repairJavaAuditDates, repairSpringRootStaticFallback];
 
 export async function applyKnownRuntimeRepairs({ sourceDirectory, runtimeOutput }) {
   const adjustments = [];
