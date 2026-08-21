@@ -23,7 +23,7 @@ export async function POST(request) {
     if (!dashboardiaPreviewConfigured()) return NextResponse.json({ error: "O host Docker de ambientes ainda não está configurado" }, { status: 503 });
     const input = devEnvironmentInputSchema.parse(await request.json());
     const { user } = await requireProjectRole(input.projectId, "MANAGER");
-    assertOperationalAccess(user);
+    await assertOperationalAccess(user);
     const [project, settings] = await Promise.all([
       db.project.findUniqueOrThrow({ where: { id: input.projectId } }),
       getGlobalSettings(),
