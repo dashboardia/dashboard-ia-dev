@@ -204,6 +204,26 @@ function shellQuote(value) {
   return `'${String(value).replaceAll("'", `'"'"'`)}'`;
 }
 
+function nodeDemoDependenciesCommand(configuration) {
+  const runtime = String(configuration.runtime || "");
+  if (!configuration.demoSeedCommand?.trim()) return null;
+  if (!(runtime === "NODE" || runtime.startsWith("MONOREPO_"))) return null;
+
+  return [
+    "set -e",
+    "find . -maxdepth 4 -type f -name package.json -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' -not -path '*/.next/*' -print | sort | while IFS= read -r package_file",
+    "do",
+    "  package_dir=\"$(dirname \"$package_file\")\"",
+    "  if [ -d \"$package_dir/node_modules\" ] && [ -n \"$(find \"$package_dir/node_modules\" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)\" ]; then continue; fi",
+    "  if [ -f \"$package_dir/package-lock.json\" ]; then",
+    "    (cd \"$package_dir\" && npm ci) || (cd \"$package_dir\" && npm install)",
+    "  else",
+    "    (cd \"$package_dir\" && npm install)",
+    "  fi",
+    "done",
+  ].join("\n");
+}
+
 function mavenBuildCommandInRepository(command, workingDirectory = ".") {
   const configured = String(command || "mvn -B -DskipTests package").trim();
   const scoped = configured.match(/^\(cd\s+.+?\s+&&\s+((?:\.\/)?mvn(?:w)?\s+.+)\)$/s);
@@ -339,8 +359,10 @@ export function buildPreviewDockerfile(configuration) {
   const combinedCommand = combinedPreviewCommand(scopedPrimaryCommand, configuration.auxiliaryPreviewCommand, configuration.auxiliaryPreviewPort);
   const previewCommand = needsPython ? withPythonVirtualEnvironment(combinedCommand) : combinedCommand;
   const install = shellInstruction("RUN", staticHttpServer ? null : installCommand);
+  const demoDependencies = shellInstruction("RUN", staticHttpServer ? null : nodeDemoDependenciesCommand(configuration));
   const build = shellInstruction("RUN", staticHttpServer ? null : buildCommand);
   if (install) lines.push(install);
+  if (demoDependencies) lines.push(demoDependencies);
   if (build) lines.push(build);
   lines.push(
     `ENV PORT=${configuration.port}`,
