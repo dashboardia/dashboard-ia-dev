@@ -1,10 +1,15 @@
 import { exec as execCallback, execFile as execFileCallback, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { access, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { applyDiff } from "@openai/agents";
 
+import { db } from "../lib/db.js";
+import { env } from "../lib/env.js";
+import { detectWorkspaceProjectRuntime } from "../lib/project-runtime.js";
 import { redactSensitiveData } from "../lib/redaction.js";
 
 export { redactSensitiveData } from "../lib/redaction.js";
@@ -12,6 +17,8 @@ export { redactSensitiveData } from "../lib/redaction.js";
 const exec = promisify(execCallback);
 const execFile = promisify(execFileCallback);
 const MAX_OUTPUT = 24_000;
+const VALIDATION_TERMINAL_STATUSES = new Set(["SUCCEEDED", "FAILED", "CANCELLED"]);
+const isolatedValidationJobs = new Map();
 
 function truncate(value, limit = MAX_OUTPUT) {
   if (!value) return "";
@@ -248,11 +255,208 @@ async function pythonEnvironment(workspace, command) {
   } : {};
 }
 
+function executionWorkspaceContext(workspace) {
+  const resolved = path.resolve(workspace);
+  const marker = `${path.sep}forgeboard-workspaces${path.sep}`;
+  const markerIndex = resolved.lastIndexOf(marker);
+  if (markerIndex === -1) return null;
+  const suffix = resolved.slice(markerIndex + marker.length);
+  const [executionId] = suffix.split(path.sep);
+  if (!executionId) return null;
+  const repositoryRoot = resolved.slice(0, markerIndex + marker.length + executionId.length);
+  return { executionId, repositoryRoot };
+}
+
+function validationHostUrl(pathname) {
+  if (!env.PREVIEW_HOST_URL || !env.PREVIEW_HOST_TOKEN) {
+    throw new Error("Host de validações isoladas não configurado no worker");
+  }
+  return new URL(pathname, env.PREVIEW_HOST_URL).toString();
+}
+
+async function validationHostRequest(pathname, options = {}) {
+  const response = await fetch(validationHostUrl(pathname), {
+    ...options,
+    signal: AbortSignal.timeout(options.timeoutMs ?? 30_000),
+    headers: {
+      Authorization: `Bearer ${env.PREVIEW_HOST_TOKEN}`,
+      ...options.headers,
+    },
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(result.error ?? `Host de validações respondeu HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return result;
+}
+
+async function cancelIsolatedValidation(job) {
+  if (!job?.id || job.cancelled) return;
+  job.cancelled = true;
+  await validationHostRequest(`/v1/validations/${encodeURIComponent(job.id)}`, {
+    method: "DELETE",
+    timeoutMs: 30_000,
+  }).catch(() => null);
+}
+
+async function createValidationArchive(repositoryRoot, validationId) {
+  const archivePath = path.join(os.tmpdir(), `${validationId}.tar.gz`);
+  await rm(archivePath, { force: true });
+  try {
+    await runProcess("git", ["archive", "--format=tar.gz", "-o", archivePath, "HEAD"], {
+      cwd: repositoryRoot,
+      timeout: 120_000,
+    });
+    return await readFile(archivePath);
+  } finally {
+    await rm(archivePath, { force: true }).catch(() => null);
+  }
+}
+
+function configuredValidationCommands(project, timeoutMs) {
+  const commandTimeoutMs = Math.max(1_000, Math.min(30 * 60_000, Number(timeoutMs) || 10 * 60_000));
+  return [
+    ["install", project.installCommand],
+    ["lint", project.lintCommand],
+    ["test", project.testCommand],
+    ["build", project.buildCommand],
+  ].filter(([, command]) => command?.trim()).map(([scope, command]) => ({
+    scope,
+    command: String(command).trim(),
+    timeoutMs: commandTimeoutMs,
+  }));
+}
+
+async function createIsolatedValidationJob(workspace, timeout, nodeMemoryMb) {
+  const context = executionWorkspaceContext(workspace);
+  if (!context) throw new Error("Não foi possível identificar a execução para validação isolada");
+  const head = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: context.repositoryRoot })).stdout.trim();
+  const key = `${context.executionId}:${head}`;
+  const cached = isolatedValidationJobs.get(key);
+  if (cached) return cached;
+
+  const execution = await db.execution.findUnique({
+    where: { id: context.executionId },
+    include: { demand: { include: { project: true } } },
+  });
+  if (!execution?.demand?.project) throw new Error("Execução não encontrada para validação isolada");
+
+  const commands = configuredValidationCommands(execution.demand.project, timeout);
+  if (!commands.length) throw new Error("Nenhum comando disponível para validação isolada");
+  const detected = await detectWorkspaceProjectRuntime(context.repositoryRoot);
+  const validationId = `validation_${context.executionId.slice(-20).replace(/[^a-zA-Z0-9_-]/g, "")}_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  const archive = await createValidationArchive(context.repositoryRoot, validationId);
+  const configuredMemoryMb = Math.max(256, Math.min(4096, Number(nodeMemoryMb) || 1024));
+  const metadata = Buffer.from(JSON.stringify({
+    runtime: detected.runtime,
+    workingDirectory: execution.demand.project.workingDirectory || ".",
+    commands,
+    memoryMb: configuredMemoryMb,
+    workspaceMb: 2048,
+    cpuLimit: 1,
+    pidsLimit: 256,
+    networkMode: "bridge",
+    stripComponents: 0,
+  })).toString("base64url");
+
+  await validationHostRequest(`/v1/validations/${encodeURIComponent(validationId)}`, {
+    method: "PUT",
+    body: archive,
+    timeoutMs: 90_000,
+    headers: {
+      "Content-Type": "application/gzip",
+      "Content-Length": String(archive.byteLength),
+      "X-Dashboardia-Validation": metadata,
+    },
+  });
+
+  const job = {
+    id: validationId,
+    key,
+    commands,
+    deliveredScopes: new Set(),
+    cancelled: false,
+  };
+  isolatedValidationJobs.set(key, job);
+  return job;
+}
+
+function validationCommandForInvocation(job, command) {
+  return job.commands.find((entry) => entry.command === command.trim() && !job.deliveredScopes.has(entry.scope))
+    ?? job.commands.find((entry) => entry.command === command.trim());
+}
+
+function validationFailure(result, fallbackMessage) {
+  const message = result?.timedOut
+    ? `Comando excedeu o limite de tempo na validação isolada`
+    : fallbackMessage || "A validação isolada falhou";
+  const error = new Error(message);
+  error.code = result?.exitCode ?? (result?.timedOut ? "ETIMEDOUT" : 1);
+  error.killed = Boolean(result?.timedOut);
+  error.stdout = result?.stdout ?? "";
+  error.stderr = result?.stderr ?? message;
+  return error;
+}
+
+async function runIsolatedConfiguredCommand(command, workspace, timeout, signal, nodeMemoryMb) {
+  const job = await createIsolatedValidationJob(workspace, timeout, nodeMemoryMb);
+  const expected = validationCommandForInvocation(job, command);
+  if (!expected) throw new Error(`Comando não pertence ao plano de validação isolada: ${command}`);
+
+  const deadline = Date.now() + Math.max(timeout, 60_000) + 5 * 60_000;
+  while (Date.now() < deadline) {
+    if (signal?.aborted) {
+      await cancelIsolatedValidation(job);
+      const error = new Error("Comando cancelado pelo Gestor");
+      error.killed = true;
+      throw error;
+    }
+
+    const state = await validationHostRequest(`/v1/validations/${encodeURIComponent(job.id)}`);
+    const result = Array.isArray(state.results)
+      ? state.results.find((entry) => entry.scope === expected.scope)
+      : null;
+    if (result) {
+      job.deliveredScopes.add(expected.scope);
+      if (result.status === "PASSED") {
+        return {
+          stdout: truncate(result.stdout, 80_000),
+          stderr: truncate(result.stderr, 80_000),
+        };
+      }
+      throw validationFailure(result, state.error);
+    }
+
+    if (state.status === "CANCELLED") {
+      const error = new Error("Comando cancelado pelo Gestor");
+      error.killed = true;
+      throw error;
+    }
+    if (VALIDATION_TERMINAL_STATUSES.has(state.status)) {
+      throw validationFailure(null, state.error || `A validação ${expected.scope} não produziu resultado`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_250));
+  }
+
+  await cancelIsolatedValidation(job);
+  const error = new Error(`Comando excedeu o limite de ${Math.round(timeout / 60_000)} minutos`);
+  error.code = "ETIMEDOUT";
+  error.killed = true;
+  throw error;
+}
+
 export async function runConfiguredCommand(command, workspace, timeout = 10 * 60_000, signal, nodeMemoryMb) {
   if (!command?.trim()) return null;
   if (/(^|\s)(sudo|su|docker|kubectl|railway|ssh|scp|nc)(\s|$)/.test(command)) {
     throw new Error(`Comando de validação bloqueado: ${command}`);
   }
+
+  if (env.NODE_ENV === "production") {
+    return runIsolatedConfiguredCommand(command, workspace, timeout, signal, nodeMemoryMb);
+  }
+
   const tempDirectory = path.join(workspace, ".tmp");
   await mkdir(tempDirectory, { recursive: true });
   const runtimeEnvironment = await pythonEnvironment(workspace, command);
