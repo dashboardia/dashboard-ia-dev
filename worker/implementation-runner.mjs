@@ -1,7 +1,8 @@
 import { Agent, applyPatchTool, run, shellTool } from "@openai/agents";
 
 import { calculateLiveUsageCredits } from "../lib/financial-shadow.js";
-import { ReadOnlyShell, WorkspaceEditor } from "./sandbox.mjs";
+import { RepositoryReadShell } from "./repository-read-shell.mjs";
+import { WorkspaceEditor } from "./sandbox.mjs";
 
 let controller;
 let running = false;
@@ -22,7 +23,7 @@ process.on("message", async (message) => {
 
   try {
     const editor = new WorkspaceEditor(message.projectDirectory);
-    const readOnlyShell = new ReadOnlyShell(message.projectDirectory);
+    const readOnlyShell = new RepositoryReadShell(message.projectDirectory);
     const agent = new Agent({
       name: "Forgeboard Coding Agent",
       model: message.model,
