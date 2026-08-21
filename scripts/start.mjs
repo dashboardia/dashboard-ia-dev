@@ -1,14 +1,14 @@
 import { spawn, spawnSync } from "node:child_process";
 
-function runMigrations() {
-  if (!process.env.DATABASE_URL) {
-    console.warn("[startup] DATABASE_URL ausente; iniciando sem banco de dados.");
-    return;
-  }
+import { assertSecureRuntimeConfiguration, env } from "../lib/env.js";
 
+assertSecureRuntimeConfiguration("web");
+
+function runMigrations() {
   const result = spawnSync("npx", ["prisma", "migrate", "deploy"], {
     stdio: "inherit",
     shell: process.platform === "win32",
+    env: { ...process.env, DATABASE_URL: env.DATABASE_URL },
   });
 
   if (result.status !== 0) {

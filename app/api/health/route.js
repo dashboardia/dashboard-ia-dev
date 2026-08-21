@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { db } from "../../../lib/db";
-import { env, getConfigurationStatus } from "../../../lib/env";
+import { getConfigurationStatus } from "../../../lib/env";
 import { getWorkerRuntimeStatus } from "../../../lib/worker-heartbeat";
 
 export const dynamic = "force-dynamic";
@@ -9,37 +9,33 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const startedAt = Date.now();
   const configuration = getConfigurationStatus();
-  let database = configuration.database ? "unavailable" : "not-configured";
-  let worker = configuration.worker ? "offline" : "not-configured";
+  let databaseReady = false;
+  let workerReady = !configuration.worker;
 
   if (configuration.database) {
     try {
       await db.$queryRaw`SELECT 1`;
-      database = "connected";
+      databaseReady = true;
     } catch {
-      database = "unavailable";
+      databaseReady = false;
     }
   }
-  if (database === "connected" && configuration.worker) {
+
+  if (databaseReady && configuration.worker) {
     const runtime = await getWorkerRuntimeStatus().catch(() => ({ online: false }));
-    worker = runtime.online ? "online" : "offline";
+    workerReady = runtime.online === true;
   }
 
-  const status = database === "unavailable" || worker === "offline" ? "degraded" : "ok";
-
+  const status = !databaseReady ? "unavailable" : workerReady ? "ok" : "degraded";
   return NextResponse.json(
     {
-      service: "forgeboard",
+      service: "dashboardia",
       status,
-      database,
-      worker,
-      configuration,
-      commit: env.RAILWAY_GIT_COMMIT_SHA ?? null,
       responseTimeMs: Date.now() - startedAt,
       timestamp: new Date().toISOString(),
     },
     {
-      status: 200,
+      status: databaseReady ? 200 : 503,
       headers: { "Cache-Control": "no-store" },
     },
   );
