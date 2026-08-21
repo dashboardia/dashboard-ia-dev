@@ -47,9 +47,16 @@ export async function POST(request) {
       },
     });
     try {
+      const payer = {
+        customerId: account.providerCustomerId || null,
+        customerData: {
+          name: user.name || undefined,
+          email: user.email || undefined,
+        },
+      };
       const checkout = plan
-        ? await createPlanCheckout({ orderId: order.id, plan })
-        : await createCreditPackCheckout({ orderId: order.id, pack });
+        ? await createPlanCheckout({ orderId: order.id, plan, ...payer })
+        : await createCreditPackCheckout({ orderId: order.id, pack, ...payer });
       await db.$transaction([
         db.billingCheckout.update({ where: { id: order.id }, data: { providerCheckoutId: checkout.id, providerLink: checkout.link } }),
         db.auditLog.create({ data: auditData({ actorId: user.id, action: "billing.checkout.create", entityType: "BillingCheckout", entityId: order.id, metadata: input, request }) }),
