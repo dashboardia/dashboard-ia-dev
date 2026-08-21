@@ -467,12 +467,13 @@ model DevEnvironment {
   runtime         String?
   imageReference  String?
   port            Int?
-  creditCost      Int                  @default(0)
-  creditCharge    Json?
-  adjustments     Json?
-  credentials     Json?
-  activity        Json?
-  error           String?              @db.Text
+  creditCost       Int                  @default(0)
+  creditCharge     Json?
+  creditRefundedAt DateTime?
+  adjustments      Json?
+  credentials      Json?
+  activity         Json?
+  error            String?              @db.Text
   requestedAt     DateTime             @default(now())
   startedAt       DateTime?
   readyAt         DateTime?

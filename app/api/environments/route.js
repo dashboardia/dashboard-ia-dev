@@ -99,8 +99,8 @@ export async function POST(request) {
     });
     return NextResponse.json({ environment }, { status: 202 });
   } catch (error) {
-    if (charge) await refundFixedCredits(charge, "Estorno: ambiente não enviado ao host Docker").catch(() => null);
-    if (environment) await db.devEnvironment.update({ where: { id: environment.id }, data: { status: "FAILED", error: error instanceof Error ? error.message : String(error) } }).catch(() => null);
+    const refunded = charge ? Boolean(await refundFixedCredits(charge, "Estorno: ambiente não enviado ao host Docker").catch(() => null)) : false;
+    if (environment) await db.devEnvironment.update({ where: { id: environment.id }, data: { status: "FAILED", error: error instanceof Error ? error.message : String(error), ...(refunded ? { creditRefundedAt: new Date() } : {}) } }).catch(() => null);
     return apiError(error);
   }
 }

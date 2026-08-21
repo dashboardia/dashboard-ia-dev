@@ -4,6 +4,7 @@ import process from "node:process";
 import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
 import { claimNextExecution, expireInactiveExecutionConversations, recoverStaleExecutions } from "../lib/executions.js";
+import { syncActiveDevEnvironments } from "../lib/dev-environments.js";
 import { getGlobalSettings } from "../lib/global-settings.js";
 import { pruneWorkerHeartbeats, recordWorkerHeartbeat, removeWorkerHeartbeat } from "../lib/worker-heartbeat.js";
 import { checkProjectHealth, pruneHealthChecks } from "./health.mjs";
@@ -18,6 +19,7 @@ let lastHealthPrune = 0;
 let lastStaleRecovery = 0;
 let lastConversationExpiration = 0;
 let lastAutoscaleEvaluation = 0;
+let lastEnvironmentSynchronization = 0;
 const workerStartedAt = new Date();
 let heartbeatTimer = null;
 let heartbeatPromise = null;
@@ -101,6 +103,10 @@ async function main() {
     if (Date.now() - lastConversationExpiration >= 60_000) {
       await expireInactiveExecutionConversations(db).catch((error) => console.error(`[worker:${workerId}] expiração de conversas falhou`, error));
       lastConversationExpiration = Date.now();
+    }
+    if (Date.now() - lastEnvironmentSynchronization >= 30_000) {
+      await syncActiveDevEnvironments(db).catch((error) => console.error(`[worker:${workerId}] sincronização de ambientes falhou`, error));
+      lastEnvironmentSynchronization = Date.now();
     }
     if (runtimeSettings.workerAutoscalingEnabled && Date.now() - lastAutoscaleEvaluation >= runtimeSettings.workerAutoscaleIntervalSeconds * 1_000) {
       const autoscaling = await evaluateWorkerAutoscaling({

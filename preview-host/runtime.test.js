@@ -42,6 +42,22 @@ test("gera Dockerfile Node que publica em todas as interfaces", () => {
   assert.match(result, /npm start -- --hostname 0\.0\.0\.0/);
 });
 
+test("inclui o Composer na imagem PHP antes de instalar as dependências", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "PHP",
+    installCommand: "composer install --no-interaction",
+    buildCommand: null,
+    previewCommand: "php -S 127.0.0.1:$PORT -t public",
+    port: 8000,
+  });
+
+  assert.match(result, /^FROM composer:2 AS composer-toolchain/m);
+  assert.match(result, /^FROM php:8\.3-cli/m);
+  assert.match(result, /COPY --from=composer-toolchain \/usr\/bin\/composer \/usr\/local\/bin\/composer/);
+  assert.match(result, /composer install --no-interaction/);
+  assert.match(result, /php -S 0\.0\.0\.0:\$PORT -t public/);
+});
+
 test("gera ambiente ASP.NET Core com a versão detectada do SDK", () => {
   const result = buildPreviewDockerfile({
     runtime: "DOTNET_8",

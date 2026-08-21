@@ -284,6 +284,12 @@ export function buildPreviewDockerfile(configuration) {
         `FROM ${mavenImage(javaVersionFromRuntime(runtime))}`,
         "COPY --from=node-toolchain /usr/local /usr/local",
       ]
+    : runtime === "PHP"
+      ? [
+          "FROM composer:2 AS composer-toolchain",
+          `FROM ${runtimeImage(runtime)}`,
+          "COPY --from=composer-toolchain /usr/bin/composer /usr/local/bin/composer",
+        ]
     : [`FROM ${runtimeImage(staticHttpServer ? "STATIC" : runtime)}`];
   const systemPackages = [
     ...(needsPython ? ["python3", "python3-pip", "python3-venv"] : []),
