@@ -151,7 +151,8 @@ export async function evaluateWorkerAutoscaling({
       maximumReplicas: settings.workerMaxReplicas,
     });
     const cooldownMs = settings.workerScaleDownCooldownMinutes * 60_000;
-    const canScaleDown = !state?.lastScaledAt || now.getTime() - state.lastScaledAt.getTime() >= cooldownMs;
+    const canScaleDown = activeExecutions === 0
+      && (!state?.lastScaledAt || now.getTime() - state.lastScaledAt.getTime() >= cooldownMs);
     const nextReplicas = desiredReplicas > railway.replicas
       ? desiredReplicas
       : desiredReplicas < railway.replicas && canScaleDown
@@ -187,6 +188,7 @@ export async function evaluateWorkerAutoscaling({
       desiredReplicas,
       queuedExecutions,
       activeExecutions,
+      scaleDownDeferred: activeExecutions > 0 && desiredReplicas < railway.replicas,
     };
   } catch (error) {
     await saveAutoscalerError(database, error instanceof Error ? error.message : String(error), now);

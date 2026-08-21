@@ -10,10 +10,7 @@ https:// {
     on_demand
   }
 
-  @validation_api {
-    host {$PREVIEW_API_DOMAIN}
-    path /v1/validations/*
-  }
+  @validation_api path /v1/validations/*
 
   handle @validation_api {
     reverse_proxy validation-host:8081

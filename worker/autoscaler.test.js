@@ -74,4 +74,31 @@ describe("worker autoscaling", () => {
     expect(fetchImpl.mock.calls[1][1].headers).toMatchObject({ "Project-Access-Token": "token" });
     expect(JSON.parse(fetchImpl.mock.calls[2][1].body).variables.input).toEqual({ numReplicas: 10 });
   });
+
+  it("não reduz réplicas enquanto existir execução ativa", async () => {
+    const database = autoscalerDatabase({
+      queued: 0,
+      active: 1,
+      state: { lastScaledAt: new Date("2026-08-20T22:00:00.000Z") },
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response({ data: { serviceInstance: { numReplicas: 5 } } }));
+
+    await expect(evaluateWorkerAutoscaling({
+      workerId: "replica-1",
+      settings,
+      configuration: { RAILWAY_API_TOKEN: "token", RAILWAY_SERVICE_ID: "service", RAILWAY_ENVIRONMENT_ID: "environment" },
+      database,
+      fetchImpl,
+      now: new Date("2026-08-20T23:00:00.000Z"),
+    })).resolves.toMatchObject({
+      status: "UNCHANGED",
+      previousReplicas: 5,
+      currentReplicas: 5,
+      activeExecutions: 1,
+      scaleDownDeferred: true,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 });
