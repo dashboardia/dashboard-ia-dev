@@ -2,7 +2,8 @@ import "./globals.css";
 import "./preferences.css";
 
 export const metadata = {
-  title: "Forgeboard",
+  title: "Dashboard IA",
+  applicationName: "Dashboard IA",
   description: "Demandas, código e observabilidade em um só lugar.",
 };
 
