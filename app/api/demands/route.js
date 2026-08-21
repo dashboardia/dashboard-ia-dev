@@ -5,6 +5,7 @@ import { apiError, assertSameOrigin } from "../../../lib/api";
 import { auditData } from "../../../lib/audit";
 import { assertProjectAiModelAccess } from "../../../lib/billing";
 import { db } from "../../../lib/db";
+import { getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../lib/github";
 import { projectAccessWhere } from "../../../lib/projects";
 import { demandInputSchema } from "../../../lib/validation";
 
@@ -45,6 +46,12 @@ export async function POST(request) {
       ? { ...input, visualValidation: false, visualPaths: [] }
       : input;
     const { user } = await requireProjectRole(input.projectId, "DEVELOPER");
+    const project = await db.project.findUniqueOrThrow({
+      where: { id: input.projectId },
+      select: { repositoryFullName: true, githubInstallationId: true },
+    });
+    const token = await getProjectGitHubAccessToken(project, user.id);
+    await verifyRepositoryBranch(token, project.repositoryFullName, input.baseBranch);
     await assertProjectAiModelAccess(input.projectId, normalizedInput.aiModel);
     const demand = await db.$transaction(async (transaction) => {
       const created = await transaction.demand.create({
@@ -57,7 +64,7 @@ export async function POST(request) {
         include: { project: { select: { id: true, name: true, slug: true } } },
       });
       await transaction.auditLog.create({
-        data: auditData({ actorId: user.id, projectId: input.projectId, action: "demand.create", entityType: "Demand", entityId: created.id, metadata: { type: created.type, priority: created.priority }, request }),
+        data: auditData({ actorId: user.id, projectId: input.projectId, action: "demand.create", entityType: "Demand", entityId: created.id, metadata: { type: created.type, priority: created.priority, baseBranch: created.baseBranch }, request }),
       });
       return created;
     });

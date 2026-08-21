@@ -2,13 +2,15 @@
 
 import { FileCode2, LoaderCircle, Pencil, Save, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import BranchCombobox from "../../../components/branch-combobox";
 import { AI_MODELS, DEFAULT_AI_MODEL, FREE_PLAN_AI_MODEL, getAiModel } from "../../../lib/ai-models";
 
 function initialForm(demand, lunaOnly = false) {
   return {
     title: demand.title,
+    baseBranch: demand.baseBranch,
     description: demand.description,
     acceptanceCriteria: demand.acceptanceCriteria ?? "",
     type: demand.type,
@@ -25,6 +27,30 @@ export default function DemandEditCard({ demand, canEdit, lunaOnly = false }) {
   const [form, setForm] = useState(() => initialForm(demand, lunaOnly));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [branches, setBranches] = useState([{ name: demand.baseBranch }]);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!editing) return undefined;
+    const controller = new AbortController();
+    setBranchesLoading(true);
+    fetch(`/api/projects/${demand.projectId}/branches`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error ?? "Não foi possível consultar as branches");
+        setBranches(result.branches);
+        setForm((current) => result.branches.some((branch) => branch.name === current.baseBranch)
+          ? current
+          : { ...current, baseBranch: result.branches.some((branch) => branch.name === "main") ? "main" : result.branches[0]?.name ?? "" });
+      })
+      .catch((fetchError) => {
+        if (fetchError.name !== "AbortError") setError(fetchError.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setBranchesLoading(false);
+      });
+    return () => controller.abort();
+  }, [editing, demand.projectId]);
 
   function change(event) {
     const { name, type, checked, value } = event.target;
@@ -41,6 +67,10 @@ export default function DemandEditCard({ demand, canEdit, lunaOnly = false }) {
 
   async function submit(event) {
     event.preventDefault();
+    if (!branches.some((branch) => branch.name === form.baseBranch)) {
+      setError("Selecione uma branch existente no repositório.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -81,6 +111,7 @@ export default function DemandEditCard({ demand, canEdit, lunaOnly = false }) {
           <label><span>Tipo</span><select name="type" value={form.type} onChange={change}><option value="BUG">Correção</option><option value="FEATURE">Nova funcionalidade</option><option value="REFACTOR">Refatoração</option><option value="TEST">Testes</option><option value="INVESTIGATION">Investigação</option><option value="DOCUMENTATION">Documentação de negócio</option></select></label>
           <label><span>Prioridade</span><select name="priority" value={form.priority} onChange={change}><option value="LOW">Baixa</option><option value="NORMAL">Normal</option><option value="HIGH">Alta</option><option value="URGENT">Urgente</option></select></label>
         </div>
+        <label className="full-field"><span>Branch base {branchesLoading && <LoaderCircle className="spin branch-loader" size={12} />}</span><BranchCombobox branches={branches} value={form.baseBranch} onChange={(baseBranch) => setForm((current) => ({ ...current, baseBranch }))} disabled={branchesLoading || !branches.length} /><small className="field-guidance">A execução e o Pull Request usarão esta branch como base.</small></label>
         <label className="full-field"><span>Título</span><input name="title" value={form.title} onChange={change} maxLength={140} required /></label>
         <label className="full-field"><span>Contexto e resultado esperado</span><textarea name="description" value={form.description} onChange={change} rows={7} required /></label>
         <label className="full-field"><span>Critérios de aceite</span><textarea name="acceptanceCriteria" value={form.acceptanceCriteria} onChange={change} rows={4} /></label>

@@ -6,6 +6,7 @@ import { apiError, assertSameOrigin } from "../../../../lib/api";
 import { auditData } from "../../../../lib/audit";
 import { assertProjectAiModelAccess } from "../../../../lib/billing";
 import { db } from "../../../../lib/db";
+import { getProjectGitHubAccessToken, verifyRepositoryBranch } from "../../../../lib/github";
 import { demandUpdateSchema } from "../../../../lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,10 @@ export async function PATCH(request, context) {
       ? { ...input, visualValidation: false, visualPaths: [] }
       : input;
     if (normalizedInput.aiModel) await assertProjectAiModelAccess(demand.projectId, normalizedInput.aiModel);
+    if (normalizedInput.baseBranch) {
+      const token = await getProjectGitHubAccessToken(demand.project, user.id);
+      await verifyRepositoryBranch(token, demand.project.repositoryFullName, normalizedInput.baseBranch);
+    }
     const updated = await db.$transaction(async (transaction) => {
       const current = await transaction.demand.findUniqueOrThrow({ where: { id: demandId }, select: { status: true } });
       if (!["DRAFT", "PENDING_APPROVAL"].includes(current.status)) {

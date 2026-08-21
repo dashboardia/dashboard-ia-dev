@@ -48,7 +48,7 @@ export async function POST(request, context) {
         token,
         execution.demand.project.repositoryFullName,
         execution.branchName,
-        execution.demand.project.defaultBranch,
+        execution.demand.baseBranch,
       );
       const body = [
         `## Demanda\n${execution.demand.description}`,
@@ -60,7 +60,7 @@ export async function POST(request, context) {
         title: execution.demand.title,
         body,
         head: execution.branchName,
-        base: execution.demand.project.defaultBranch,
+        base: execution.demand.baseBranch,
         draft: true,
       });
 
@@ -75,7 +75,7 @@ export async function POST(request, context) {
             title: githubPullRequest.title,
             status: githubPullRequest.draft ? "DRAFT" : "OPEN",
             headBranch: execution.branchName,
-            baseBranch: execution.demand.project.defaultBranch,
+            baseBranch: execution.demand.baseBranch,
           },
         });
         const updated = await transaction.execution.updateMany({

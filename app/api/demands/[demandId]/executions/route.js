@@ -33,7 +33,7 @@ export async function POST(request, context) {
 
     const token = await getProjectGitHubAccessToken(demand.project, user.id);
     try {
-      await verifyRepositoryProjectBranch(token, demand.project.repositoryFullName, demand.project.defaultBranch);
+      await verifyRepositoryProjectBranch(token, demand.project.repositoryFullName, demand.baseBranch);
     } catch (error) {
       if (error instanceof RepositoryBranchContentError) {
         if (!emptyRepositoryConfirmed) {
@@ -41,7 +41,7 @@ export async function POST(request, context) {
         }
         allowEmptyRepository = true;
       } else return NextResponse.json({
-        error: `A branch ${demand.project.defaultBranch} ainda não existe. Crie o primeiro arquivo no repositório antes de iniciar a análise.`,
+        error: `A branch ${demand.baseBranch} não existe mais no repositório. Selecione outra branch na demanda antes de iniciar.`,
       }, { status: 409 });
     }
 
@@ -52,7 +52,7 @@ export async function POST(request, context) {
     }
 
     await db.auditLog.create({
-      data: auditData({ actorId: user.id, projectId: demand.projectId, action: "execution.queue", entityType: "Execution", entityId: execution.id, metadata: { allowEmptyRepository }, request }),
+      data: auditData({ actorId: user.id, projectId: demand.projectId, action: "execution.queue", entityType: "Execution", entityId: execution.id, metadata: { allowEmptyRepository, baseBranch: demand.baseBranch }, request }),
     });
     return NextResponse.json({ execution }, { status: 202 });
   } catch (error) {

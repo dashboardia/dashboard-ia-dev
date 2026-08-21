@@ -1,11 +1,15 @@
 "use client";
 
 import { Check, GitBranch, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function BranchCombobox({ branches, value, onChange, disabled = false }) {
   const [query, setQuery] = useState(value ?? "");
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setQuery(value ?? "");
+  }, [value]);
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("pt-BR");
     if (!normalized) return branches;

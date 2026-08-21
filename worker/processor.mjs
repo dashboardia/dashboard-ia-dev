@@ -239,7 +239,7 @@ export async function processExecution(executionId, workerId) {
     const repositoryUrl = `https://github.com/${execution.demand.project.repositoryFullName}.git`;
     const authenticationArgs = gitAuthenticationArgs(token);
     const isFollowUp = Boolean(execution.pullRequest && execution.branchName && execution.messages.some((message) => message.role === "USER"));
-    const sourceBranch = isFollowUp ? execution.branchName : execution.demand.project.defaultBranch;
+    const sourceBranch = isFollowUp ? execution.branchName : execution.demand.baseBranch;
     await runProcess("git", [
       ...authenticationArgs,
       "clone",
@@ -267,7 +267,7 @@ export async function processExecution(executionId, workerId) {
     const documentationOnly = execution.demand.type === "DOCUMENTATION";
     const agentLabel = documentationOnly ? "Agente de documentação" : "Agente de implementação";
     if (!isFollowUp) await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
-    await runProcess("git", [...authenticationArgs, "fetch", "origin", remoteFetchRefspec(execution.demand.project.defaultBranch)], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
+    await runProcess("git", [...authenticationArgs, "fetch", "origin", remoteFetchRefspec(execution.demand.baseBranch)], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
     const projectDirectory = resolveWorkspacePath(workspace, execution.demand.project.workingDirectory);
     const selectedModel = execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL;
     execution.model = selectedModel;
@@ -442,7 +442,7 @@ export async function processExecution(executionId, workerId) {
     await runProcess("git", ["add", "-A"], { cwd: workspace });
     await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "-m", `forgeboard: ${execution.demand.title.slice(0, 120)}`], { cwd: workspace });
     let implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
-    const base = (await runProcess("git", ["rev-parse", remoteTrackingRef(execution.demand.project.defaultBranch)], { cwd: workspace })).stdout.trim();
+    const base = (await runProcess("git", ["rev-parse", remoteTrackingRef(execution.demand.baseBranch)], { cwd: workspace })).stdout.trim();
 
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
 
@@ -588,7 +588,7 @@ export async function processExecution(executionId, workerId) {
         token,
         execution.demand.project.repositoryFullName,
         branchName,
-        execution.demand.project.defaultBranch,
+        execution.demand.baseBranch,
       );
       const body = [
         `## Demanda\n${execution.demand.description}`,
@@ -603,7 +603,7 @@ export async function processExecution(executionId, workerId) {
           title: execution.demand.title,
           body,
           head: branchName,
-          base: execution.demand.project.defaultBranch,
+          base: execution.demand.baseBranch,
           draft: true,
         },
       );
@@ -613,7 +613,7 @@ export async function processExecution(executionId, workerId) {
         title: githubPullRequest.title,
         status: githubPullRequest.draft ? "DRAFT" : "OPEN",
         headBranch: branchName,
-        baseBranch: execution.demand.project.defaultBranch,
+        baseBranch: execution.demand.baseBranch,
         recovered: Boolean(existingPullRequest),
       };
     }

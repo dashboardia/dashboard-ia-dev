@@ -333,6 +333,7 @@ model Demand {
   createdById        String
   approvedById       String?
   title              String
+  baseBranch         String         @default("main")
   description        String         @db.Text
   acceptanceCriteria String?        @db.Text
   visualValidation   Boolean        @default(false)

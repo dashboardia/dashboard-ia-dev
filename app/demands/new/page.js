@@ -20,6 +20,7 @@ export default async function NewDemandPage({ searchParams }) {
       id: true,
       name: true,
       repositoryFullName: true,
+      defaultBranch: true,
       createdBy: { select: { globalRole: true, billingAccount: { select: { plan: true, planDefinition: { select: { priceCents: true, includedCredits: true } } } } } },
     },
     orderBy: { name: "asc" },

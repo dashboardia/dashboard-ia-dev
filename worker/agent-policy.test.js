@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import { buildAgentPrompt, classifyImplementationScope, resolveAgentRunPolicy } from "./agent-policy.mjs";
 
 const project = { name: "Legado", repositoryFullName: "empresa/legado", defaultBranch: "main" };
+const baseBranch = "main";
 
 describe("agent policy", () => {
   it("classifica arquitetura completa em várias camadas como escopo amplo", () => {
     const demand = {
       project,
+      baseBranch,
       title: "Desenvolva um projeto completo legado em Java 7",
       description: "Use JSP, Hibernate, persistência em banco, controllers, services e repositories em um monólito com vários módulos.",
       acceptanceCriteria: "O cadastro e os indicadores devem persistir no banco de dados.",
@@ -19,7 +21,7 @@ describe("agent policy", () => {
   });
 
   it("permite ao administrador reduzir ou ampliar o orçamento do agente", () => {
-    const demand = { project, title: "Projeto completo", description: "Criar persistência, banco, controllers, services e repositories.", acceptanceCriteria: "Aplicação completa em vários módulos." };
+    const demand = { project, baseBranch, title: "Projeto completo", description: "Criar persistência, banco, controllers, services e repositories.", acceptanceCriteria: "Aplicação completa em vários módulos." };
     const economy = resolveAgentRunPolicy({ demand, model: "gpt-5.6-terra", configuredTimeoutMinutes: 5, powerMode: "ECONOMY" });
     const maximum = resolveAgentRunPolicy({ demand, model: "gpt-5.6-terra", configuredTimeoutMinutes: 5, powerMode: "MAXIMUM" });
 
@@ -28,7 +30,7 @@ describe("agent policy", () => {
   });
 
   it("mantém orçamento menor para uma correção pontual", () => {
-    const demand = { project, title: "Corrigir rótulo", description: "Corrija o texto do botão de salvar.", acceptanceCriteria: "Exibir Salvar alterações." };
+    const demand = { project, baseBranch, title: "Corrigir rótulo", description: "Corrija o texto do botão de salvar.", acceptanceCriteria: "Exibir Salvar alterações." };
 
     expect(classifyImplementationScope(demand)).toBe("STANDARD");
     expect(resolveAgentRunPolicy({ demand, model: "gpt-5.6-terra", configuredTimeoutMinutes: 7 }))
@@ -38,6 +40,7 @@ describe("agent policy", () => {
   it("proíbe que um mock visual substitua requisitos funcionais em escopo amplo", () => {
     const demand = {
       project,
+      baseBranch,
       type: "FEATURE",
       priority: "HIGH",
       title: "Projeto completo com persistência",
@@ -56,6 +59,7 @@ describe("agent policy", () => {
   it("inclui somente o conhecimento de negócio aprovado fornecido pela aplicação", () => {
     const demand = {
       project,
+      baseBranch,
       type: "FEATURE",
       priority: "NORMAL",
       title: "Calcular margem industrial",
@@ -76,6 +80,7 @@ describe("agent policy", () => {
   it("instrui a criação completa quando a branch vazia foi confirmada", () => {
     const demand = {
       project,
+      baseBranch,
       type: "FEATURE",
       priority: "NORMAL",
       title: "Criar portal do cliente",
@@ -93,6 +98,7 @@ describe("agent policy", () => {
   it("torna obrigatório o contrato de acesso demonstrativo em aplicações autenticadas", () => {
     const demand = {
       project,
+      baseBranch,
       type: "FEATURE",
       priority: "NORMAL",
       title: "Adicionar painel autenticado",

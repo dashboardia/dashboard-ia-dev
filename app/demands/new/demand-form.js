@@ -2,8 +2,9 @@
 
 import { Lightbulb, LoaderCircle, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import BranchCombobox from "../../../components/branch-combobox";
 import { usePreferences } from "../../../components/preferences-provider";
 import { AI_MODELS, DEFAULT_AI_MODEL, FREE_PLAN_AI_MODEL } from "../../../lib/ai-models";
 import { getDemandCopy } from "../../../lib/demand-copy";
@@ -15,6 +16,7 @@ export default function DemandForm({ projects, initialProjectId }) {
   const initialProject = projects.find((project) => project.id === initialProjectId);
   const [form, setForm] = useState({
     projectId: projects.some((project) => project.id === initialProjectId) ? initialProjectId : "",
+    baseBranch: "main",
     title: "",
     description: "",
     acceptanceCriteria: "",
@@ -26,13 +28,53 @@ export default function DemandForm({ projects, initialProjectId }) {
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [branches, setBranches] = useState(initialProject ? [{ name: "main" }] : []);
+  const [branchesLoading, setBranchesLoading] = useState(Boolean(initialProject));
+  const [branchError, setBranchError] = useState("");
   const [exampleTitle, exampleDescription, exampleAcceptance] = copy.examples[form.type];
+  const selectedProject = projects.find((project) => project.id === form.projectId);
+
+  useEffect(() => {
+    if (!selectedProject) return undefined;
+    const controller = new AbortController();
+    setBranchesLoading(true);
+    setBranchError("");
+    fetch(`/api/projects/${selectedProject.id}/branches`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error ?? "Não foi possível consultar as branches");
+        setBranches(result.branches);
+        const preferred = result.branches.some((branch) => branch.name === "main")
+          ? "main"
+          : result.branches.some((branch) => branch.name === selectedProject.defaultBranch)
+            ? selectedProject.defaultBranch
+            : result.branches[0]?.name ?? "";
+        setForm((current) => ({ ...current, baseBranch: preferred }));
+      })
+      .catch((fetchError) => {
+        if (fetchError.name === "AbortError") return;
+        setBranches([]);
+        setBranchError(fetchError.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setBranchesLoading(false);
+      });
+    return () => controller.abort();
+  }, [selectedProject]);
 
   function change(event) {
     const { name, type, checked, value } = event.target;
-    const projectRequiresLuna = name === "projectId" && projects.find((project) => project.id === value)?.lunaOnly;
+    const nextProject = name === "projectId" ? projects.find((project) => project.id === value) : null;
+    const projectRequiresLuna = Boolean(nextProject?.lunaOnly);
+    if (nextProject) {
+      setBranches([]);
+      setBranchesLoading(true);
+      setBranchError("");
+    }
     setForm((current) => projectRequiresLuna
-      ? { ...current, projectId: value, aiModel: FREE_PLAN_AI_MODEL }
+      ? { ...current, projectId: value, baseBranch: "main", aiModel: FREE_PLAN_AI_MODEL }
+      : nextProject
+        ? { ...current, projectId: value, baseBranch: "main" }
       : name === "type" && value === "DOCUMENTATION"
       ? { ...current, type: value, aiModel: "gpt-5.6-luna", visualValidation: false, visualPaths: "/" }
       : { ...current, [name]: type === "checkbox" ? checked : value });
@@ -40,6 +82,10 @@ export default function DemandForm({ projects, initialProjectId }) {
 
   async function submit(event) {
     event.preventDefault();
+    if (!branches.some((branch) => branch.name === form.baseBranch)) {
+      setError("Selecione uma branch existente no repositório.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -56,13 +102,13 @@ export default function DemandForm({ projects, initialProjectId }) {
   }
 
   if (!projects.length) return <div className="form-card resource-empty"><strong>{copy.noProjects}</strong><span>{copy.noProjectsHelp}</span></div>;
-  const selectedProject = projects.find((project) => project.id === form.projectId);
   const lunaOnly = Boolean(selectedProject?.lunaOnly);
 
   return (
     <form className="form-card" onSubmit={submit}>
-      <div className="form-grid three-columns demand-basics">
+      <div className="form-grid demand-basics">
         <label><span>{copy.project}</span><select name="projectId" value={form.projectId} onChange={change} required><option value="" disabled>{copy.projectPlaceholder}</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name} — {project.repositoryFullName}</option>)}</select></label>
+        <label><span>Branch base {branchesLoading && <LoaderCircle className="spin branch-loader" size={12} />}</span><BranchCombobox key={form.projectId} branches={branches} value={form.baseBranch} onChange={(baseBranch) => setForm((current) => ({ ...current, baseBranch }))} disabled={!form.projectId || branchesLoading || !branches.length} /><small className={branchError ? "field-warning" : "field-guidance"}>{branchError || (form.projectId ? `Somente branches existentes · ${branches.length} encontrada(s)` : "Selecione primeiro o projeto")}</small></label>
         <label><span>{copy.type}</span><select name="type" value={form.type} onChange={change}>{copy.typeValues.map((value) => <option value={value} key={value}>{copy.types[value]}</option>)}</select></label>
         <label><span>{copy.priority}</span><select name="priority" value={form.priority} onChange={change}>{copy.priorityValues.map((value) => <option value={value} key={value}>{copy.priorities[value]}</option>)}</select></label>
       </div>
@@ -85,7 +131,7 @@ export default function DemandForm({ projects, initialProjectId }) {
       {form.type !== "DOCUMENTATION" && <label className="visual-validation-option"><input name="visualValidation" type="checkbox" checked={form.visualValidation} onChange={change} /><span><strong>{copy.visualValidation}</strong><small>{copy.visualValidationHelp}</small></span></label>}
       {form.type !== "DOCUMENTATION" && form.visualValidation && <label className="full-field"><span>{copy.visualPaths}</span><textarea name="visualPaths" value={form.visualPaths} onChange={change} rows={3} placeholder={'/\n/login\n/dashboard'} required /></label>}
       {error && <div className="form-error">{error}</div>}
-      <div className="form-actions"><button className="primary" disabled={saving} type="submit">{saving ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}{saving ? copy.creating : copy.submit}</button></div>
+      <div className="form-actions"><button className="primary" disabled={saving || branchesLoading || !branches.some((branch) => branch.name === form.baseBranch)} type="submit">{saving ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}{saving ? copy.creating : copy.submit}</button></div>
     </form>
   );
 }
