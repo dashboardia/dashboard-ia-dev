@@ -1,0 +1,112 @@
+@media (min-width: 961px) {
+  .sidebar {
+    width: 72px;
+    padding: 18px 10px 16px;
+    overflow: hidden;
+    transition: width .18s ease, padding .18s ease, box-shadow .18s ease;
+  }
+
+  .sidebar:hover,
+  .sidebar.pinned {
+    width: 248px;
+    padding: 23px 16px 18px;
+    box-shadow: 14px 0 34px rgba(8, 10, 16, .2);
+  }
+
+  .content {
+    margin-left: 72px;
+    width: calc(100% - 72px);
+    transition: margin-left .18s ease, width .18s ease;
+  }
+
+  .shell.sidebar-pinned .content {
+    margin-left: 248px;
+    width: calc(100% - 248px);
+  }
+
+  .sidebar .brand {
+    justify-content: center;
+    padding: 0 0 14px;
+    min-height: 46px;
+    white-space: nowrap;
+  }
+
+  .sidebar:hover .brand,
+  .sidebar.pinned .brand {
+    justify-content: flex-start;
+    padding: 0 8px 16px;
+  }
+
+  .sidebar-pin {
+    width: 100%;
+    min-height: 32px;
+    margin: 0 0 14px;
+    border: 1px solid #292d3a;
+    border-radius: 8px;
+    background: #181b24;
+    color: #8f94a7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    transition: background .15s ease, color .15s ease;
+  }
+
+  .sidebar-pin:hover {
+    background: #222631;
+    color: #fff;
+  }
+
+  .sidebar:not(:hover):not(.pinned) .sidebar-pin span,
+  .sidebar:not(:hover):not(.pinned) .brand > span:last-child,
+  .sidebar:not(:hover):not(.pinned) .workspace-label,
+  .sidebar:not(:hover):not(.pinned) .workspace > span:nth-child(2),
+  .sidebar:not(:hover):not(.pinned) .workspace > svg,
+  .sidebar:not(:hover):not(.pinned) nav a > span,
+  .sidebar:not(:hover):not(.pinned) .sidebar-bottom > a > span,
+  .sidebar:not(:hover):not(.pinned) .user > span:nth-child(2),
+  .sidebar:not(:hover):not(.pinned) .signout {
+    display: none;
+  }
+
+  .sidebar:not(:hover):not(.pinned) .workspace {
+    width: 44px;
+    min-height: 44px;
+    margin-inline: auto;
+    padding: 6px;
+    justify-content: center;
+  }
+
+  .sidebar:not(:hover):not(.pinned) nav {
+    align-items: center;
+  }
+
+  .sidebar:not(:hover):not(.pinned) nav a,
+  .sidebar:not(:hover):not(.pinned) .sidebar-bottom > a {
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .sidebar:not(:hover):not(.pinned) .sidebar-bottom {
+    align-items: center;
+  }
+
+  .sidebar:not(:hover):not(.pinned) .user {
+    width: 44px;
+    margin-inline: auto;
+    padding: 14px 0 0;
+    justify-content: center;
+  }
+
+  .sidebar:not(:hover):not(.pinned) .user-avatar {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@media (max-width: 960px) {
+  .sidebar-pin { display: none; }
+}

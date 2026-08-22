@@ -2,6 +2,7 @@ import "./globals.css";
 import "./preferences.css";
 import "./settings-theme-fix.css";
 import "./environment-recovery.css";
+import "./sidebar-collapsible.css";
 
 export const metadata = {
   title: "Dashboard IA",

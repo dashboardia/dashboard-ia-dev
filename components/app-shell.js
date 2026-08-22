@@ -16,6 +16,8 @@ import {
   Logs,
   Menu,
   PackageOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
   ServerCog,
   Settings,
   WalletCards,
@@ -26,7 +28,7 @@ import {
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import ActionCenter from "./action-center";
 import AutoRefresh from "./auto-refresh";
@@ -36,6 +38,8 @@ import GlobalSearch from "./global-search";
 import { PreferencesProvider, usePreferences } from "./preferences-provider";
 import SupportChat from "./support-chat";
 import LocalizedContent from "./localized-content";
+
+const SIDEBAR_PIN_KEY = "dashboardia:sidebar-pinned";
 
 const navigation = [
   { href: "/", label: "overview", icon: LayoutDashboard },
@@ -56,6 +60,7 @@ function AppShellContent({ children, user = null, setupMode = false }) {
   const { t } = usePreferences();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarPinned, setSidebarPinned] = useState(false);
   const [toast, setToast] = useState("");
   const displayName = user?.name ?? "Admin Demo";
   const displayEmail = user?.email ?? "configuração pendente";
@@ -66,17 +71,37 @@ function AppShellContent({ children, user = null, setupMode = false }) {
     .join("")
     .toUpperCase();
 
+  useEffect(() => {
+    try {
+      setSidebarPinned(window.localStorage.getItem(SIDEBAR_PIN_KEY) === "1");
+    } catch {
+      // A preferência é apenas visual; a navegação continua funcionando sem storage.
+    }
+  }, []);
+
   function notify(message) {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
   }
 
+  function toggleSidebarPinned() {
+    setSidebarPinned((current) => {
+      const next = !current;
+      try { window.localStorage.setItem(SIDEBAR_PIN_KEY, next ? "1" : "0"); } catch {}
+      return next;
+    });
+  }
+
   return (
-    <main className="shell">
+    <main className={`shell ${sidebarPinned ? "sidebar-pinned" : ""}`}>
       <AutoRefresh active={!setupMode && Boolean(user)} interval={5000} showIndicator={false} />
-      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+      <aside className={`sidebar ${sidebarOpen ? "open" : ""} ${sidebarPinned ? "pinned" : ""}`}>
         <Link href="/" className="brand"><span className="brand-mark"><Code2 size={19} /></span><span>Forgeboard</span></Link>
         <button className="close" onClick={() => setSidebarOpen(false)} aria-label={t("closeMenu")}><X /></button>
+        <button className="sidebar-pin" type="button" onClick={toggleSidebarPinned} aria-pressed={sidebarPinned} title={sidebarPinned ? "Recolher menu" : "Fixar menu aberto"}>
+          {sidebarPinned ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+          <span>{sidebarPinned ? "Recolher menu" : "Fixar menu aberto"}</span>
+        </button>
         <div className="workspace-label">{t("workspace")}</div>
         <button className="workspace" onClick={() => notify("Espaço de trabalho principal")}><span className="workspace-avatar">DW</span><span><strong>Dev Workspace</strong><small>{user?.globalRole === "ADMIN" ? t("admin") : t("projectAccess")}</small></span><ChevronDown size={16} /></button>
         <nav>
@@ -85,13 +110,13 @@ function AppShellContent({ children, user = null, setupMode = false }) {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/users"}><Users size={18} />{t("users")}</Link>}
-          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/audit"}><History size={18} />{t("audit")}</Link>}
-          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/financial"}><BadgeDollarSign size={18} />{t("financial")}</Link>}
-          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/catalog"}><PackageOpen size={18} />{t("catalog")}</Link>}
-          <Link href={setupMode ? "/login" : "/billing"}><WalletCards size={18} />{t("billing")}</Link>
-          <Link href={setupMode ? "/login" : "/faq"}><HelpCircle size={18} />{t("faq")}</Link>
-          <Link href={setupMode ? "/login" : "/settings"}><Settings size={18} />{t("settings")}</Link>
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/users"}><Users size={18} /><span>{t("users")}</span></Link>}
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/audit"}><History size={18} /><span>{t("audit")}</span></Link>}
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/financial"}><BadgeDollarSign size={18} /><span>{t("financial")}</span></Link>}
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/catalog"}><PackageOpen size={18} /><span>{t("catalog")}</span></Link>}
+          <Link href={setupMode ? "/login" : "/billing"}><WalletCards size={18} /><span>{t("billing")}</span></Link>
+          <Link href={setupMode ? "/login" : "/faq"}><HelpCircle size={18} /><span>{t("faq")}</span></Link>
+          <Link href={setupMode ? "/login" : "/settings"}><Settings size={18} /><span>{t("settings")}</span></Link>
           <div className="user"><span className="user-avatar">{initials}</span><span><strong>{displayName}</strong><small>{displayEmail}</small></span>{user && <button className="signout" onClick={() => signOut({ callbackUrl: "/login" })} aria-label={t("signOut")}><LogOut size={16} /></button>}</div>
         </div>
       </aside>
