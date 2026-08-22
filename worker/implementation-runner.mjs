@@ -1,4 +1,5 @@
 import { Agent, applyPatchTool, run, shellTool } from "@openai/agents";
+import OpenAI from "openai";
 
 import { calculateLiveUsageCredits } from "../lib/financial-shadow.js";
 import { RepositoryReadShell } from "./repository-read-shell.mjs";
@@ -20,10 +21,69 @@ function usageOf(result) {
   };
 }
 
-function inputFor(message, prompt) {
-  return message.attachments?.length
-    ? [{ role: "user", content: [{ type: "input_text", text: prompt }, ...message.attachments] }]
+function responseUsageOf(response) {
+  return {
+    inputTokens: Math.max(0, Number(response?.usage?.input_tokens) || 0),
+    outputTokens: Math.max(0, Number(response?.usage?.output_tokens) || 0),
+  };
+}
+
+function inputFor(attachments, prompt) {
+  return attachments.length
+    ? [{ role: "user", content: [{ type: "input_text", text: prompt }, ...attachments] }]
     : prompt;
+}
+
+async function groundImageAttachments(attachments, model, signal) {
+  const imageAttachments = attachments.filter((attachment) => attachment?.type === "input_image");
+  const passthroughAttachments = attachments.filter((attachment) => attachment?.type !== "input_image");
+
+  if (!imageAttachments.length) {
+    return {
+      attachments: passthroughAttachments,
+      visualContext: "",
+      usage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
+
+  const imageContent = imageAttachments.map((attachment, index) => {
+    if (typeof attachment.image !== "string" || !attachment.image.startsWith("data:image/")) {
+      const error = new Error(`O anexo de imagem ${index + 1} não pôde ser preparado para leitura visual.`);
+      error.code = "INVALID_IMAGE_ATTACHMENT";
+      throw error;
+    }
+    return {
+      type: "input_image",
+      image_url: attachment.image,
+      detail: attachment.detail ?? "auto",
+    };
+  });
+
+  const client = new OpenAI();
+  const response = await client.responses.create({
+    model,
+    store: false,
+    input: [{
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: [
+            "Analise cuidadosamente os prints anexados pelo cliente no contexto de uma solicitação de alteração de software.",
+            "Descreva somente fatos visuais úteis para o engenheiro que fará a correção: textos visíveis, mensagens de erro, estados, componentes, layout, comportamento aparente e inconsistências relevantes.",
+            "Quando houver mais de uma imagem, diferencie-as por ordem. Não invente elementos não visíveis e não proponha a implementação ainda.",
+          ].join(" "),
+        },
+        ...imageContent,
+      ],
+    }],
+  }, { signal });
+
+  return {
+    attachments: passthroughAttachments,
+    visualContext: String(response.output_text || "").trim(),
+    usage: responseUsageOf(response),
+  };
 }
 
 process.on("message", async (message) => {
@@ -56,17 +116,46 @@ process.on("message", async (message) => {
       ],
     });
 
+    const groundedInput = await groundImageAttachments(
+      Array.isArray(message.attachments) ? message.attachments : [],
+      message.model,
+      controller.signal,
+    );
+    totalInputTokens += groundedInput.usage.inputTokens;
+    totalOutputTokens += groundedInput.usage.outputTokens;
+
+    if (message.creditBudget != null && message.creditCostPolicy) {
+      const groundingCredits = calculateLiveUsageCredits({
+        ...message.creditCostPolicy,
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+      });
+      if (groundingCredits > message.creditBudget) {
+        const budgetError = new Error(`A leitura dos anexos ultrapassou o limite de ${message.creditBudget} créditos disponível para esta execução.`);
+        budgetError.name = "CreditBudgetExceededError";
+        budgetError.code = "CREDIT_BUDGET_EXCEEDED";
+        budgetError.inputTokens = totalInputTokens;
+        budgetError.outputTokens = totalOutputTokens;
+        throw budgetError;
+      }
+    }
+
+    const visualContext = groundedInput.visualContext
+      ? `\n\n## Leitura visual dos anexos do cliente\n${groundedInput.visualContext}\n\nUse esta leitura como evidência da solicitação do cliente. Confirme no código o que precisa ser alterado antes de editar.`
+      : "";
+
     const maxSegments = maxTurnSegmentsForPolicy(message.policy);
     for (let segment = 1; segment <= maxSegments; segment += 1) {
-      const prompt = segment === 1
+      const basePrompt = segment === 1
         ? message.prompt
         : continuationPrompt(message.prompt, segment, maxSegments);
+      const prompt = `${basePrompt}${visualContext}`;
       let result;
       let budgetExceeded = false;
       let usageRecorded = false;
 
       try {
-        result = await run(agent, inputFor(message, prompt), {
+        result = await run(agent, inputFor(groundedInput.attachments, prompt), {
           maxTurns: message.policy?.maxTurns ?? 36,
           signal: controller.signal,
           stream: true,
