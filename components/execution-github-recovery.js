@@ -3,6 +3,7 @@
 import { ExternalLink, Github, LoaderCircle, RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { rememberReturnPath } from "../lib/return-navigation";
 import styles from "./execution-github-recovery.module.css";
 
 function executionIdFromPath(pathname) {
@@ -57,6 +58,11 @@ export default function ExecutionGitHubRecovery({ pathname }) {
     }
   }
 
+  function authorizationOpenedNow() {
+    rememberReturnPath(pathname);
+    setAuthorizationOpened(true);
+  }
+
   if (!executionId || checking || !recovery) return null;
 
   return <aside className={styles.banner} aria-live="polite">
@@ -64,11 +70,11 @@ export default function ExecutionGitHubRecovery({ pathname }) {
     <div className={styles.copy}>
       <strong>GitHub precisa de autorização para publicar</strong>
       <span>Autorize o GitHub App para <b>{recovery.repositoryFullName}</b>. No GitHub, selecione o repositório e clique em <b>Save</b> antes de voltar.</span>
-      {authorizationOpened && <small>Autorização aberta em uma nova aba. Confirme o repositório, clique em Save e depois volte aqui para reprocessar.</small>}
+      {authorizationOpened && <small>Autorização aberta em uma nova aba. Ao concluir, o Dashboard IA volta para esta execução mesmo se o GitHub encerrar a sessão anterior.</small>}
       {error && <small className={styles.error}>{error}</small>}
     </div>
     <div className={styles.actions}>
-      {recovery.installUrl && <a className={styles.authorize} href={recovery.installUrl} target="_blank" rel="noreferrer" onClick={() => setAuthorizationOpened(true)}><Github size={16} />Autorizar GitHub<ExternalLink size={14} /></a>}
+      {recovery.installUrl && <a className={styles.authorize} href={recovery.installUrl} target="_blank" rel="noreferrer" onClick={authorizationOpenedNow}><Github size={16} />Autorizar GitHub<ExternalLink size={14} /></a>}
       <button className={styles.retry} type="button" onClick={retryExecution} disabled={retrying}>{retrying ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}{retrying ? "Verificando autorização..." : "Já autorizei · Reprocessar"}</button>
     </div>
   </aside>;

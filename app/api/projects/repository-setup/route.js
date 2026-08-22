@@ -11,6 +11,7 @@ import {
   listRepositoryBranches,
   verifyRepositoryAccess,
 } from "../../../../lib/github";
+import { withReturnState } from "../../../../lib/return-navigation";
 
 function normalizeRepository(value) {
   const normalized = String(value ?? "")
@@ -34,6 +35,10 @@ async function installationIncludesRepository(token, repositoryFullName, reposit
   return false;
 }
 
+function authorizationUrl(value) {
+  return withReturnState(value, "/projects/new");
+}
+
 export async function POST(request) {
   try {
     assertSameOrigin(request);
@@ -44,7 +49,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Informe a URL de um repositório GitHub válido." }, { status: 422 });
     }
 
-    const fallbackInstallUrl = getGitHubAppInstallUrl();
+    const fallbackInstallUrl = authorizationUrl(getGitHubAppInstallUrl());
     const installation = await findGitHubRepositoryInstallation(repositoryFullName).catch(() => null);
     if (!installation?.id) {
       return NextResponse.json({
@@ -55,12 +60,13 @@ export async function POST(request) {
       }, { headers: { "Cache-Control": "no-store" } });
     }
 
+    const installationUrl = authorizationUrl(installation.html_url) ?? fallbackInstallUrl;
     const publicationAccess = githubInstallationPublicationAccess(installation);
     if (!publicationAccess.canPublish) {
       return NextResponse.json({
         connected: false,
         repositoryFullName,
-        installUrl: installation.html_url ?? fallbackInstallUrl,
+        installUrl: installationUrl,
         reason: "A instalação existe, mas ainda precisa de permissão de escrita em Code e Pull requests.",
       }, { headers: { "Cache-Control": "no-store" } });
     }
@@ -72,7 +78,7 @@ export async function POST(request) {
       return NextResponse.json({
         connected: false,
         repositoryFullName,
-        installUrl: installation.html_url ?? fallbackInstallUrl,
+        installUrl: installationUrl,
         reason: "O GitHub App está instalado, mas este repositório ainda não foi selecionado e salvo na instalação.",
       }, { headers: { "Cache-Control": "no-store" } });
     }
@@ -93,7 +99,7 @@ export async function POST(request) {
         empty: Number(repository.size ?? 0) === 0,
       },
       branches,
-      installUrl: installation.html_url ?? fallbackInstallUrl,
+      installUrl: installationUrl,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiError(error);

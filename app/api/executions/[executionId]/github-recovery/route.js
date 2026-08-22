@@ -19,6 +19,7 @@ import { getGlobalSettings } from "../../../../../lib/global-settings";
 import { assertOperationalAccess } from "../../../../../lib/operational-access";
 import { assertPlatformProcessingEnabled } from "../../../../../lib/platform-processing";
 import { configureProjectGitHubWebhook } from "../../../../../lib/project-webhooks";
+import { withReturnState } from "../../../../../lib/return-navigation";
 
 async function loadExecution(executionId) {
   return db.execution.findUniqueOrThrow({
@@ -63,10 +64,11 @@ export async function GET(_request, context) {
 
     const repositoryFullName = execution.demand.project.repositoryFullName;
     const installation = await findGitHubRepositoryInstallation(repositoryFullName).catch(() => null);
+    const returnPath = `/executions/${execution.id}`;
     return NextResponse.json({
       required: true,
       repositoryFullName,
-      installUrl: installation?.html_url ?? getGitHubAppInstallUrl(),
+      installUrl: withReturnState(installation?.html_url ?? getGitHubAppInstallUrl(), returnPath),
       installationDetected: Boolean(installation?.id),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

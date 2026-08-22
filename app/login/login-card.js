@@ -9,7 +9,7 @@ const errorMessages = {
   OAuthCallback: "O GitHub não concluiu a autenticação. Tente novamente.",
 };
 
-export default function LoginCard({ configured, error }) {
+export default function LoginCard({ configured, error, callbackUrl = "/" }) {
   const errorMessage = error ? errorMessages[error] ?? "Não foi possível entrar. Tente novamente." : null;
 
   return (
@@ -30,7 +30,7 @@ export default function LoginCard({ configured, error }) {
       <button
         className="login-github"
         disabled={!configured}
-        onClick={() => signIn("github", { callbackUrl: "/" })}
+        onClick={() => signIn("github", { callbackUrl })}
       >
         <Github size={20} />
         <span>{configured ? "Continuar com GitHub" : "Configuração de acesso pendente"}</span>

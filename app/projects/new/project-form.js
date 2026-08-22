@@ -4,6 +4,7 @@ import { Check, Copy, ExternalLink, Github, LoaderCircle, RefreshCw, Save } from
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { rememberReturnPath } from "../../../lib/return-navigation";
 import styles from "./project-form.module.css";
 
 const DRAFT_KEY = "dashboardia:new-project-repository";
@@ -37,17 +38,17 @@ export default function ProjectForm({ installUrl }) {
 
   useEffect(() => {
     try {
-      const stored = window.sessionStorage.getItem(DRAFT_KEY);
+      const stored = window.localStorage.getItem(DRAFT_KEY);
       if (stored) setRepositoryInput(stored);
     } catch {
-      // sessionStorage pode estar indisponível em navegação privada.
+      // localStorage pode estar indisponível em navegação privada.
     }
   }, []);
 
   useEffect(() => {
     try {
-      if (repositoryInput.trim()) window.sessionStorage.setItem(DRAFT_KEY, repositoryInput.trim());
-      else window.sessionStorage.removeItem(DRAFT_KEY);
+      if (repositoryInput.trim()) window.localStorage.setItem(DRAFT_KEY, repositoryInput.trim());
+      else window.localStorage.removeItem(DRAFT_KEY);
     } catch {
       // Sem impacto no fluxo principal.
     }
@@ -121,6 +122,7 @@ export default function ProjectForm({ installUrl }) {
       setError("O GitHub App ainda não está configurado no Dashboard IA.");
       return;
     }
+    rememberReturnPath("/projects/new");
     const opened = window.open(target, "_blank", "noopener,noreferrer");
     if (!opened) setError("O navegador bloqueou a nova aba. Libere pop-ups e tente novamente.");
   }
@@ -160,7 +162,7 @@ export default function ProjectForm({ installUrl }) {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.fields?.[0]?.message ?? result.error ?? "Não foi possível conectar o projeto");
-      try { window.sessionStorage.removeItem(DRAFT_KEY); } catch {}
+      try { window.localStorage.removeItem(DRAFT_KEY); } catch {}
       router.push(`/projects/${result.project.id}`);
       router.refresh();
     } catch (submitError) {
