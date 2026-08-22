@@ -4,6 +4,7 @@ import { Check, ChevronDown, CircleCheck, CircleDotDashed, CircleX, Copy, Extern
 import { useEffect, useMemo, useState } from "react";
 
 import BranchCombobox from "../../components/branch-combobox";
+import EnvironmentRecoveryAction from "./environment-recovery-action";
 
 const ACTIVE = new Set(["QUEUED", "BUILDING", "DEPLOYING", "READY", "STOPPING"]);
 const labels = { QUEUED: "Na fila", BUILDING: "Construindo", DEPLOYING: "Iniciando", READY: "Disponível", FAILED: "Falhou", STOPPING: "Encerrando", EXPIRED: "Encerrado" };
@@ -123,6 +124,7 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
         {demoAccess.source && <small className="environment-credential-source">Detectado em {demoAccess.source}</small>}
       </section>}
       {environment.error && <details className="environment-error"><summary>Ver falha técnica</summary><pre>{environment.error}</pre></details>}
+      {environment.status === "FAILED" && environment.error && <EnvironmentRecoveryAction environmentId={environment.id} />}
       <div className="environment-actions">{environment.url && <a className="primary compact" href={environment.url} target="_blank" rel="noreferrer"><ExternalLink size={14} />Abrir ambiente</a>}{ACTIVE.has(environment.status) && <button className="environment-stop-button" type="button" onClick={() => stopEnvironment(environment.id)}><Square size={13} />Encerrar ambiente</button>}</div>
     </article>;
   }

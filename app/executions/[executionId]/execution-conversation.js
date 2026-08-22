@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { ATTACHMENT_ACCEPT, isImageAttachment, MAX_MESSAGE_ATTACHMENTS, validateAttachmentFiles } from "../../../lib/attachments";
 
+const ENVIRONMENT_RECOVERY_STORAGE_KEY = "dashboardia:environment-recovery";
+
 function fileKey(file) {
   return `${file.name}:${file.size}:${file.lastModified}`;
 }
@@ -35,6 +37,22 @@ export default function ExecutionConversation({ executionId, status, messages, e
     const list = messageListRef.current;
     if (list) list.scrollTop = list.scrollHeight;
   }, [messages.length]);
+
+  useEffect(() => {
+    if (!available) return;
+    try {
+      const stored = window.sessionStorage.getItem(ENVIRONMENT_RECOVERY_STORAGE_KEY);
+      if (!stored) return;
+      const draft = JSON.parse(stored);
+      if (draft?.target !== "INTERACTION" || draft?.executionId !== executionId || !draft?.interactionMessage) return;
+      setContent((current) => current.trim() ? current : String(draft.interactionMessage).slice(0, 12_000));
+      window.sessionStorage.removeItem(ENVIRONMENT_RECOVERY_STORAGE_KEY);
+      window.requestAnimationFrame(() => document.getElementById("execution-adjustment")?.focus());
+    } catch {
+      window.sessionStorage.removeItem(ENVIRONMENT_RECOVERY_STORAGE_KEY);
+    }
+  }, [available, executionId]);
+
   useEffect(() => () => {
     previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     previewUrlsRef.current.clear();

@@ -9,6 +9,8 @@ import { usePreferences } from "../../../components/preferences-provider";
 import { AI_MODELS, DEFAULT_AI_MODEL, FREE_PLAN_AI_MODEL } from "../../../lib/ai-models";
 import { getDemandCopy } from "../../../lib/demand-copy";
 
+const ENVIRONMENT_RECOVERY_STORAGE_KEY = "dashboardia:environment-recovery";
+
 export default function DemandForm({ projects, initialProjectId }) {
   const { locale } = usePreferences();
   const copy = getDemandCopy(locale);
@@ -31,8 +33,32 @@ export default function DemandForm({ projects, initialProjectId }) {
   const [branches, setBranches] = useState(initialProject ? [{ name: "main" }] : []);
   const [branchesLoading, setBranchesLoading] = useState(Boolean(initialProject));
   const [branchError, setBranchError] = useState("");
+  const [recoveryNotice, setRecoveryNotice] = useState("");
   const [exampleTitle, exampleDescription, exampleAcceptance] = copy.examples[form.type];
   const selectedProject = projects.find((project) => project.id === form.projectId);
+
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem(ENVIRONMENT_RECOVERY_STORAGE_KEY);
+      if (!stored) return;
+      const draft = JSON.parse(stored);
+      if (draft?.target !== "DEMAND" || !draft?.projectId || !projects.some((project) => project.id === draft.projectId)) return;
+      setForm((current) => ({
+        ...current,
+        projectId: draft.projectId,
+        baseBranch: draft.branchName || current.baseBranch,
+        title: draft.title || current.title,
+        description: draft.description || current.description,
+        acceptanceCriteria: draft.acceptanceCriteria || current.acceptanceCriteria,
+        type: "BUG",
+        visualValidation: false,
+      }));
+      setRecoveryNotice("A demanda foi preparada com a branch e a falha do ambiente. Revise os dados e envie quando estiver de acordo.");
+      window.sessionStorage.removeItem(ENVIRONMENT_RECOVERY_STORAGE_KEY);
+    } catch {
+      window.sessionStorage.removeItem(ENVIRONMENT_RECOVERY_STORAGE_KEY);
+    }
+  }, [projects]);
 
   useEffect(() => {
     if (!selectedProject) return undefined;
@@ -44,12 +70,16 @@ export default function DemandForm({ projects, initialProjectId }) {
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error ?? "Não foi possível consultar as branches");
         setBranches(result.branches);
-        const preferred = result.branches.some((branch) => branch.name === "main")
-          ? "main"
-          : result.branches.some((branch) => branch.name === selectedProject.defaultBranch)
-            ? selectedProject.defaultBranch
-            : result.branches[0]?.name ?? "";
-        setForm((current) => ({ ...current, baseBranch: preferred }));
+        setForm((current) => {
+          const preferred = result.branches.some((branch) => branch.name === current.baseBranch)
+            ? current.baseBranch
+            : result.branches.some((branch) => branch.name === "main")
+              ? "main"
+              : result.branches.some((branch) => branch.name === selectedProject.defaultBranch)
+                ? selectedProject.defaultBranch
+                : result.branches[0]?.name ?? "";
+          return { ...current, baseBranch: preferred };
+        });
       })
       .catch((fetchError) => {
         if (fetchError.name === "AbortError") return;
@@ -112,6 +142,7 @@ export default function DemandForm({ projects, initialProjectId }) {
         <label><span>{copy.type}</span><select name="type" value={form.type} onChange={change}>{copy.typeValues.map((value) => <option value={value} key={value}>{copy.types[value]}</option>)}</select></label>
         <label><span>{copy.priority}</span><select name="priority" value={form.priority} onChange={change}>{copy.priorityValues.map((value) => <option value={value} key={value}>{copy.priorities[value]}</option>)}</select></label>
       </div>
+      {recoveryNotice && <div className="form-success full-field">{recoveryNotice}</div>}
       <details className="demand-example full-field">
         <summary><Lightbulb size={17} /><span><strong>{copy.viewExample.replace("{type}", copy.types[form.type].toLocaleLowerCase(locale))}</strong><small>{copy.exampleHelp}</small></span></summary>
         <div><span><small>{copy.title}</small><strong>{exampleTitle}</strong></span><span><small>{copy.context}</small><p>{exampleDescription}</p></span><span><small>{copy.acceptance}</small><p>{exampleAcceptance}</p></span></div>
