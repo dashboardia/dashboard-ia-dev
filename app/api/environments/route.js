@@ -29,11 +29,14 @@ export async function POST(request) {
       db.project.findUniqueOrThrow({ where: { id: input.projectId } }),
       getGlobalSettings(),
     ]);
-    const activeCount = await db.devEnvironment.count({
-      where: { requestedById: user.id, status: { in: ACTIVE_ENVIRONMENT_STATUSES }, expiresAt: { gt: new Date() } },
-    });
-    if (activeCount >= settings.environmentMaxPerUser) {
-      return NextResponse.json({ error: `Você já possui ${activeCount} ambiente(s) ativo(s). Encerre um deles antes de criar outro.` }, { status: 409 });
+
+    if (user.globalRole !== "ADMIN") {
+      const activeCount = await db.devEnvironment.count({
+        where: { requestedById: user.id, status: { in: ACTIVE_ENVIRONMENT_STATUSES }, expiresAt: { gt: new Date() } },
+      });
+      if (activeCount >= settings.environmentMaxPerUser) {
+        return NextResponse.json({ error: `Você já possui ${activeCount} ambiente(s) ativo(s). Encerre um deles antes de criar outro.` }, { status: 409 });
+      }
     }
 
     const token = await getProjectGitHubAccessToken(project, user.id);
@@ -97,7 +100,7 @@ export async function POST(request) {
       data: { externalId: remote.id, status: remote.status, activity: remote.activity, requestedAt: new Date() },
     });
     await db.auditLog.create({
-      data: auditData({ actorId: user.id, projectId: project.id, action: "environment.create", entityType: "DevEnvironment", entityId: environment.id, metadata: { branchName: input.branchName, runtime: runtimeLabel, buildRuntime: detected.runtime, creditCost: settings.environmentCreditCost }, request }),
+      data: auditData({ actorId: user.id, projectId: project.id, action: "environment.create", entityType: "DevEnvironment", entityId: environment.id, metadata: { branchName: input.branchName, runtime: runtimeLabel, buildRuntime: detected.runtime, creditCost: settings.environmentCreditCost, adminLimitBypass: user.globalRole === "ADMIN" }, request }),
     });
     return NextResponse.json({ environment }, { status: 202 });
   } catch (error) {
