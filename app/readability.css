@@ -1,21 +1,79 @@
 /*
- * Aumenta a legibilidade em desktop sem reduzir artificialmente a largura útil.
- * Aplicar o zoom no body preserva o comportamento de layout como no zoom do
- * navegador, evitando a faixa vazia à direita criada pela compensação manual.
+ * Legibilidade e largura responsivas sem usar zoom CSS.
+ * O conteúdo ocupa toda a área disponível e os textos pequenos recebem
+ * tamanhos mínimos confortáveis, preservando o comportamento responsivo.
  */
+html,
+body {
+  overflow-x: hidden;
+}
+
+.shell,
+.shell > .content {
+  min-height: 100vh;
+}
+
 @media (min-width: 1100px) {
-  html,
   body {
-    overflow-x: hidden;
+    zoom: 1;
   }
 
-  body {
-    zoom: 1.2;
+  .content {
+    min-width: 0;
+    max-width: none;
   }
 
-  .shell,
-  .shell > .content {
-    width: auto;
-    min-height: 100vh;
+  .page,
+  .section-page,
+  .execution-detail-page {
+    width: 100%;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .page,
+  .section-page {
+    padding-left: clamp(24px, 2.4vw, 42px);
+    padding-right: clamp(24px, 2.4vw, 42px);
+  }
+
+  .execution-detail-page {
+    padding-left: clamp(24px, 2vw, 36px);
+    padding-right: clamp(24px, 2vw, 36px);
+  }
+
+  .content small {
+    font-size: 10px !important;
+    line-height: 1.45;
+  }
+
+  .content input,
+  .content select,
+  .content textarea,
+  .content button {
+    font-size: 12px;
+  }
+
+  .content .page-heading p,
+  .content .section-header p,
+  .content .card-heading p,
+  .content .panel-title p,
+  .content .field-guidance,
+  .content .field-warning,
+  .content .resource-meta {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .content .eyebrow {
+    font-size: 10px !important;
+  }
+
+  .content .status-pill,
+  .content .demand-status,
+  .content .execution-chat-status,
+  .content .log-level {
+    font-size: 9px;
   }
 }

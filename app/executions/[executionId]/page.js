@@ -6,6 +6,7 @@ import AppShell from "../../../components/app-shell";
 import SectionHeader from "../../../components/section-header";
 import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
+import { executionLivePresentation, executionStageLabel, executionStatusLabel } from "../../../lib/execution-presentation";
 import { requirePageUser } from "../../../lib/page-access";
 import { redactSensitiveData } from "../../../lib/redaction";
 import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error-messages";
@@ -77,20 +78,28 @@ export default async function ExecutionPage({ params }) {
   const showConversation = execution.demand.type !== "DOCUMENTATION";
   const conversationReady = Boolean(execution.pullRequest || execution.messages.length > 0 || execution.status === "AWAITING_CLIENT");
   const conversationMessages = execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
+  const livePresentation = executionLivePresentation(execution);
+  const liveIcon = livePresentation.icon === "failed"
+    ? <CircleX size={18} />
+    : livePresentation.icon === "running"
+      ? <CircleDotDashed className="spin-slow" size={18} />
+      : livePresentation.icon === "paused"
+        ? <CircleDotDashed size={18} />
+        : <CircleCheck size={18} />;
 
   return (
     <AppShell user={user}>
       <div className="section-page execution-detail-page">
         <SectionHeader
           backHref="/executions"
-          eyebrow={`${execution.demand.project.name} · ${execution.stage}`}
+          eyebrow={`${execution.demand.project.name} · ${executionStageLabel(execution.stage)}`}
           title={execution.demand.title}
           description={`Execução ${execution.id.slice(-10)} · solicitada por ${execution.requestedBy.name ?? execution.requestedBy.githubLogin}`}
           action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : interrupted ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar a demanda</Link></div> : null}{canResume && <ResumeExecutionButton executionId={execution.id} processingEnabled={settings.executionProcessingEnabled} />}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
         />
 
         <section className="execution-metrics">
-          <div><Activity size={17} /><span><small>Status</small><strong>{execution.cancelRequestedAt && execution.status !== "CANCELLED" ? "CANCELAMENTO SOLICITADO" : execution.status}</strong></span></div>
+          <div><Activity size={17} /><span><small>Status</small><strong>{executionStatusLabel(execution)}</strong></span></div>
           <div><GitBranch size={17} /><span><small>Branch</small><span className="execution-branch-value"><strong>{execution.branchName ?? "Aguardando worker"}</strong><CopyBranchButton branchName={execution.branchName} /></span></span></div>
           <div><Clock3 size={17} /><span><small>Duração</small><strong>{duration(execution)}</strong></span></div>
           <div><Zap size={17} /><span><small>Tokens</small><strong>{(execution.inputTokens ?? 0) + (execution.outputTokens ?? 0) || "—"}</strong></span></div>
@@ -98,8 +107,8 @@ export default async function ExecutionPage({ params }) {
 
         <div className={`execution-workbench ${showConversation ? "with-chat" : "single"}`}>
           <div className="execution-live-column">
-            <section className={`execution-live-progress ${execution.error ? "failed" : executionActive ? "active" : "completed"}`}>
-              <header><span>{execution.error ? <CircleX size={18} /> : executionActive ? <CircleDotDashed className="spin-slow" size={18} /> : stopped ? <CircleDotDashed size={18} /> : <CircleCheck size={18} />}</span><div><strong>{execution.error ? "Execução interrompida" : executionActive ? "Acompanhamento ao vivo" : stopped ? "Execução pausada" : "Execução concluída"}</strong><small>{executionActive ? "A página recebe novas etapas automaticamente, sem piscar." : stopped ? "O administrador pausou o processamento. Quando a plataforma estiver liberada, esta mesma execução pode ser retomada." : "Resumo factual das últimas etapas executadas."}</small></div><em>{execution.stage}</em></header>
+            <section className={`execution-live-progress ${livePresentation.tone}`}>
+              <header><span>{liveIcon}</span><div><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></div><em>{executionStageLabel(execution.stage)}</em></header>
               <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
             </section>
             {showConversation && <ExecutionEnvironmentActivity executionId={execution.id} />}

@@ -1,0 +1,24 @@
+.execution-live-progress.waiting {
+  border-color: color-mix(in srgb, var(--warning) 36%, var(--line));
+  background: color-mix(in srgb, var(--warning) 5%, var(--soft));
+}
+
+.execution-live-progress.waiting header > span {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.execution-live-progress.paused {
+  border-color: color-mix(in srgb, var(--muted) 32%, var(--line));
+  background: color-mix(in srgb, var(--muted) 4%, var(--soft));
+}
+
+.execution-live-progress.paused header > span {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+}
+
+.execution-metrics > div:first-child strong {
+  text-transform: none;
+  letter-spacing: 0;
+}
