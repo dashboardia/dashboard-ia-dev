@@ -8,8 +8,14 @@ export function CheckoutButton({ kind, value, children, disabled = false }) {
   const [error, setError] = useState("");
 
   async function checkout() {
-    setLoading(true);
     setError("");
+    const checkoutWindow = window.open("about:blank", "_blank");
+    if (!checkoutWindow) {
+      setError("O navegador bloqueou a nova aba. Permita pop-ups para a Dashboard IA e tente novamente.");
+      return;
+    }
+    checkoutWindow.opener = null;
+    setLoading(true);
     try {
       const body = kind === "PLAN" ? { kind, plan: value } : { kind, pack: value };
       const response = await fetch("/api/billing/checkout", {
@@ -19,9 +25,12 @@ export function CheckoutButton({ kind, value, children, disabled = false }) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Não foi possível abrir o checkout");
-      window.location.assign(result.checkoutUrl);
+      checkoutWindow.location.replace(result.checkoutUrl);
+      checkoutWindow.focus();
     } catch (checkoutError) {
+      checkoutWindow.close();
       setError(checkoutError.message);
+    } finally {
       setLoading(false);
     }
   }

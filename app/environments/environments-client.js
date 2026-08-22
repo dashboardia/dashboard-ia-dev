@@ -7,6 +7,7 @@ import BranchCombobox from "../../components/branch-combobox";
 
 const ACTIVE = new Set(["QUEUED", "BUILDING", "DEPLOYING", "READY", "STOPPING"]);
 const labels = { QUEUED: "Na fila", BUILDING: "Construindo", DEPLOYING: "Iniciando", READY: "Disponível", FAILED: "Falhou", STOPPING: "Encerrando", EXPIRED: "Encerrado" };
+const VISIBLE_ENVIRONMENT_HISTORY = 6;
 
 export default function EnvironmentsClient({ initialProjects, initialEnvironments, initialSelection = null }) {
   const initialProject = initialProjects.find((project) => project.id === initialSelection?.projectId) ?? initialProjects[0];
@@ -98,6 +99,37 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
     window.setTimeout(() => setCopiedCredential((current) => current === key ? "" : current), 1_500);
   }
 
+  function environmentCard(environment) {
+    const activity = Array.isArray(environment.activity) ? environment.activity : [];
+    const demoAccess = environment.credentials;
+    const isActive = ["QUEUED", "BUILDING", "DEPLOYING", "STOPPING"].includes(environment.status);
+    return <article className="resource-card environment-card" key={environment.id}>
+      <header className="environment-card-header"><span className="resource-icon"><ServerCog size={19} /></span><div><strong>{environment.project.name}</strong><small>{environment.project.repositoryFullName}</small></div><em className={`status-pill ${environment.status.toLowerCase()}`}>{isActive && <span className="status-pulse" />}{labels[environment.status] ?? environment.status}</em></header>
+      <div className="resource-meta environment-meta"><span><GitBranch size={13} />{environment.branchName}</span><span>{environment.runtime ?? "Detectando stack"}</span><span>{environment.creditChargedAt ? `${environment.creditCost} créditos cobrados` : environment.status === "FAILED" || environment.creditRefundedAt ? "Nenhum crédito cobrado" : `${environment.creditCost} créditos protegidos · cobra somente no sucesso`}</span></div>
+      {activity.length > 0 && <details className="environment-progress" open={isActive}>
+        <summary><span><strong>{isActive ? "Publicação em andamento" : "Etapas da publicação"}</strong><small>{activity.at(-1)?.message}</small></span><ChevronDown size={16} /></summary>
+        <ol>{activity.map((entry, index) => <li className={entry.status.toLowerCase()} key={`${entry.key}-${index}`}>{entry.status === "COMPLETED" ? <CircleCheck size={15} /> : entry.status === "FAILED" ? <CircleX size={15} /> : <CircleDotDashed className="spin-slow" size={15} />}<span>{entry.message}</span></li>)}</ol>
+      </details>}
+      {Array.isArray(environment.adjustments) && environment.adjustments.length > 0 && <details className="environment-adjustments">
+        <summary>Ajustes aplicados para subir o ambiente ({environment.adjustments.length})</summary>
+        <ul>{environment.adjustments.map((adjustment, index) => <li key={`${adjustment.code ?? adjustment.kind ?? "adjustment"}-${adjustment.file ?? index}`}><strong>{adjustment.file ?? "Projeto"}</strong><span>{adjustment.summary ?? adjustment.message}</span></li>)}</ul>
+        <small>Essas alterações existem somente neste ambiente temporário e não modificaram a branch do cliente.</small>
+      </details>}
+      {environment.status === "READY" && demoAccess && <section className={`environment-credentials ${demoAccess.status?.toLowerCase() ?? "ready"}`}>
+        <div><KeyRound size={16} /><span><strong>{demoAccess.password ? "Acesso de demonstração" : "Dados de demonstração"}</strong><small>{demoAccess.message ?? "Informações exclusivas deste ambiente temporário"}</small></span></div>
+        {demoAccess.username && <label><span>Usuário</span><code>{demoAccess.username}</code><button type="button" aria-label="Copiar usuário" onClick={() => copyCredential(environment.id, "username", demoAccess.username)}>{copiedCredential === `${environment.id}:username` ? <Check size={14} /> : <Copy size={14} />}</button></label>}
+        {demoAccess.email && <label><span>E-mail</span><code>{demoAccess.email}</code><button type="button" aria-label="Copiar e-mail" onClick={() => copyCredential(environment.id, "email", demoAccess.email)}>{copiedCredential === `${environment.id}:email` ? <Check size={14} /> : <Copy size={14} />}</button></label>}
+        {demoAccess.password && <label><span>Senha</span><code>{demoAccess.password}</code><button type="button" aria-label="Copiar senha" onClick={() => copyCredential(environment.id, "password", demoAccess.password)}>{copiedCredential === `${environment.id}:password` ? <Check size={14} /> : <Copy size={14} />}</button></label>}
+        {demoAccess.source && <small className="environment-credential-source">Detectado em {demoAccess.source}</small>}
+      </section>}
+      {environment.error && <details className="environment-error"><summary>Ver falha técnica</summary><pre>{environment.error}</pre></details>}
+      <div className="environment-actions">{environment.url && <a className="primary compact" href={environment.url} target="_blank" rel="noreferrer"><ExternalLink size={14} />Abrir ambiente</a>}{ACTIVE.has(environment.status) && <button className="environment-stop-button" type="button" onClick={() => stopEnvironment(environment.id)}><Square size={13} />Encerrar ambiente</button>}</div>
+    </article>;
+  }
+
+  const latestEnvironments = environments.slice(0, VISIBLE_ENVIRONMENT_HISTORY);
+  const olderEnvironments = environments.slice(VISIBLE_ENVIRONMENT_HISTORY);
+
   return <>
     <form className="form-card detail-card full-card environment-create-form" onSubmit={createEnvironment}>
       <div className="card-heading"><div><h2>Novo ambiente</h2><p>A stack e os comandos são detectados na branch e podem usar as configurações salvas no projeto.</p></div><ServerCog size={20} /></div>
@@ -110,29 +142,13 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
     </form>
 
     <section className="resource-grid environment-grid">
-      {environments.map((environment) => { const activity = Array.isArray(environment.activity) ? environment.activity : []; const demoAccess = environment.credentials; const isActive = ["QUEUED", "BUILDING", "DEPLOYING", "STOPPING"].includes(environment.status); return <article className="resource-card environment-card" key={environment.id}>
-        <header className="environment-card-header"><span className="resource-icon"><ServerCog size={19} /></span><div><strong>{environment.project.name}</strong><small>{environment.project.repositoryFullName}</small></div><em className={`status-pill ${environment.status.toLowerCase()}`}>{isActive && <span className="status-pulse" />}{labels[environment.status] ?? environment.status}</em></header>
-        <div className="resource-meta environment-meta"><span><GitBranch size={13} />{environment.branchName}</span><span>{environment.runtime ?? "Detectando stack"}</span><span>{environment.creditChargedAt ? `${environment.creditCost} créditos cobrados` : environment.status === "FAILED" || environment.creditRefundedAt ? "Nenhum crédito cobrado" : `${environment.creditCost} créditos protegidos · cobra somente no sucesso`}</span></div>
-        {activity.length > 0 && <details className="environment-progress" open={isActive}>
-          <summary><span><strong>{isActive ? "Publicação em andamento" : "Etapas da publicação"}</strong><small>{activity.at(-1)?.message}</small></span><ChevronDown size={16} /></summary>
-          <ol>{activity.map((entry, index) => <li className={entry.status.toLowerCase()} key={`${entry.key}-${index}`}>{entry.status === "COMPLETED" ? <CircleCheck size={15} /> : entry.status === "FAILED" ? <CircleX size={15} /> : <CircleDotDashed className="spin-slow" size={15} />}<span>{entry.message}</span></li>)}</ol>
-        </details>}
-        {Array.isArray(environment.adjustments) && environment.adjustments.length > 0 && <details className="environment-adjustments">
-          <summary>Ajustes aplicados para subir o ambiente ({environment.adjustments.length})</summary>
-          <ul>{environment.adjustments.map((adjustment, index) => <li key={`${adjustment.code ?? adjustment.kind ?? "adjustment"}-${adjustment.file ?? index}`}><strong>{adjustment.file ?? "Projeto"}</strong><span>{adjustment.summary ?? adjustment.message}</span></li>)}</ul>
-          <small>Essas alterações existem somente neste ambiente temporário e não modificaram a branch do cliente.</small>
-        </details>}
-        {environment.status === "READY" && demoAccess && <section className={`environment-credentials ${demoAccess.status?.toLowerCase() ?? "ready"}`}>
-          <div><KeyRound size={16} /><span><strong>{demoAccess.password ? "Acesso de demonstração" : "Dados de demonstração"}</strong><small>{demoAccess.message ?? "Informações exclusivas deste ambiente temporário"}</small></span></div>
-          {demoAccess.username && <label><span>Usuário</span><code>{demoAccess.username}</code><button type="button" aria-label="Copiar usuário" onClick={() => copyCredential(environment.id, "username", demoAccess.username)}>{copiedCredential === `${environment.id}:username` ? <Check size={14} /> : <Copy size={14} />}</button></label>}
-          {demoAccess.email && <label><span>E-mail</span><code>{demoAccess.email}</code><button type="button" aria-label="Copiar e-mail" onClick={() => copyCredential(environment.id, "email", demoAccess.email)}>{copiedCredential === `${environment.id}:email` ? <Check size={14} /> : <Copy size={14} />}</button></label>}
-          {demoAccess.password && <label><span>Senha</span><code>{demoAccess.password}</code><button type="button" aria-label="Copiar senha" onClick={() => copyCredential(environment.id, "password", demoAccess.password)}>{copiedCredential === `${environment.id}:password` ? <Check size={14} /> : <Copy size={14} />}</button></label>}
-          {demoAccess.source && <small className="environment-credential-source">Detectado em {demoAccess.source}</small>}
-        </section>}
-        {environment.error && <details className="environment-error"><summary>Ver falha técnica</summary><pre>{environment.error}</pre></details>}
-        <div className="environment-actions">{environment.url && <a className="primary compact" href={environment.url} target="_blank" rel="noreferrer"><ExternalLink size={14} />Abrir ambiente</a>}{ACTIVE.has(environment.status) && <button className="environment-stop-button" type="button" onClick={() => stopEnvironment(environment.id)}><Square size={13} />Encerrar ambiente</button>}</div>
-      </article>; })}
+      {latestEnvironments.map(environmentCard)}
       {!environments.length && <div className="resource-empty"><ServerCog size={28} /><strong>Nenhum ambiente criado</strong><span>Escolha um projeto e uma branch para iniciar o primeiro container.</span></div>}
     </section>
+
+    {olderEnvironments.length > 0 && <details className="form-card detail-card full-card execution-collapsible environment-history-panel">
+      <summary className="execution-collapsible-header"><ServerCog size={19} /><span><strong>Ambientes anteriores</strong><small>{olderEnvironments.length} ambiente{olderEnvironments.length === 1 ? "" : "s"} mais antigo{olderEnvironments.length === 1 ? "" : "s"} oculto{olderEnvironments.length === 1 ? "" : "s"} para manter a página compacta.</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+      <div className="execution-collapsible-content"><section className="resource-grid environment-grid">{olderEnvironments.map(environmentCard)}</section></div>
+    </details>}
   </>;
 }
