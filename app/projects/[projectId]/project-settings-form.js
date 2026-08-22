@@ -4,6 +4,8 @@ import { CheckCircle2, LoaderCircle, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import styles from "./project-settings-form.module.css";
+
 function initialForm(project) {
   return {
     name: project.name,
@@ -48,23 +50,17 @@ export default function ProjectSettingsForm({ project }) {
   }
 
   return (
-    <form className="project-settings-form" onSubmit={submit}>
-      <div className="form-grid">
+    <form className={styles.form} onSubmit={submit}>
+      <div className={styles.grid}>
         <label><span>Nome do projeto</span><input name="name" value={form.name} onChange={change} required /></label>
-        <label><span>Repositório GitHub</span><input value={project.repositoryFullName} disabled aria-label="Repositório GitHub" /></label>
         <label><span>Branch padrão</span><input name="defaultBranch" value={form.defaultBranch} onChange={change} required /></label>
         <label><span>URL de produção <small>(opcional)</small></span><input name="productionUrl" type="url" value={form.productionUrl} onChange={change} placeholder="https://app.exemplo.com" /></label>
       </div>
-
-      <div className="form-note">
-        <strong>Configuração técnica automática</strong>
-        <p>Diretório, instalação, lint, testes, build, comando de ambiente e porta são detectados pelo Dashboard IA e não precisam ser informados manualmente.</p>
-      </div>
-
+      <div className={styles.note}>O repositório é <strong>{project.repositoryFullName}</strong>. Tecnologia, diretório, instalação, testes, build, comando de ambiente e porta são detectados automaticamente pela Dashboard IA.</div>
       {error && <div className="form-error">{error}</div>}
-      <div className="form-actions">
-        {saved && <span className="form-success"><CheckCircle2 size={15} />Configurações salvas</span>}
-        <button className="primary" type="submit" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />}{saving ? "Salvando..." : "Salvar configurações"}</button>
+      <div className={styles.actions}>
+        {saved && <span className={styles.success}><CheckCircle2 size={15} />Configurações salvas</span>}
+        <button className="primary" type="submit" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />}{saving ? "Salvando..." : "Salvar alterações"}</button>
       </div>
     </form>
   );

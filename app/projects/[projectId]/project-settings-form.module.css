@@ -1,0 +1,70 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.grid label span {
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.grid input {
+  min-height: 42px;
+  width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--panel);
+  outline: none;
+}
+
+.grid input:focus {
+  border-color: color-mix(in srgb, var(--purple) 55%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--purple) 10%, transparent);
+}
+
+.note {
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--purple) 20%, var(--line));
+  border-radius: 10px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--purple) 5%, var(--panel));
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.success {
+  color: #17b37a;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+@media (max-width: 860px) {
+  .grid { grid-template-columns: 1fr; }
+  .actions { align-items: stretch; flex-direction: column; }
+}

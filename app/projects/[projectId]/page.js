@@ -1,4 +1,4 @@
-import { ExternalLink, GitBranch, Github, Settings, ShieldCheck, Users } from "lucide-react";
+import { BookOpen, CheckCircle2, ExternalLink, GitBranch, Github, ListChecks, Rocket, ServerCog, Settings, Webhook } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -8,11 +8,10 @@ import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
 import { requirePageUser } from "../../../lib/page-access";
 import { isGitHubWebhookConfirmed } from "../../../lib/webhooks";
-import MemberForm from "./member-form";
-import MemberControls from "./member-controls";
 import ProjectSettingsForm from "./project-settings-form";
 import WebhookStatus from "./webhook-status";
 import BusinessKnowledgePanel from "./business-knowledge-panel";
+import styles from "./project-page.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +20,10 @@ export default async function ProjectPage({ params }) {
   const { projectId } = await params;
   const role = await getProjectRole(user, projectId);
   if (!role) redirect("/projects");
+
   const project = await db.project.findFirst({
     where: { id: projectId, status: { not: "ARCHIVED" } },
     include: {
-      members: { include: { user: { select: { id: true, name: true, email: true, githubLogin: true, image: true } } }, orderBy: { createdAt: "asc" } },
       demands: { orderBy: { updatedAt: "desc" }, take: 8 },
       healthChecks: { orderBy: { checkedAt: "desc" }, take: 1 },
       businessKnowledge: {
@@ -34,58 +33,73 @@ export default async function ProjectPage({ params }) {
     },
   });
   if (!project) notFound();
+
   const webhookConfirmed = isGitHubWebhookConfirmed(project);
+  const githubUrl = `https://github.com/${project.repositoryFullName}`;
+  const environmentsHref = `/environments?projectId=${encodeURIComponent(project.id)}&branch=${encodeURIComponent(project.defaultBranch)}`;
 
   return (
     <AppShell user={user}>
-      <div className="section-page">
-        <SectionHeader backHref="/projects" eyebrow={project.repositoryFullName} title={project.name} description={`Branch padrão: ${project.defaultBranch}`} action={<Link className="primary" href={`/demands/new?projectId=${project.id}`}>Nova demanda</Link>} />
-        <div className="detail-grid">
-          <section className="form-card detail-card">
-            <h2>Integrações</h2>
-            <div className="detail-list">
-              <span><Github size={17} /><strong>GitHub</strong><em>{project.repositoryFullName}</em></span>
-              <span><Github size={17} /><strong>Webhook</strong><em>{role === "MANAGER" ? <WebhookStatus projectId={project.id} configured={webhookConfirmed} error={project.githubWebhookError} /> : webhookConfirmed ? "Sincronizado" : "Pendente"}</em></span>
-              <span><GitBranch size={17} /><strong>Branch</strong><em>{project.defaultBranch}</em></span>
-              <span><ExternalLink size={17} /><strong>Deploy</strong><em>{project.productionUrl ?? "Somente GitHub"}</em></span>
-              <span><ShieldCheck size={17} /><strong>Seu papel</strong><em>{role}</em></span>
+      <div className={`section-page ${styles.page}`}>
+        <SectionHeader
+          backHref="/projects"
+          eyebrow={project.repositoryFullName}
+          title={project.name}
+          description={`Branch padrão: ${project.defaultBranch}`}
+          action={<div className={styles.headerActions}>
+            <a className={styles.secondaryAction} href={githubUrl} target="_blank" rel="noreferrer"><Github size={16} />Abrir GitHub</a>
+            <Link className={styles.primaryAction} href={`/demands/new?projectId=${project.id}`}><ListChecks size={16} />Nova demanda</Link>
+          </div>}
+        />
+
+        <div className={styles.overview}>
+          <section className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div><h2>Resumo do projeto</h2><p>O essencial para trabalhar com este repositório.</p></div>
+              <span className={styles.connectionBadge}><CheckCircle2 size={14} />GitHub conectado</span>
+            </div>
+
+            <div className={styles.summaryGrid}>
+              <div className={styles.summaryItem}><span className={styles.summaryIcon}><Github size={16} /></span><span><small>Repositório</small><a href={githubUrl} target="_blank" rel="noreferrer">{project.repositoryFullName}</a></span></div>
+              <div className={styles.summaryItem}><span className={styles.summaryIcon}><GitBranch size={16} /></span><span><small>Branch padrão</small><strong>{project.defaultBranch}</strong></span></div>
+              <div className={styles.summaryItem}><span className={styles.summaryIcon}><Rocket size={16} /></span><span><small>Produção</small><strong>{project.productionUrl ? "URL configurada" : "Não configurada"}</strong></span></div>
+              <div className={styles.summaryItem}><span className={styles.summaryIcon}><Webhook size={16} /></span><span><small>Sincronização</small><strong>{webhookConfirmed ? "Webhook sincronizado" : "Webhook pendente"}</strong></span></div>
+            </div>
+
+            <div className={styles.webhookRow}>
+              <span><strong>Sincronização com GitHub</strong><small>Mantém Pull Requests e alterações do repositório atualizados.</small></span>
+              {role === "MANAGER" ? <WebhookStatus projectId={project.id} configured={webhookConfirmed} error={project.githubWebhookError} /> : <span>{webhookConfirmed ? "Sincronizado" : "Pendente"}</span>}
             </div>
           </section>
-          <section className="form-card detail-card">
-            <div className="card-heading"><div><h2>Membros</h2><p>{project.members.length} pessoas com acesso</p></div><Users size={20} /></div>
-            <div className="member-list">{project.members.map((member) => { const memberName = member.user.name ?? member.user.githubLogin ?? member.user.email ?? "Usuário"; return <div className="member-row" key={member.id}><span className="mini-avatar">{memberName[0].toUpperCase()}</span><span><strong>{memberName}</strong><small>{member.user.email}</small></span>{role === "MANAGER" ? <MemberControls projectId={project.id} memberId={member.id} initialRole={member.role} memberName={memberName} /> : <em>{member.role}</em>}</div>; })}</div>
-            {role === "MANAGER" && <MemberForm projectId={project.id} />}
+
+          <section className={styles.card}>
+            <div className={styles.cardHeader}><div><h2>Ações rápidas</h2><p>Continue o trabalho sem procurar em outros menus.</p></div></div>
+            <div className={styles.quickActions}>
+              <Link className={styles.quickAction} href={`/demands/new?projectId=${project.id}`}><ListChecks size={17} /><span><strong>Criar nova demanda</strong><small>Solicitar uma alteração neste projeto</small></span></Link>
+              <Link className={styles.quickAction} href="/executions"><ServerCog size={17} /><span><strong>Ver execuções</strong><small>Acompanhar processamento e interações</small></span></Link>
+              <Link className={styles.quickAction} href={environmentsHref}><Rocket size={17} /><span><strong>Subir ambiente</strong><small>Abrir esta branch em um ambiente temporário</small></span></Link>
+              <a className={styles.quickAction} href={githubUrl} target="_blank" rel="noreferrer"><ExternalLink size={17} /><span><strong>Abrir repositório</strong><small>Visualizar o código diretamente no GitHub</small></span></a>
+            </div>
           </section>
         </div>
-        {role === "MANAGER" && (
-          <section className="form-card detail-card full-card project-settings-card">
-            <div className="card-heading"><div><h2>Configurações do projeto</h2><p>Produção, branch e comandos usados pelo worker</p></div><Settings size={20} /></div>
-            <ProjectSettingsForm project={{
-              id: project.id,
-              name: project.name,
-              repositoryFullName: project.repositoryFullName,
-              defaultBranch: project.defaultBranch,
-              productionUrl: project.productionUrl,
-              workingDirectory: project.workingDirectory,
-              installCommand: project.installCommand,
-              lintCommand: project.lintCommand,
-              testCommand: project.testCommand,
-              buildCommand: project.buildCommand,
-              previewCommand: project.previewCommand,
-              previewPort: project.previewPort,
-            }} />
-          </section>
-        )}
-        {role === "MANAGER" && <BusinessKnowledgePanel projectId={project.id} initialEntries={project.businessKnowledge.map((entry) => ({
-          ...entry,
-          createdAt: entry.createdAt.toISOString(),
-          updatedAt: entry.updatedAt.toISOString(),
-          approvedAt: entry.approvedAt?.toISOString() ?? null,
-        }))} />}
-        <section className="form-card detail-card full-card">
-          <div className="card-heading"><div><h2>Demandas recentes</h2><p>Atividades vinculadas ao projeto</p></div></div>
-          <div className="simple-list">{project.demands.map((demand) => <Link href={`/demands/${demand.id}`} key={demand.id}><strong>{demand.title}</strong><span>{demand.type}</span><em>{demand.status}</em></Link>)}{!project.demands.length && <div className="list-empty">Nenhuma demanda criada.</div>}</div>
+
+        <section className={styles.recentCard}>
+          <div className={styles.cardHeader}><div><h2>Demandas recentes</h2><p>Últimas atividades realizadas neste projeto.</p></div><Link className={styles.secondaryAction} href={`/demands?projectId=${project.id}`}>Ver todas</Link></div>
+          <div className={styles.demandList}>
+            {project.demands.map((demand) => <Link className={styles.demandRow} href={`/demands/${demand.id}`} key={demand.id}><strong>{demand.title}</strong><span>{demand.type}</span><em>{demand.status}</em></Link>)}
+            {!project.demands.length && <div className={styles.empty}>Nenhuma demanda criada neste projeto ainda.</div>}
+          </div>
         </section>
+
+        {role === "MANAGER" && <details className={styles.settingsDetails}>
+          <summary><Settings size={18} /><span><strong>Editar projeto</strong><small>Altere somente nome, branch padrão ou URL de produção.</small></span></summary>
+          <div className={styles.settingsBody}><ProjectSettingsForm project={{ id: project.id, name: project.name, repositoryFullName: project.repositoryFullName, defaultBranch: project.defaultBranch, productionUrl: project.productionUrl }} /></div>
+        </details>}
+
+        {role === "MANAGER" && <details className={styles.knowledgeDetails}>
+          <summary><BookOpen size={18} /><span><strong>Conhecimento do negócio</strong><small>Regras aprovadas que ajudam a IA a entender este projeto.</small></span></summary>
+          <div className={styles.settingsBody}><BusinessKnowledgePanel projectId={project.id} initialEntries={project.businessKnowledge.map((entry) => ({ ...entry, createdAt: entry.createdAt.toISOString(), updatedAt: entry.updatedAt.toISOString(), approvedAt: entry.approvedAt?.toISOString() ?? null }))} /></div>
+        </details>}
       </div>
     </AppShell>
   );
