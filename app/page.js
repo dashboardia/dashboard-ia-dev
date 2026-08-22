@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 
 import Dashboard from "./dashboard-client";
+import AutoRefresh from "../components/auto-refresh";
 import { authOptions } from "../lib/auth";
 import { getDashboardData } from "../lib/dashboard";
 import { getConfigurationStatus } from "../lib/env";
@@ -34,6 +35,7 @@ export default async function Home() {
   const newTrial = !existingBillingAccount && billing.account.plan === "TRIAL";
   if (newTrial) redirect("/billing?welcome=1");
   const data = await getDashboardData(session.user);
+  const hasLiveWork = Boolean(data.activeWork?.length);
 
-  return <Dashboard data={data} user={session.user} dateLabel={dateLabel} />;
+  return <><AutoRefresh active={hasLiveWork} interval={5000} showIndicator={false} /><Dashboard data={data} user={session.user} dateLabel={dateLabel} /></>;
 }
