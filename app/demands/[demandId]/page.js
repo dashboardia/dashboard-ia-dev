@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle2, Clock3, GitBranch, MousePointerClick } from "lucide-react";
+import { ArrowRight, CheckCircle2, ChevronDown, Clock3, FileText, GitBranch, MousePointerClick } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 
@@ -17,6 +17,7 @@ import StartAnalysisButton from "./start-analysis-button";
 
 const typeLabels = { BUG: "Correção", FEATURE: "Nova funcionalidade", REFACTOR: "Refatoração", TEST: "Testes", INVESTIGATION: "Investigação", DOCUMENTATION: "Documentação de negócio" };
 const statusLabels = { DRAFT: "Rascunho", PENDING_APPROVAL: "Pronta para iniciar", APPROVED: "Pronta para iniciar", QUEUED: "Na fila", RUNNING: "Em execução", REVIEW: "Em revisão", SUCCEEDED: "Concluída", FAILED: "Falha aguardando correção", CANCELLED: "Cancelada", STOPPED: "Parada" };
+const stageLabels = { ANALYSIS: "Análise", IMPLEMENTATION: "Implementação", VALIDATION: "Validação", PUBLISH: "Publicação" };
 const toneClass = { active: "running", waiting: "awaiting_client", failed: "failed", paused: "stopped", completed: "succeeded", neutral: "queued" };
 
 export const dynamic = "force-dynamic";
@@ -47,7 +48,40 @@ export default async function DemandPage({ params }) {
           <DemandEditCard demand={{ id: demand.id, projectId: demand.projectId, baseBranch: demand.baseBranch, title: demand.title, description: demand.description, acceptanceCriteria: demand.acceptanceCriteria, type: demand.type, priority: demand.priority, visualValidation: demand.visualValidation, visualPaths: demand.visualPaths, aiModel: demand.aiModel }} canEdit={canEdit} lunaOnly={lunaOnly} />
           <section className="form-card detail-card"><h2>Informações</h2><div className="detail-list"><span><Clock3 size={17} /><strong>Status</strong><em>{statusLabels[demand.status]}</em></span><span><GitBranch size={17} /><strong>Branch base</strong><em>{demand.baseBranch}</em></span><span><CheckCircle2 size={17} /><strong>Prioridade</strong><em>{demand.priority}</em></span></div></section>
         </div>
-        <section className="form-card detail-card full-card"><div className="card-heading execution-history-heading"><div><h2>Execuções</h2><p>Clique em uma execução para acompanhar etapas, ambiente, logs, custos e resultado em tempo real.</p></div><span><MousePointerClick size={15} />Itens clicáveis</span></div><div className="simple-list execution-history-list">{demand.executions.map((execution) => { const error = execution.error ? explainError(execution.error) : null; const control = executionControlState({ ...execution, demand: { type: demand.type } }); return <article className="execution-entry" key={execution.id}><Link className="execution-open-link" href={`/executions/${execution.id}`}><span><strong>{execution.stage}</strong><small>Execução {execution.id.slice(-8)}</small></span><span className={`status-pill ${toneClass[control.displayTone] ?? execution.status.toLowerCase()}`}>{control.displayStatus}</span><em>{execution.model ?? "modelo pendente"}</em><b>Abrir execução <ArrowRight size={14} /></b></Link><div className="execution-entry-actions">{execution.pullRequest && <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} />}{role === "MANAGER" && control.canCancel && <CancelExecutionButton executionId={execution.id} />}</div>{execution.summary && <p>{execution.summary}</p>}{error && <p className="execution-error"><strong>{error.title}</strong><span>{error.action}</span></p>}</article>; })}{!demand.executions.length && <div className="list-empty">Clique em “Iniciar execução” para começar e acompanhar o processamento ao vivo.</div>}</div></section>
+        <section className="form-card detail-card full-card demand-execution-history">
+          <div className="card-heading execution-history-heading">
+            <div><h2>Execuções</h2><p>Acompanhe cada ciclo e abra o resultado apenas quando precisar.</p></div>
+            <span><MousePointerClick size={15} />{demand.executions.length} {demand.executions.length === 1 ? "execução" : "execuções"}</span>
+          </div>
+          <div className="simple-list execution-history-list">
+            {demand.executions.map((execution) => {
+              const error = execution.error ? explainError(execution.error) : null;
+              const control = executionControlState({ ...execution, demand: { type: demand.type } });
+              return (
+                <article className="execution-entry" key={execution.id}>
+                  <Link className="execution-open-link" href={`/executions/${execution.id}`}>
+                    <span className="execution-entry-title"><strong>{stageLabels[execution.stage] ?? execution.stage}</strong><small>Execução {execution.id.slice(-8)}</small></span>
+                    <span className={`status-pill ${toneClass[control.displayTone] ?? execution.status.toLowerCase()}`}>{control.displayStatus}</span>
+                    <em>{execution.model ?? "modelo pendente"}</em>
+                    <b>Abrir execução <ArrowRight size={14} /></b>
+                  </Link>
+                  <div className="execution-entry-actions">
+                    {execution.pullRequest && <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} />}
+                    {role === "MANAGER" && control.canCancel && <CancelExecutionButton executionId={execution.id} />}
+                  </div>
+                  {execution.summary && (
+                    <details className="execution-summary-details">
+                      <summary><span><FileText size={14} />Resultado da execução</span><ChevronDown size={15} /></summary>
+                      <p>{execution.summary}</p>
+                    </details>
+                  )}
+                  {error && <p className="execution-error"><strong>{error.title}</strong><span>{error.action}</span></p>}
+                </article>
+              );
+            })}
+            {!demand.executions.length && <div className="list-empty">Clique em “Iniciar execução” para começar e acompanhar o processamento ao vivo.</div>}
+          </div>
+        </section>
       </div>
     </AppShell>
   );
