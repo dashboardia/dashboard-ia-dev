@@ -10,10 +10,25 @@ import { BillingAccessError, getExecutionCreditBudget } from "../../../../../lib
 import { db } from "../../../../../lib/db";
 import { clientInteractionRequeueData } from "../../../../../lib/executions";
 import { getGlobalSettings } from "../../../../../lib/global-settings";
+import { redactSensitiveData } from "../../../../../lib/redaction";
 import { executionMessageInputSchema } from "../../../../../lib/validation";
 import { deletePrivateObject, putPrivateObject } from "../../../../../lib/visual-storage";
 
 const MINIMUM_CONVERSATION_TIMEOUT_MINUTES = 24 * 60;
+
+function recoveryDemandDescription(execution, content) {
+  if (!execution.error || execution.pullRequest) return null;
+  const original = String(execution.demand.description ?? "").slice(0, 12_000);
+  const technical = redactSensitiveData(execution.error).slice(-6_000);
+  const request = String(content ?? "").slice(0, 8_000);
+  return [
+    original,
+    "## Continuação após falha da execução",
+    `Falha anterior:\n${technical}`,
+    `Ajuste solicitado pelo cliente:\n${request}`,
+    "Continue a demanda original preservando tudo que já estiver correto e trate a falha acima antes de concluir.",
+  ].filter(Boolean).join("\n\n");
+}
 
 export async function POST(request, context) {
   const uploadedKeys = [];
@@ -27,14 +42,15 @@ export async function POST(request, context) {
     const execution = await db.execution.findUniqueOrThrow({ where: { id: executionId }, include: { demand: true, pullRequest: true } });
     const { user } = await requireProjectRole(execution.demand.projectId, "MANAGER");
     const settings = await getGlobalSettings();
-    if (!execution.pullRequest || execution.status !== "AWAITING_CLIENT" || execution.closedAt) {
+    const failedButRecoverable = execution.status === "FAILED" && Boolean(execution.error);
+    if ((!failedButRecoverable && execution.status !== "AWAITING_CLIENT") || execution.closedAt) {
       return NextResponse.json({ error: "Esta execução não está disponível para novos ajustes" }, { status: 409 });
     }
     if (execution.conversationExpiresAt && execution.conversationExpiresAt <= new Date()) {
-      return NextResponse.json({ error: "A sessão expirou após 24 horas sem interação. Crie uma nova demanda para continuar." }, { status: 409 });
+      return NextResponse.json({ error: "A sessão expirou após 24 horas sem interação. A execução será encerrada por inatividade." }, { status: 409 });
     }
     if (execution.adjustmentCount >= settings.executionConversationMaxAdjustments) {
-      return NextResponse.json({ error: "O limite de ajustes desta execução foi atingido. Conclua a execução e abra uma nova demanda." }, { status: 409 });
+      return NextResponse.json({ error: "O limite de ajustes desta execução foi atingido. Conclua a execução quando estiver satisfeito ou abra uma nova demanda para iniciar um novo ciclo." }, { status: 409 });
     }
     const creditBudget = await getExecutionCreditBudget(db, { executionId, marginPercent: settings.creditBalanceSafetyMarginPercent });
     if (creditBudget && creditBudget.hardLimitCredits < 1) {
@@ -50,6 +66,7 @@ export async function POST(request, context) {
       storedAttachments.push({ name: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.sizeBytes, storageKey });
     }
 
+    const continuationDescription = recoveryDemandDescription(execution, input.content);
     const result = await db.$transaction(async (transaction) => {
       const interactionAt = new Date();
       const message = await transaction.executionMessage.create({
@@ -63,14 +80,17 @@ export async function POST(request, context) {
         include: { attachments: true },
       });
       const updated = await transaction.execution.updateMany({
-        where: { id: executionId, status: "AWAITING_CLIENT", closedAt: null },
+        where: { id: executionId, status: { in: ["AWAITING_CLIENT", "FAILED"] }, closedAt: null },
         data: clientInteractionRequeueData({
           now: interactionAt,
           timeoutMinutes: Math.max(MINIMUM_CONVERSATION_TIMEOUT_MINUTES, settings.executionConversationTimeoutMinutes),
         }),
       });
       if (updated.count !== 1) throw new Error("A execução mudou de estado enquanto o ajuste era enviado");
-      await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "QUEUED" } });
+      await transaction.demand.update({
+        where: { id: execution.demandId },
+        data: { status: "QUEUED", ...(continuationDescription ? { description: continuationDescription } : {}) },
+      });
       await transaction.auditLog.create({
         data: auditData({
           actorId: user.id,
@@ -78,7 +98,7 @@ export async function POST(request, context) {
           action: "execution.adjustment.request",
           entityType: "Execution",
           entityId: executionId,
-          metadata: { adjustment: execution.adjustmentCount + 1, billing: "measured_usage", attachments: storedAttachments.length },
+          metadata: { adjustment: execution.adjustmentCount + 1, billing: "measured_usage", attachments: storedAttachments.length, failureRecovery: Boolean(execution.error) },
           request,
         }),
       });

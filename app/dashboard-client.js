@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  ArrowRight,
   Boxes,
   CheckCircle2,
   CircleDot,
@@ -16,9 +17,14 @@ import {
 import Link from "next/link";
 
 import AppShell from "../components/app-shell";
+import styles from "./dashboard-client.module.css";
 
 const demoData = {
   metrics: { projects: 3, activeDemands: 2, executionsToday: 7, successfulToday: 6, availability: "99,8%" },
+  activeWork: [
+    { id: "demo-execution-1", demandId: "demo-1", title: "Corrigir retorno do botão voltar", project: "Portal Web", status: "Executando", tone: "running", branch: "feature/ajuste-voltar", stage: "IMPLEMENTATION", time: "agora" },
+    { id: "demo-execution-2", demandId: "demo-2", title: "Adicionar métricas de conversão", project: "Portal Web", status: "Aguardando você", tone: "attention", branch: "feature/conversao", stage: "PUBLISH", time: "há 6 min" },
+  ],
   projects: [
     { id: "demo-1", name: "Portal Web", repo: "acme/portal-web", branch: "main", health: "Saudável", deploy: "Ativo", color: "#7c5cff" },
     { id: "demo-2", name: "Site Institucional", repo: "acme/site-institucional", branch: "main", health: "Saudável", deploy: "Ativo", color: "#0ea5e9" },
@@ -59,6 +65,8 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
           <Link className="primary" href={setupMode ? "/login" : "/demands/new"}><Plus size={18} />Nova demanda</Link>
         </div>
 
+        {dashboard.activeWork?.length > 0 && <LiveWorkPanel items={dashboard.activeWork} setupMode={setupMode} />}
+
         <section className="metrics">
           <Metric icon={Boxes} label="Projetos conectados" value={String(dashboard.metrics.projects)} note="Acesso atualizado" tone="violet" />
           <Metric icon={ListChecks} label="Demandas ativas" value={String(dashboard.metrics.activeDemands)} note="Inclui fila e revisão" tone="blue" />
@@ -97,6 +105,27 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
       </div>
     </AppShell>
   );
+}
+
+function LiveWorkPanel({ items, setupMode }) {
+  return <section className={styles.liveWork}>
+    <header className={styles.liveHeader}>
+      <span className={styles.livePulse}><Activity size={18} /></span>
+      <div><strong>Há trabalho em andamento</strong><small>Clique em uma execução para acompanhar em tempo real ou abrir a demanda relacionada.</small></div>
+      <Link href={setupMode ? "/login" : "/executions"}>Ver todas as execuções <ArrowRight size={14} /></Link>
+    </header>
+    <div className={styles.liveList}>
+      {items.map((item) => <article className={styles.liveItem} key={item.id}>
+        <Link className={styles.liveMainLink} href={setupMode ? "/login" : `/executions/${item.id}`}>
+          <span className={`${styles.liveStatus} ${styles[item.tone] ?? ""}`}><i />{item.status}</span>
+          <span className={styles.liveCopy}><strong>{item.title}</strong><small>{item.project}{item.branch ? ` · ${item.branch}` : ""}</small></span>
+          <span className={styles.liveMeta}>{item.stage}<small>{item.time}</small></span>
+          <ArrowRight size={16} />
+        </Link>
+        <Link className={styles.demandLink} href={setupMode ? "/login" : `/demands/${item.demandId}`}>Ver demanda</Link>
+      </article>)}
+    </div>
+  </section>;
 }
 
 function Metric({ icon: Icon, label, value, note, tone }) {

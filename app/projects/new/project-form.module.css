@@ -1,0 +1,180 @@
+.form {
+  display: grid;
+  gap: 18px;
+}
+
+.step {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--soft) 82%, transparent);
+}
+
+.stepHeader {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.stepHeader > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stepHeader strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.stepHeader small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.stepNumber {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--purple) 15%, var(--soft));
+  color: var(--purple);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.repositoryRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.repositoryField {
+  min-width: 0;
+}
+
+.connectionBadge {
+  min-width: 132px;
+  height: 42px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.connectionBadge.checking {
+  color: var(--purple);
+  border-color: color-mix(in srgb, var(--purple) 30%, var(--line));
+}
+
+.connectionBadge.connected {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 36%, var(--line));
+  background: color-mix(in srgb, var(--success) 8%, var(--soft));
+}
+
+.connectionBadge.disconnected {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 36%, var(--line));
+  background: color-mix(in srgb, var(--warning) 8%, var(--soft));
+}
+
+.authorizationCard {
+  padding: 13px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--line));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--warning) 6%, var(--soft));
+}
+
+.authorizationCard > div:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.authorizationCard strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.authorizationCard small,
+.guidance {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.authorizationActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.copyButton {
+  min-height: 34px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.copyButton:hover {
+  color: var(--purple);
+}
+
+.detectedNote {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--success) 7%, var(--soft));
+  color: var(--success);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .repositoryRow,
+  .authorizationCard {
+    grid-template-columns: 1fr;
+  }
+
+  .connectionBadge {
+    width: 100%;
+  }
+
+  .authorizationActions {
+    justify-content: stretch;
+  }
+
+  .authorizationActions > * {
+    flex: 1 1 180px;
+  }
+}

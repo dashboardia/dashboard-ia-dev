@@ -1,83 +1,166 @@
 "use client";
 
-import { Check, Copy, Github, LoaderCircle, Save } from "lucide-react";
+import { Check, Copy, ExternalLink, Github, LoaderCircle, RefreshCw, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-const initialForm = {
-  name: "",
-  repositoryFullName: "",
-  defaultBranch: "main",
-  deploymentMode: "GITHUB_ONLY",
-  productionUrl: "",
-  workingDirectory: ".",
-  installCommand: "",
-  lintCommand: "",
-  testCommand: "",
-  buildCommand: "",
-  previewCommand: "",
-  previewPort: "",
-};
+import styles from "./project-form.module.css";
 
-export default function ProjectForm({ installationId, installUrl }) {
+const DRAFT_KEY = "dashboardia:new-project-repository";
+
+function normalizeRepositoryCandidate(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/^git@github\.com:/i, "")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "");
+}
+
+function repositoryLooksValid(value) {
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(normalizeRepositoryCandidate(value));
+}
+
+export default function ProjectForm({ installUrl }) {
   const router = useRouter();
-  const advancedSettingsRef = useRef(null);
-  const [form, setForm] = useState(initialForm);
-  const [error, setError] = useState("");
-  const [errorDetails, setErrorDetails] = useState("");
-  const [fieldErrors, setFieldErrors] = useState({});
+  const [repositoryInput, setRepositoryInput] = useState("");
+  const [connection, setConnection] = useState(null);
+  const [branches, setBranches] = useState([]);
+  const [defaultBranch, setDefaultBranch] = useState("");
+  const [name, setName] = useState("");
+  const [productionUrl, setProductionUrl] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [installLinkCopied, setInstallLinkCopied] = useState(false);
 
-  function change(event) {
-    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
-    setFieldErrors((current) => {
-      if (!current[event.target.name]) return current;
-      const next = { ...current };
-      delete next[event.target.name];
-      return next;
-    });
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem(DRAFT_KEY);
+      if (stored) setRepositoryInput(stored);
+    } catch {
+      // sessionStorage pode estar indisponível em navegação privada.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (repositoryInput.trim()) window.sessionStorage.setItem(DRAFT_KEY, repositoryInput.trim());
+      else window.sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // Sem impacto no fluxo principal.
+    }
+  }, [repositoryInput]);
+
+  useEffect(() => {
+    if (!repositoryLooksValid(repositoryInput)) {
+      setConnection(null);
+      setBranches([]);
+      setDefaultBranch("");
+      setChecking(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setChecking(true);
+      setError("");
+      try {
+        const response = await fetch("/api/projects/repository-setup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repository: repositoryInput }),
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error ?? "Não foi possível verificar o repositório");
+        setConnection(result);
+        if (result.connected) {
+          const nextBranches = Array.isArray(result.branches) ? result.branches : [];
+          setBranches(nextBranches);
+          setDefaultBranch((current) => nextBranches.some((branch) => branch.name === current)
+            ? current
+            : result.repository?.defaultBranch ?? nextBranches[0]?.name ?? "main");
+          setName((current) => current.trim() ? current : result.repository?.name ?? "");
+        } else {
+          setBranches([]);
+          setDefaultBranch("");
+        }
+      } catch (inspectionError) {
+        if (inspectionError.name !== "AbortError") {
+          setConnection(null);
+          setBranches([]);
+          setDefaultBranch("");
+          setError(inspectionError.message);
+        }
+      } finally {
+        if (!controller.signal.aborted) setChecking(false);
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [repositoryInput, refreshTick]);
+
+  function changeRepository(event) {
+    setRepositoryInput(event.target.value);
+    setConnection(null);
+    setBranches([]);
+    setDefaultBranch("");
+    setName("");
+    setError("");
+  }
+
+  function openAuthorization() {
+    const target = connection?.installUrl || installUrl;
+    if (!target) {
+      setError("O GitHub App ainda não está configurado no Dashboard IA.");
+      return;
+    }
+    const opened = window.open(target, "_blank", "noopener,noreferrer");
+    if (!opened) setError("O navegador bloqueou a nova aba. Libere pop-ups e tente novamente.");
   }
 
   async function copyClientInstallLink() {
-    if (!installUrl) return;
-    await navigator.clipboard.writeText(installUrl);
+    const target = connection?.installUrl || installUrl;
+    if (!target) return;
+    await navigator.clipboard.writeText(target);
     setInstallLinkCopied(true);
     window.setTimeout(() => setInstallLinkCopied(false), 2_000);
   }
 
   async function submit(event) {
     event.preventDefault();
+    if (!connection?.connected || !connection.installationId) {
+      setError("Autorize este repositório no GitHub antes de conectar o projeto.");
+      return;
+    }
+    if (!defaultBranch) {
+      setError("Selecione a branch principal do projeto.");
+      return;
+    }
     setSaving(true);
     setError("");
-    setErrorDetails("");
-    setFieldErrors({});
     try {
-      const { deploymentMode, ...project } = form;
       const response = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...project,
-          productionUrl: deploymentMode === "PUBLISHED" ? project.productionUrl : "",
-          githubInstallationId: installationId || undefined,
+          name,
+          repositoryFullName: connection.repository.fullName,
+          defaultBranch,
+          productionUrl,
+          workingDirectory: ".",
+          githubInstallationId: connection.installationId,
         }),
       });
-      const result = await response.json();
-      if (!response.ok) {
-        setErrorDetails(result.details ?? "");
-        if (result.fields?.length) {
-          const nextFieldErrors = Object.fromEntries(result.fields.map((field) => [field.path, field.message]));
-          setFieldErrors(nextFieldErrors);
-          setError("Revise os campos destacados antes de conectar o projeto");
-          const advancedFields = ["workingDirectory", "installCommand", "lintCommand", "testCommand", "buildCommand", "previewCommand", "previewPort"];
-          if (result.fields.some((field) => advancedFields.includes(field.path))) advancedSettingsRef.current.open = true;
-        } else {
-          setError(result.error ?? "Não foi possível conectar o projeto");
-        }
-        setSaving(false);
-        return;
-      }
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.fields?.[0]?.message ?? result.error ?? "Não foi possível conectar o projeto");
+      try { window.sessionStorage.removeItem(DRAFT_KEY); } catch {}
       router.push(`/projects/${result.project.id}`);
       router.refresh();
     } catch (submitError) {
@@ -86,49 +169,47 @@ export default function ProjectForm({ installationId, installUrl }) {
     }
   }
 
+  const connected = Boolean(connection?.connected);
+  const showBranch = connected && branches.length > 0;
+  const showName = showBranch && Boolean(defaultBranch);
+
   return (
-    <form className="form-card" onSubmit={submit}>
-      <div className={`github-app-authorization ${installationId ? "authorized" : ""}`}>
-        <div><Github size={19} /><span><strong>{installationId ? "GitHub App autorizado" : "Autorize o acesso ao repositório"}</strong><small>{installationId ? "A instalação será vinculada ao projeto." : "Isso permite publicar branches e Pull Requests sem adicionar usuários como colaboradores."}</small></span></div>
-        {!installationId && installUrl && <a className="secondary-button" href={installUrl}>Autorizar no GitHub</a>}
-        {!installationId && !installUrl && <em>Configure o GitHub App no Dashboard IA.</em>}
-      </div>
-      {!installationId && installUrl && (
-        <div className="form-note">
-          <strong>O repositório pertence a um cliente?</strong>
-          <p>Envie este link ao proprietário. Na conta dele, ele deve escolher Only select repositories, selecionar o repositório e instalar o Dashboard IA Automação.</p>
-          <button className="secondary-button" type="button" onClick={copyClientInstallLink}>
-            {installLinkCopied ? <Check size={16} /> : <Copy size={16} />}
-            {installLinkCopied ? "Link copiado" : "Copiar link para o cliente"}
-          </button>
-          <small>Depois, volte a esta tela, informe a URL do repositório e conecte o projeto. A autorização será localizada automaticamente.</small>
+    <form className={`form-card ${styles.form}`} onSubmit={submit}>
+      <section className={styles.step}>
+        <div className={styles.stepHeader}><span className={styles.stepNumber}>1</span><div><strong>Repositório GitHub</strong><small>O projeto no Dashboard IA representa este repositório.</small></div></div>
+        <div className={styles.repositoryRow}>
+          <label className={styles.repositoryField}><span>URL do repositório</span><input value={repositoryInput} onChange={changeRepository} placeholder="https://github.com/empresa/projeto" autoFocus required /></label>
+          <div className={`${styles.connectionBadge} ${checking ? styles.checking : connected ? styles.connected : connection ? styles.disconnected : ""}`}>
+            {checking ? <><LoaderCircle className="spin" size={15} />Verificando</> : connected ? <><Check size={15} />Conectado</> : connection ? <><Github size={15} />Desconectado</> : <><Github size={15} />Aguardando URL</>}
+          </div>
         </div>
-      )}
-      <div className="form-grid">
-        <label><span>Nome do projeto</span><input name="name" value={form.name} onChange={change} placeholder="Dashboard IA" required /></label>
-        <label><span>Repositório GitHub</span><input name="repositoryFullName" value={form.repositoryFullName} onChange={change} placeholder="dono/repositório ou URL do GitHub" required /></label>
-        <label><span>Branch padrão</span><input name="defaultBranch" value={form.defaultBranch} onChange={change} required /></label>
-      </div>
-      <div className="form-divider"><span>Deploy e monitoramento (opcional)</span></div>
-      <div className="form-grid">
-        <label><span>Modo de entrega</span><select name="deploymentMode" value={form.deploymentMode} onChange={change}><option value="GITHUB_ONLY">Somente GitHub</option><option value="PUBLISHED">GitHub + aplicação publicada</option></select></label>
-        {form.deploymentMode === "PUBLISHED" && <label><span>URL da aplicação</span><input name="productionUrl" type="url" value={form.productionUrl} onChange={change} placeholder="https://app.exemplo.com" required /></label>}
-      </div>
-      <details className="advanced-settings" ref={advancedSettingsRef}>
-        <summary>Configurações avançadas de execução</summary>
-        <p>O Dashboard detecta a tecnologia automaticamente. Altere somente quando o projeto exigir comandos específicos.</p>
+        {connection && !connected && <div className={styles.authorizationCard}>
+          <div><strong>Autorize apenas este repositório</strong><small>{connection.reason}</small><small>No GitHub, selecione o repositório e clique em <b>Save</b>. Depois volte e confirme a autorização.</small></div>
+          <div className={styles.authorizationActions}>
+            <button className="primary compact" type="button" onClick={openAuthorization}><Github size={15} />Conectar GitHub<ExternalLink size={13} /></button>
+            <button className="secondary-button" type="button" onClick={() => setRefreshTick((value) => value + 1)}><RefreshCw size={14} />Já autorizei · verificar</button>
+            <button className={styles.copyButton} type="button" onClick={copyClientInstallLink}>{installLinkCopied ? <Check size={14} /> : <Copy size={14} />}{installLinkCopied ? "Link copiado" : "Copiar link para o proprietário"}</button>
+          </div>
+        </div>}
+      </section>
+
+      {showBranch && <section className={styles.step}>
+        <div className={styles.stepHeader}><span className={styles.stepNumber}>2</span><div><strong>Branch principal</strong><small>Escolha entre as branches encontradas no repositório autorizado.</small></div></div>
+        <label><span>Branch</span><select value={defaultBranch} onChange={(event) => setDefaultBranch(event.target.value)} required>{branches.map((branch) => <option value={branch.name} key={branch.name}>{branch.name}{branch.protected ? " · protegida" : ""}</option>)}</select></label>
+        {connection.repository?.empty && <small className={styles.guidance}>Este repositório ainda está vazio. A branch <b>{defaultBranch}</b> será usada como referência para o primeiro projeto.</small>}
+      </section>}
+
+      {showName && <section className={styles.step}>
+        <div className={styles.stepHeader}><span className={styles.stepNumber}>3</span><div><strong>Nome no Dashboard IA</strong><small>Use um nome simples para identificar este repositório na plataforma.</small></div></div>
         <div className="form-grid">
-        <label><span>Diretório de trabalho</span><input name="workingDirectory" value={form.workingDirectory} onChange={change} placeholder="." required /></label>
-        <label><span>Instalação</span><input name="installCommand" value={form.installCommand} onChange={change} placeholder="npm ci" /></label>
-        <label><span>Lint</span><input name="lintCommand" value={form.lintCommand} onChange={change} placeholder="npm run lint" /></label>
-        <label><span>Testes</span><input name="testCommand" value={form.testCommand} onChange={change} placeholder="npm test" /></label>
-        <label><span>Build</span><input name="buildCommand" value={form.buildCommand} onChange={change} placeholder="npm run build" /></label>
-        <label><span>Iniciar preview visual</span><input name="previewCommand" value={form.previewCommand} onChange={change} placeholder="npm run dev" /></label>
-        <label className={fieldErrors.previewPort ? "has-error" : ""}><span>Porta do preview</span><input aria-invalid={Boolean(fieldErrors.previewPort)} name="previewPort" type="number" min="1" max="65535" value={form.previewPort} onChange={change} />{fieldErrors.previewPort && <small className="field-error">{fieldErrors.previewPort}</small>}</label>
+          <label><span>Nome do projeto</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder={connection.repository?.name ?? "Meu projeto"} required /></label>
+          <label><span>URL de produção <small>(opcional)</small></span><input type="url" value={productionUrl} onChange={(event) => setProductionUrl(event.target.value)} placeholder="https://app.exemplo.com" /></label>
         </div>
-      </details>
-      {error && <div className="form-error"><strong>{error}</strong>{errorDetails && <small>Detalhes técnicos: {errorDetails}</small>}</div>}
-      <div className="form-actions"><button className="primary" disabled={saving} type="submit">{saving ? <LoaderCircle className="spin" size={18} /> : <Save size={18} />}{saving ? "Salvando..." : "Conectar projeto"}</button></div>
+        <div className={styles.detectedNote}><Check size={15} /><span>Tecnologia, diretório, instalação, testes, build e porta serão detectados automaticamente pelo Dashboard IA.</span></div>
+      </section>}
+
+      {error && <div className="form-error">{error}</div>}
+      {showName && <div className="form-actions"><button className="primary" disabled={saving || !name.trim()} type="submit">{saving ? <LoaderCircle className="spin" size={18} /> : <Save size={18} />}{saving ? "Conectando..." : "Conectar repositório"}</button></div>}
     </form>
   );
 }

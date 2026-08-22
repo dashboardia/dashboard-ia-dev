@@ -3,10 +3,9 @@ import { NextResponse } from "next/server";
 import { requireProjectRole } from "../../../../../lib/access";
 import { apiError, assertSameOrigin } from "../../../../../lib/api";
 import { auditData } from "../../../../../lib/audit";
-import { prepareExecutionBilling } from "../../../../../lib/billing";
 import { db } from "../../../../../lib/db";
 import { env } from "../../../../../lib/env";
-import { queueDemandExecution } from "../../../../../lib/executions";
+import { requeueFailedExecutionData } from "../../../../../lib/executions";
 import { githubInstallationPublicationAccess, installationRepositoryListIncludes, isGitHubAuthorizationFailure } from "../../../../../lib/github-authorization-recovery";
 import {
   findGitHubRepositoryInstallation,
@@ -16,6 +15,7 @@ import {
   verifyRepositoryAccess,
   verifyRepositoryBranch,
 } from "../../../../../lib/github";
+import { getGlobalSettings } from "../../../../../lib/global-settings";
 import { assertOperationalAccess } from "../../../../../lib/operational-access";
 import { assertPlatformProcessingEnabled } from "../../../../../lib/platform-processing";
 import { configureProjectGitHubWebhook } from "../../../../../lib/project-webhooks";
@@ -37,7 +37,9 @@ async function newerExecutionExists(execution) {
 }
 
 function recoveryIsAvailable(execution) {
-  return execution.status === "FAILED" && isGitHubAuthorizationFailure(execution.error);
+  return ["FAILED", "AWAITING_CLIENT"].includes(execution.status)
+    && !execution.closedAt
+    && isGitHubAuthorizationFailure(execution.error);
 }
 
 async function installationIncludesRepository(token, repositoryFullName, repositorySelection) {
@@ -128,38 +130,37 @@ export async function POST(request, context) {
     });
     await configureProjectGitHubWebhook({ project, userId: user.id }).catch(() => null);
 
-    const adminLimitBypass = user.globalRole === "ADMIN";
-    const billing = adminLimitBypass ? { bypass: true } : await prepareExecutionBilling({ demand: execution.demand });
-    const queued = await queueDemandExecution({
-      demand: execution.demand,
-      requestedById: user.id,
-      billing,
-      allowEmptyRepository: execution.allowEmptyRepository,
-    });
-    const retryExecutionId = queued.activeExecutionId ?? queued.execution?.id;
-    if (!retryExecutionId) throw new Error("Não foi possível criar o reprocessamento");
-
-    if (queued.execution) {
-      await db.auditLog.create({
+    const settings = await getGlobalSettings();
+    const now = new Date();
+    await db.$transaction(async (transaction) => {
+      const updated = await transaction.execution.updateMany({
+        where: { id: execution.id, status: { in: ["FAILED", "AWAITING_CLIENT"] }, closedAt: null },
+        data: requeueFailedExecutionData({ now, timeoutMinutes: settings.executionConversationTimeoutMinutes }),
+      });
+      if (updated.count !== 1) throw new Error("A execução mudou de estado enquanto a autorização era confirmada");
+      await transaction.executionMessage.create({
+        data: { executionId: execution.id, authorId: user.id, role: "SYSTEM", content: "Autorização do GitHub confirmada. A mesma execução foi reenviada para processamento." },
+      });
+      await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "QUEUED" } });
+      await transaction.auditLog.create({
         data: auditData({
           actorId: user.id,
           projectId: execution.demand.projectId,
           action: "execution.github_authorized_retry",
           entityType: "Execution",
-          entityId: queued.execution.id,
+          entityId: execution.id,
           metadata: {
-            sourceExecutionId: execution.id,
             githubInstallationId,
             repositoryFullName,
             repositorySelection: installation.repository_selection ?? null,
-            adminLimitBypass,
+            reusedExecution: true,
           },
           request,
         }),
       });
-    }
+    });
 
-    return NextResponse.json({ executionId: retryExecutionId, reusedActiveExecution: Boolean(queued.activeExecutionId) }, { status: queued.execution ? 202 : 200 });
+    return NextResponse.json({ executionId: execution.id, reusedExecution: true }, { status: 202 });
   } catch (error) {
     return apiError(error);
   }

@@ -3,7 +3,7 @@ import process from "node:process";
 
 import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
-import { claimNextExecution, expireInactiveExecutionConversations, recoverStaleExecutions } from "../lib/executions.js";
+import { claimNextExecution, expireInactiveExecutionConversations, recoverStaleExecutions, reopenFailedExecutionForCorrection } from "../lib/executions.js";
 import { syncActiveDevEnvironments } from "../lib/dev-environments.js";
 import { getGlobalSettings } from "../lib/global-settings.js";
 import { pruneWorkerHeartbeats, recordWorkerHeartbeat, removeWorkerHeartbeat } from "../lib/worker-heartbeat.js";
@@ -65,7 +65,17 @@ async function refreshConcurrencyLimit() {
 
 function startExecution(executionId) {
   const task = processExecution(executionId, workerId)
-    .catch((error) => console.error(`[worker:${workerId}] execução falhou`, error))
+    .catch(async (error) => {
+      console.error(`[worker:${workerId}] execução falhou`, error);
+      try {
+        const reopened = await reopenFailedExecutionForCorrection(executionId, db, {
+          timeoutMinutes: runtimeSettings?.executionConversationTimeoutMinutes ?? 24 * 60,
+        });
+        if (reopened) console.log(`[worker:${workerId}] execução ${executionId} mantida aberta para correção pelo cliente`);
+      } catch (recoveryError) {
+        console.error(`[worker:${workerId}] não foi possível manter a execução aberta para correção`, recoveryError);
+      }
+    })
     .finally(() => activeExecutions.delete(task));
   activeExecutions.add(task);
 }

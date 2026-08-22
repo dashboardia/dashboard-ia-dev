@@ -8,15 +8,7 @@ function initialForm(project) {
   return {
     name: project.name,
     defaultBranch: project.defaultBranch,
-    deploymentMode: project.productionUrl ? "PUBLISHED" : "GITHUB_ONLY",
     productionUrl: project.productionUrl ?? "",
-    workingDirectory: project.workingDirectory,
-    installCommand: project.installCommand ?? "",
-    lintCommand: project.lintCommand ?? "",
-    testCommand: project.testCommand ?? "",
-    buildCommand: project.buildCommand ?? "",
-    previewCommand: project.previewCommand ?? "",
-    previewPort: project.previewPort ? String(project.previewPort) : "3000",
   };
 }
 
@@ -38,16 +30,12 @@ export default function ProjectSettingsForm({ project }) {
     setError("");
     setSaved(false);
     try {
-      const { deploymentMode, ...settings } = form;
       const response = await fetch(`/api/projects/${project.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...settings,
-          productionUrl: deploymentMode === "PUBLISHED" ? settings.productionUrl : "",
-        }),
+        body: JSON.stringify(form),
       });
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.fields?.[0]?.message ?? result.error ?? "Não foi possível salvar o projeto");
       setForm(initialForm(result.project));
       setSaved(true);
@@ -65,23 +53,12 @@ export default function ProjectSettingsForm({ project }) {
         <label><span>Nome do projeto</span><input name="name" value={form.name} onChange={change} required /></label>
         <label><span>Repositório GitHub</span><input value={project.repositoryFullName} disabled aria-label="Repositório GitHub" /></label>
         <label><span>Branch padrão</span><input name="defaultBranch" value={form.defaultBranch} onChange={change} required /></label>
+        <label><span>URL de produção <small>(opcional)</small></span><input name="productionUrl" type="url" value={form.productionUrl} onChange={change} placeholder="https://app.exemplo.com" /></label>
       </div>
 
-      <div className="form-divider"><span>Deploy e monitoramento (opcional)</span></div>
-      <div className="form-grid">
-        <label><span>Modo de entrega</span><select name="deploymentMode" value={form.deploymentMode} onChange={change}><option value="GITHUB_ONLY">Somente GitHub</option><option value="PUBLISHED">GitHub + aplicação publicada</option></select></label>
-        {form.deploymentMode === "PUBLISHED" && <label><span>URL da aplicação</span><input name="productionUrl" type="url" value={form.productionUrl} onChange={change} placeholder="https://app.exemplo.com" required /></label>}
-      </div>
-
-      <div className="form-divider"><span>Execução e validação</span></div>
-      <div className="form-grid">
-        <label><span>Diretório de trabalho</span><input name="workingDirectory" value={form.workingDirectory} onChange={change} required /></label>
-        <label><span>Instalação</span><input name="installCommand" value={form.installCommand} onChange={change} placeholder="npm ci" /></label>
-        <label><span>Lint</span><input name="lintCommand" value={form.lintCommand} onChange={change} placeholder="npm run lint" /></label>
-        <label><span>Testes</span><input name="testCommand" value={form.testCommand} onChange={change} placeholder="npm test" /></label>
-        <label><span>Build</span><input name="buildCommand" value={form.buildCommand} onChange={change} placeholder="npm run build" /></label>
-        <label><span>Iniciar ambiente Docker</span><input name="previewCommand" value={form.previewCommand} onChange={change} placeholder="npm run dev" /></label>
-        <label><span>Porta do ambiente</span><input name="previewPort" type="number" min="1" max="65535" value={form.previewPort} onChange={change} /></label>
+      <div className="form-note">
+        <strong>Configuração técnica automática</strong>
+        <p>Diretório, instalação, lint, testes, build, comando de ambiente e porta são detectados pelo Dashboard IA e não precisam ser informados manualmente.</p>
       </div>
 
       {error && <div className="form-error">{error}</div>}

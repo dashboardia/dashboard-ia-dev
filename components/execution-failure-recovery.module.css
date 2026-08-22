@@ -1,0 +1,141 @@
+.banner {
+  margin: 16px 36px 0;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) minmax(320px, 520px);
+  gap: 12px;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 5%, var(--soft));
+  box-shadow: 0 8px 24px #0000000d;
+}
+
+.icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 13%, var(--soft));
+}
+
+.copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.copy strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.copy span,
+.copy small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.copy b {
+  color: var(--danger);
+}
+
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.form textarea {
+  min-height: 58px;
+  max-height: 110px;
+  resize: vertical;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  outline: 0;
+  color: var(--ink);
+  background: var(--soft);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.form textarea:focus {
+  border-color: color-mix(in srgb, var(--purple) 55%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--purple) 10%, transparent);
+}
+
+.form button {
+  min-height: 40px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: linear-gradient(135deg, #7657ff, #6240ee);
+  box-shadow: 0 8px 20px #6d4aff31;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.form button:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
+.form > small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 8px;
+  text-align: right;
+}
+
+.error {
+  grid-column: 2 / -1;
+  color: var(--danger);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+@media (max-width: 1050px) {
+  .banner {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .form {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .banner {
+    margin: 12px 16px 0;
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .form {
+    grid-template-columns: 1fr;
+  }
+
+  .form button {
+    width: 100%;
+  }
+
+  .form > small {
+    text-align: left;
+  }
+}
