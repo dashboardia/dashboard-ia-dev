@@ -13,26 +13,14 @@ function executionIdFromPath(pathname) {
 function presentation(shortcut, control) {
   if (control?.canResume) return { tone: "paused", icon: PauseCircle, title: "Processos pausados", detail: "Você pode conversar com a IA ou reexecutar de onde parou." };
   if (shortcut?.state === "READY") return { tone: "ready", icon: ServerCog, title: "Ambiente pronto", detail: "A versão navegável desta execução está disponível." };
-  if (control?.previewState === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "Corrigindo ambiente", detail: "Uma nova tentativa de correção está em andamento." };
-  if (control?.previewState === "WAITING_IMPLEMENTATION") return { tone: "repairing", icon: Sparkles, title: "IA aplicando ajuste", detail: "A nova interação será republicada assim que a IA terminar." };
-  if (shortcut?.state === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "Corrigindo ambiente", detail: "A falha foi enviada automaticamente para a IA." };
-  if (["STARTING", "PREPARING"].includes(shortcut?.state)) return { tone: "preparing", icon: LoaderCircle, title: "Preparando ambiente", detail: "Build e inicialização acontecem automaticamente." };
-  if (shortcut?.state === "FAILED") return { tone: "failed", icon: CircleAlert, title: "Ambiente com falha", detail: "A publicação falhou. Quando uma correção começar, o acompanhamento será reiniciado automaticamente." };
+  if (control?.previewState === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "Corrigindo ambiente", detail: "Uma nova tentativa de correção do ambiente está em andamento." };
+  if (control?.previewState === "WAITING_IMPLEMENTATION") return { tone: "repairing", icon: Sparkles, title: "Ambiente aguardando nova versão", detail: "A IA está trabalhando; o ambiente será republicado depois que a implementação terminar." };
+  if (shortcut?.state === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "Corrigindo ambiente", detail: "A falha do ambiente foi encaminhada para correção automática." };
+  if (["STARTING", "PREPARING"].includes(shortcut?.state)) return { tone: "preparing", icon: LoaderCircle, title: "Preparando ambiente", detail: "Build e inicialização do ambiente acontecem automaticamente." };
+  if (shortcut?.state === "FAILED") return { tone: "failed", icon: CircleAlert, title: "Ambiente com falha", detail: "A publicação falhou. Quando uma correção começar, o acompanhamento do ambiente será reiniciado automaticamente." };
   if (shortcut?.state === "EXPIRED") return { tone: "expired", icon: CircleAlert, title: "Ambiente encerrado", detail: "A execução e o histórico continuam preservados." };
-  if (control?.canPause) return { tone: "processing", icon: LoaderCircle, title: control.displayStatus || "Processamento em andamento", detail: "Você pode pausar os processos sem cancelar a execução." };
-  if (control?.canCancel) return { tone: "processing", icon: ServerCog, title: control.displayStatus || "Execução em andamento", detail: "Você pode cancelar esta execução a qualquer momento." };
-  return null;
-}
-
-function liveFocus(control) {
-  if (!control) return null;
-  if (control.previewState === "REPAIRING") return { label: "Corrigindo ambiente", detail: "O ciclo anterior foi encerrado. Acompanhe esta nova tentativa de correção." };
-  if (control.previewState === "WAITING_IMPLEMENTATION") return { label: "IA aplicando ajuste", detail: "A versão anterior não representa mais o último pedido. A IA está preparando a nova versão." };
-  if (control.awaitingEnvironment) {
-    if (control.previewState === "FAILED") return { label: "Ambiente com falha", detail: "A publicação falhou. Quando a correção começar, este acompanhamento será reiniciado automaticamente." };
-    return { label: control.environmentStatus || "Preparando ambiente", detail: "A implementação terminou e agora o ambiente está sendo construído e validado." };
-  }
-  if (control.status === "STOPPED") return { label: "Processos pausados", detail: "O trabalho foi preservado e pode ser retomado a partir deste ponto." };
+  if (control?.canPause) return { tone: "processing", icon: LoaderCircle, title: control.environmentStatus || "Ambiente em processamento", detail: "Você pode pausar os processos sem cancelar a execução." };
+  if (control?.canCancel) return { tone: "processing", icon: ServerCog, title: control.environmentStatus || "Ambiente da execução", detail: "O estado do ambiente é acompanhado separadamente da execução da IA." };
   return null;
 }
 
@@ -87,27 +75,10 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
     if (statusTarget) statusTarget.textContent = control.displayStatus;
 
     const live = document.querySelector(".execution-live-progress");
-    const liveTitle = live?.querySelector("header strong");
-    const liveSubtitle = live?.querySelector("header small");
-    const focus = liveFocus(control);
     if (live) {
-      if (focus) {
-        live.dataset.runtimeFocus = "1";
-        live.dataset.runtimeLabel = focus.label;
-        live.dataset.runtimeDetail = focus.detail;
-      } else {
-        delete live.dataset.runtimeFocus;
-        delete live.dataset.runtimeLabel;
-        delete live.dataset.runtimeDetail;
-      }
-    }
-    if (!liveTitle || !liveSubtitle) return;
-    if (focus) {
-      liveTitle.textContent = focus.label;
-      liveSubtitle.textContent = focus.detail;
-    } else if (control.status === "AWAITING_CLIENT" && control.interactionAvailable) {
-      liveTitle.textContent = "Aguardando cliente";
-      liveSubtitle.textContent = "O ambiente está pronto. Teste o resultado e peça novos ajustes pelo chat quando quiser.";
+      delete live.dataset.runtimeFocus;
+      delete live.dataset.runtimeLabel;
+      delete live.dataset.runtimeDetail;
     }
   }, [control]);
 
@@ -141,8 +112,8 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
     <aside className={`${styles.banner} ${styles[tone]}`} aria-live="polite">
       <div className={styles.icon}><Icon className={["preparing", "processing"].includes(tone) ? styles.spin : ""} size={17} /></div>
       <div className={styles.copy}>
-        <strong>{view?.title ?? control?.displayStatus ?? "Execução"}</strong>
-        <span>{view?.detail ?? "Controle os processos desta execução."}</span>
+        <strong>{view?.title ?? control?.environmentStatus ?? "Ambiente"}</strong>
+        <span>{view?.detail ?? "Acompanhe o ambiente desta execução."}</span>
         {actionError && <small className={styles.error}>{actionError}</small>}
       </div>
       <div className={styles.actions}>
