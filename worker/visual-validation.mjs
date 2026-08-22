@@ -37,8 +37,6 @@ async function captureSet({ browser, executionId, baseUrl, routes, source, selec
       page.setDefaultTimeout(30_000);
       try {
         await page.goto(new URL(route, baseUrl).toString(), { waitUntil: "domcontentloaded", timeout: 30_000 });
-        // Aplicações reais podem manter polling, analytics ou APIs indisponíveis no
-        // ambiente isolado. A captura não deve depender da rede ficar totalmente ociosa.
         await page.waitForLoadState("load", { timeout: 5_000 }).catch(() => null);
         await page.waitForTimeout(2_000);
         const body = await page.screenshot({ fullPage: true, type: "png", timeout: 30_000 });
@@ -108,7 +106,13 @@ async function captureImplementation({ execution, projectDirectory, log, include
     const artifacts = [];
     if (includeProduction && project.productionUrl) {
       await log("visual", "Capturando referência atual de produção");
-      artifacts.push(...await captureSet({ browser, executionId: execution.id, baseUrl: project.productionUrl, routes, source: "before", selectedViewports }));
+      try {
+        artifacts.push(...await captureSet({ browser, executionId: execution.id, baseUrl: project.productionUrl, routes, source: "before", selectedViewports }));
+      } catch (productionError) {
+        await log("visual", "A referência de produção não pôde ser capturada; a prévia da implementação continuará normalmente", "warn", {
+          technical: productionError instanceof Error ? productionError.message : String(productionError),
+        });
+      }
     }
     await log("visual", "Capturando resultado da implementação");
     artifacts.push(...await captureSet({ browser, executionId: execution.id, baseUrl: localUrl, routes, source: "after", selectedViewports }));
@@ -136,6 +140,6 @@ export async function runImplementationPreview({ execution, projectDirectory, lo
     log,
     includeProduction: false,
     routes: ["/"],
-    selectedViewports: [viewports[0]],
+    selectedViewports: viewports,
   });
 }

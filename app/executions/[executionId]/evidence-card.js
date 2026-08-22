@@ -23,10 +23,10 @@ export default function EvidenceCard({ artifacts, projectId, branchName }) {
   if (!visuals.length) return null;
 
   return <>
-    <details className="form-card detail-card full-card execution-collapsible execution-evidence-card">
-      <summary className="execution-collapsible-header"><Images size={19} /><span><strong>Evidências visuais</strong><small>{visuals.length} captura{visuals.length === 1 ? "" : "s"} gerada{visuals.length === 1 ? "" : "s"}</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+    <details className="form-card detail-card full-card execution-collapsible execution-evidence-card" open>
+      <summary className="execution-collapsible-header"><Images size={19} /><span><strong>Prévia visual</strong><small>{visuals.length} captura{visuals.length === 1 ? "" : "s"} da implementação em desktop e celular</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
       <div className="execution-collapsible-content execution-evidence-content">
-        {branchName && <div className="execution-evidence-environment"><span><strong>Visualizar a versão completa</strong><small>Abra um ambiente temporário com o projeto e a branch desta execução já selecionados.</small></span><Link href={{ pathname: "/environments", query: { projectId, branch: branchName } }}><ServerCog size={15} />Subir esta branch</Link></div>}
+        {branchName && <div className="execution-evidence-environment"><span><strong>Testar a versão completa</strong><small>Abra um ambiente temporário com a branch desta execução já selecionada.</small></span><Link href={{ pathname: "/environments", query: { projectId, branch: branchName } }}><ServerCog size={15} />Subir ambiente</Link></div>}
         <div className="execution-screenshot-grid">{visuals.map((artifact) => {
           const href = `/api/artifacts/${artifact.id}`;
           return <button type="button" className="execution-screenshot" onClick={() => setSelected({ ...artifact, href })} key={artifact.id} aria-label={`Ampliar ${artifact.name}`}>

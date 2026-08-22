@@ -32,6 +32,7 @@ import { useEffect, useState } from "react";
 
 import ActionCenter from "./action-center";
 import AutoRefresh from "./auto-refresh";
+import ExecutionEnvironmentShortcut from "./execution-environment-shortcut";
 import ExecutionFailureRecovery from "./execution-failure-recovery";
 import ExecutionGitHubRecovery from "./execution-github-recovery";
 import GlobalSearch from "./global-search";
@@ -130,6 +131,7 @@ function AppShellContent({ children, user = null, setupMode = false }) {
         </header>
         {!setupMode && <ExecutionGitHubRecovery pathname={pathname} />}
         {!setupMode && <ExecutionFailureRecovery pathname={pathname} />}
+        {!setupMode && <ExecutionEnvironmentShortcut pathname={pathname} />}
         <LocalizedContent>{children}</LocalizedContent>
       </section>
       {sidebarOpen && <button className="overlay" onClick={() => setSidebarOpen(false)} aria-label="Fechar menu" />}
