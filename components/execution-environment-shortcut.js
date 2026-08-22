@@ -12,8 +12,10 @@ function executionIdFromPath(pathname) {
 
 function presentation(shortcut, control) {
   if (control?.canResume) return { tone: "paused", icon: PauseCircle, title: "Processos pausados", detail: "Você pode conversar com a IA ou reexecutar de onde parou." };
-  if (shortcut?.state === "READY") return { tone: "ready", icon: ServerCog, title: "Ambiente pronto", detail: "A versão navegável desta execução está disponível." };
   if (shortcut?.state === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "IA corrigindo o ambiente", detail: "A falha foi enviada automaticamente para a IA." };
+  if (shortcut?.state === "WAITING_IMPLEMENTATION") return { tone: "processing", icon: LoaderCircle, title: "IA aplicando novo ajuste", detail: "Ao concluir, o ambiente será publicado novamente automaticamente." };
+  if (["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"].includes(control?.status)) return { tone: "processing", icon: LoaderCircle, title: control?.status === "WAITING_APPROVAL" ? "Publicando novo resultado" : "IA aplicando novo ajuste", detail: "O ambiente será atualizado automaticamente quando esta etapa terminar." };
+  if (shortcut?.state === "READY") return { tone: "ready", icon: ServerCog, title: "Ambiente pronto", detail: "A versão navegável desta execução está disponível." };
   if (["STARTING", "PREPARING"].includes(shortcut?.state)) return { tone: "preparing", icon: LoaderCircle, title: "Preparando ambiente", detail: "Build e inicialização acontecem automaticamente." };
   if (shortcut?.state === "FAILED") return { tone: "failed", icon: CircleAlert, title: "Ambiente não ficou disponível", detail: "A execução continua preservada e a correção automática será tentada quando possível." };
   if (shortcut?.state === "EXPIRED") return { tone: "expired", icon: CircleAlert, title: "Ambiente encerrado", detail: "A execução e o histórico continuam preservados." };
@@ -75,8 +77,11 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
     const liveTitle = document.querySelector(".execution-live-progress header strong");
     const liveSubtitle = document.querySelector(".execution-live-progress header small");
     if (!liveTitle || !liveSubtitle) return;
-    if (control.awaitingEnvironment) {
-      liveTitle.textContent = control.previewState === "FAILED" ? "Corrigindo ambiente" : "Preparando ambiente";
+    if (["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"].includes(control.status) && control.previewState === "WAITING_IMPLEMENTATION") {
+      liveTitle.textContent = "IA aplicando novo ajuste";
+      liveSubtitle.textContent = "A versão anterior não é mais o resultado atual. Quando a IA terminar, o ambiente será publicado novamente automaticamente.";
+    } else if (control.awaitingEnvironment) {
+      liveTitle.textContent = ["REPAIRING", "FAILED"].includes(control.previewState) ? "Corrigindo ambiente" : "Preparando ambiente";
       liveSubtitle.textContent = "A execução só será liberada para novos ajustes quando a versão navegável estiver pronta.";
     } else if (control.status === "STOPPED") {
       liveTitle.textContent = "Processos pausados";

@@ -3,11 +3,10 @@ import { NextResponse } from "next/server";
 import { requireProjectRole } from "../../../../../lib/access";
 import { apiError } from "../../../../../lib/api";
 import { db } from "../../../../../lib/db";
+import { executionPreviewState } from "../../../../../lib/execution-control-state";
 import { dashboardiaPreviewConfigured, getDashboardiaPreview } from "../../../../../lib/preview-host-client";
 
 export const dynamic = "force-dynamic";
-
-const PROCESSING_STATUSES = new Set(["QUEUED", "PREPARING", "RUNNING", "VALIDATING"]);
 
 function normalizedActivity(activity) {
   if (!Array.isArray(activity)) return [];
@@ -17,15 +16,6 @@ function normalizedActivity(activity) {
     status: String(item?.status ?? "RUNNING").toUpperCase(),
     at: item?.at ? String(item.at) : null,
   }));
-}
-
-function previewState(execution, preview) {
-  if (!preview) return "STARTING";
-  if (preview.status === "READY" && preview.url) return "READY";
-  if (["QUEUED", "BUILDING", "DEPLOYING", "STOPPING"].includes(preview.status)) return "PREPARING";
-  if (preview.status === "FAILED") return PROCESSING_STATUSES.has(execution.status) ? "REPAIRING" : "FAILED";
-  if (preview.status === "EXPIRED") return "EXPIRED";
-  return "STARTING";
 }
 
 export async function GET(_request, context) {
@@ -44,9 +34,7 @@ export async function GET(_request, context) {
     });
     await requireProjectRole(execution.demand.projectId, "VIEWER");
     const available = execution.demand.type !== "DOCUMENTATION" && Boolean(execution.branchName && execution.headSha);
-    if (!available) {
-      return NextResponse.json({ available: false }, { headers: { "Cache-Control": "no-store" } });
-    }
+    if (!available) return NextResponse.json({ available: false }, { headers: { "Cache-Control": "no-store" } });
 
     let remotePreview = null;
     const localPreview = execution.previewEnvironment;
@@ -59,13 +47,9 @@ export async function GET(_request, context) {
     }
 
     const effectivePreview = remotePreview
-      ? {
-          status: remotePreview.status ?? localPreview?.status,
-          url: remotePreview.url ?? localPreview?.url,
-          error: remotePreview.error ?? localPreview?.error,
-        }
+      ? { status: remotePreview.status ?? localPreview?.status, url: remotePreview.url ?? localPreview?.url, error: remotePreview.error ?? localPreview?.error }
       : localPreview;
-    const state = previewState(execution, effectivePreview);
+    const state = executionPreviewState(execution, effectivePreview);
 
     return NextResponse.json({
       available: true,
@@ -75,7 +59,7 @@ export async function GET(_request, context) {
       projectId: execution.demand.projectId,
       branchName: execution.branchName,
       closed: Boolean(execution.closedAt),
-      activity: normalizedActivity(remotePreview?.activity),
+      activity: state === "WAITING_IMPLEMENTATION" ? [] : normalizedActivity(remotePreview?.activity),
       technicalError: state === "FAILED" ? String(effectivePreview?.error ?? "") : null,
       updatedAt: remotePreview?.updatedAt ?? localPreview?.updatedAt ?? null,
     }, { headers: { "Cache-Control": "no-store" } });

@@ -1,7 +1,6 @@
 /*
- * Legibilidade e largura responsivas sem usar zoom CSS.
- * O conteúdo ocupa toda a área disponível e os textos pequenos recebem
- * tamanhos mínimos confortáveis, preservando o comportamento responsivo.
+ * Legibilidade responsiva sem zoom CSS. O layout mantém 100% da largura e
+ * apenas tipografia/controles recebem tamanhos mínimos mais confortáveis.
  */
 html,
 body {
@@ -14,13 +13,12 @@ body {
 }
 
 @media (min-width: 1100px) {
-  body {
-    zoom: 1;
-  }
+  body { zoom: 1; }
 
   .content {
     min-width: 0;
     max-width: none;
+    font-size: 13px;
   }
 
   .page,
@@ -44,15 +42,15 @@ body {
   }
 
   .content small {
-    font-size: 10px !important;
-    line-height: 1.45;
+    font-size: 11px !important;
+    line-height: 1.5;
   }
 
   .content input,
   .content select,
   .content textarea,
   .content button {
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .content .page-heading p,
@@ -62,18 +60,48 @@ body {
   .content .field-guidance,
   .content .field-warning,
   .content .resource-meta {
-    font-size: 11px;
-    line-height: 1.45;
+    font-size: 12px !important;
+    line-height: 1.5;
   }
 
   .content .eyebrow {
-    font-size: 10px !important;
+    font-size: 11px !important;
   }
 
   .content .status-pill,
   .content .demand-status,
   .content .execution-chat-status,
   .content .log-level {
-    font-size: 9px;
+    font-size: 10px !important;
   }
+
+  .execution-detail-page .section-header p:not(.eyebrow) { font-size: 12px !important; }
+  .execution-detail-page .execution-metrics small { font-size: 10px !important; }
+  .execution-detail-page .execution-metrics strong { font-size: 12px !important; }
+
+  .execution-workbench .execution-live-progress header strong { font-size: 12px !important; }
+  .execution-workbench .execution-live-progress header small { font-size: 10px !important; line-height: 1.45; }
+  .execution-workbench .execution-live-progress header em { font-size: 9px !important; }
+  .execution-workbench .execution-live-progress li strong { font-size: 11px !important; line-height: 1.45; }
+  .execution-workbench .execution-live-progress li small { font-size: 9.5px !important; line-height: 1.45; }
+
+  .execution-workbench .execution-chat-header h2 { font-size: 14px !important; }
+  .execution-workbench .execution-chat-header p { font-size: 11px !important; line-height: 1.5; }
+  .execution-workbench .execution-chat-status { font-size: 10px !important; }
+  .execution-chat-guidance strong { font-size: 12px !important; }
+  .execution-chat-guidance small { font-size: 10px !important; line-height: 1.5; }
+  .execution-workbench .execution-message p { font-size: 11.5px !important; line-height: 1.55; }
+  .execution-workbench .execution-message header strong,
+  .execution-workbench .execution-message header time { font-size: 9.5px !important; }
+  .execution-workbench .execution-reply-form > label { font-size: 11.5px !important; }
+  .execution-workbench .execution-reply-form textarea { font-size: 12px !important; line-height: 1.5; }
+  .execution-workbench .execution-attachment-tools button { font-size: 11px !important; }
+  .execution-workbench .execution-attachment-tools small { font-size: 9.5px !important; }
+  .execution-workbench .execution-conversation-actions > small { font-size: 9.5px !important; line-height: 1.5; }
+
+  .execution-detail-page .execution-summary-card .card-heading h2 { font-size: 13px !important; }
+  .execution-detail-page .execution-summary-card > p { font-size: 11.5px !important; line-height: 1.6; }
+  .execution-detail-page .commit-list code { font-size: 10px !important; }
+  .execution-detail-page .execution-collapsible-header strong { font-size: 11.5px !important; }
+  .execution-detail-page .execution-collapsible-header small { font-size: 9.5px !important; }
 }

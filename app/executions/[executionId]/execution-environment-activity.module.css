@@ -1,5 +1,5 @@
 .card {
-  padding: 11px;
+  padding: 12px;
   border: 1px solid color-mix(in srgb, var(--purple) 22%, var(--line));
   border-radius: 10px;
   background: color-mix(in srgb, var(--purple) 4%, var(--soft));
@@ -8,14 +8,14 @@
 
 .header {
   display: grid;
-  grid-template-columns: 30px minmax(0,1fr) auto;
+  grid-template-columns: 32px minmax(0,1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
 }
 
 .icon {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border-radius: 8px;
@@ -27,65 +27,64 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .header strong {
   color: var(--ink);
-  font-size: 9px;
+  font-size: 11.5px;
+  line-height: 1.35;
 }
 
 .header small {
   color: var(--muted);
-  font-size: 7px;
-  line-height: 1.35;
+  font-size: 9.5px;
+  line-height: 1.45;
 }
 
 .header em {
-  padding: 3px 6px;
+  padding: 4px 7px;
   border-radius: 999px;
   color: var(--purple);
   background: color-mix(in srgb, var(--purple) 10%, transparent);
-  font-size: 6px;
+  font-size: 8px;
   font-style: normal;
   font-weight: 800;
-  letter-spacing: .4px;
+  letter-spacing: .35px;
 }
 
 .timeline {
-  margin: 9px 0 0;
-  padding: 8px 0 0;
+  margin: 10px 0 0;
+  padding: 9px 0 0;
   display: grid;
-  gap: 5px;
+  gap: 6px;
   border-top: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
   list-style: none;
 }
 
 .timeline li {
   display: grid;
-  grid-template-columns: 15px minmax(0,1fr);
+  grid-template-columns: 16px minmax(0,1fr);
   align-items: start;
-  gap: 6px;
+  gap: 7px;
   color: var(--muted);
 }
 
-.timeline li > svg {
-  margin-top: 1px;
-}
+.timeline li > svg { margin-top: 1px; }
 
 .timeline li > span {
   min-width: 0;
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: 9px;
 }
 
 .timeline strong {
   overflow: hidden;
   color: var(--ink);
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -93,7 +92,7 @@
 .timeline small {
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: 6px;
+  font-size: 9px;
 }
 
 .running { color: var(--purple)!important; }
@@ -101,40 +100,33 @@
 .failed { color: var(--danger)!important; }
 
 .open {
-  min-height: 32px;
-  margin-top: 9px;
+  min-height: 36px;
+  margin-top: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
   border-radius: 8px;
   color: white;
   background: linear-gradient(135deg,#7657ff,#6240ee);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .note {
-  margin: 9px 0 0;
-  padding: 7px 8px;
+  margin: 10px 0 0;
+  padding: 8px 9px;
   border-radius: 7px;
   color: var(--muted);
   background: color-mix(in srgb, var(--purple) 6%, transparent);
-  font-size: 7px;
-  line-height: 1.45;
+  font-size: 9.5px;
+  line-height: 1.5;
 }
 
-.ready {
-  border-color: color-mix(in srgb, var(--success) 35%, var(--line));
-}
-
-.repairing {
-  border-color: color-mix(in srgb, var(--warning) 38%, var(--line));
-}
-
-.failed {
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
-}
+.ready { border-color: color-mix(in srgb, var(--success) 35%, var(--line)); }
+.waiting_implementation { border-color: color-mix(in srgb, var(--warning) 38%, var(--line)); background: color-mix(in srgb, var(--warning) 4%, var(--soft)); }
+.repairing { border-color: color-mix(in srgb, var(--warning) 38%, var(--line)); }
+.failed { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
 
 @media (max-width:1180px) {
   .timeline strong { white-space: normal; }
