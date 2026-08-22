@@ -4,6 +4,20 @@ import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+function hasProtectedUserInput() {
+  if (typeof document === "undefined") return false;
+  const active = document.activeElement;
+  if (active && (
+    active.matches?.("input, textarea, select")
+    || active.isContentEditable
+  )) return true;
+
+  return Array.from(document.querySelectorAll("textarea, [contenteditable='true']")).some((element) => {
+    const value = element.matches?.("textarea") ? element.value : element.textContent;
+    return String(value ?? "").trim().length > 0;
+  });
+}
+
 export default function AutoRefresh({ active, interval = 5000, revisionUrl = null, revision = null, showIndicator = true }) {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -13,11 +27,12 @@ export default function AutoRefresh({ active, interval = 5000, revisionUrl = nul
   const currentRevision = useRef(revision);
 
   const softRefresh = useCallback(() => {
+    if (hasProtectedUserInput()) return;
     router.refresh();
   }, [router]);
 
   const refresh = useCallback(async () => {
-    if (!active || document.visibilityState === "hidden" || inFlight.current) return;
+    if (!active || document.visibilityState === "hidden" || inFlight.current || hasProtectedUserInput()) return;
     inFlight.current = true;
     lastRefreshAt.current = Date.now();
     if (showIndicator) setRefreshing(true);

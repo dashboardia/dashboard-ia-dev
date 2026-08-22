@@ -31,7 +31,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import ActionCenter from "./action-center";
-import AutoRefresh from "./auto-refresh";
 import ExecutionEnvironmentShortcut from "./execution-environment-shortcut";
 import ExecutionFailureRecovery from "./execution-failure-recovery";
 import ExecutionGitHubRecovery from "./execution-github-recovery";
@@ -95,7 +94,6 @@ function AppShellContent({ children, user = null, setupMode = false }) {
 
   return (
     <main className={`shell ${sidebarPinned ? "sidebar-pinned" : ""}`}>
-      <AutoRefresh active={!setupMode && Boolean(user)} interval={5000} showIndicator={false} />
       <aside className={`sidebar ${sidebarOpen ? "open" : ""} ${sidebarPinned ? "pinned" : ""}`}>
         <Link href="/" className="brand"><span className="brand-mark"><Code2 size={19} /></span><span>Forgeboard</span></Link>
         <button className="close" onClick={() => setSidebarOpen(false)} aria-label={t("closeMenu")}><X /></button>
