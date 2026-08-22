@@ -50,6 +50,7 @@ export async function GET(_request, context) {
       ? { status: remotePreview.status ?? localPreview?.status, url: remotePreview.url ?? localPreview?.url, error: remotePreview.error ?? localPreview?.error }
       : localPreview;
     const state = executionPreviewState(execution, effectivePreview);
+    const resetActivity = ["WAITING_IMPLEMENTATION", "REPAIRING"].includes(state);
 
     return NextResponse.json({
       available: true,
@@ -59,7 +60,7 @@ export async function GET(_request, context) {
       projectId: execution.demand.projectId,
       branchName: execution.branchName,
       closed: Boolean(execution.closedAt),
-      activity: state === "WAITING_IMPLEMENTATION" ? [] : normalizedActivity(remotePreview?.activity),
+      activity: resetActivity ? [] : normalizedActivity(remotePreview?.activity),
       technicalError: state === "FAILED" ? String(effectivePreview?.error ?? "") : null,
       updatedAt: remotePreview?.updatedAt ?? localPreview?.updatedAt ?? null,
     }, { headers: { "Cache-Control": "no-store" } });
