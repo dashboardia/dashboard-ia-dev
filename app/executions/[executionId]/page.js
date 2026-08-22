@@ -17,6 +17,7 @@ import AutoOpenPullRequest from "./auto-open-pull-request";
 import EvidenceCard from "./evidence-card";
 import DiffViewer from "./diff-viewer";
 import ExecutionConversation from "./execution-conversation";
+import ExecutionEnvironmentActivity from "./execution-environment-activity";
 import CopyBranchButton from "./copy-branch-button";
 import ResumeExecutionButton from "./resume-execution-button";
 
@@ -96,12 +97,15 @@ export default async function ExecutionPage({ params }) {
         </section>
 
         <div className={`execution-workbench ${showConversation ? "with-chat" : "single"}`}>
-          <section className={`execution-live-progress ${execution.error ? "failed" : executionActive ? "active" : "completed"}`}>
-            <header><span>{execution.error ? <CircleX size={18} /> : executionActive ? <CircleDotDashed className="spin-slow" size={18} /> : stopped ? <CircleDotDashed size={18} /> : <CircleCheck size={18} />}</span><div><strong>{execution.error ? "Execução interrompida" : executionActive ? "Acompanhamento ao vivo" : stopped ? "Execução pausada" : "Execução concluída"}</strong><small>{executionActive ? "A página recebe novas etapas automaticamente, sem piscar." : stopped ? "O administrador pausou o processamento. Quando a plataforma estiver liberada, esta mesma execução pode ser retomada." : "Resumo factual das últimas etapas executadas."}</small></div><em>{execution.stage}</em></header>
-            <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
-          </section>
+          <div className="execution-live-column">
+            <section className={`execution-live-progress ${execution.error ? "failed" : executionActive ? "active" : "completed"}`}>
+              <header><span>{execution.error ? <CircleX size={18} /> : executionActive ? <CircleDotDashed className="spin-slow" size={18} /> : stopped ? <CircleDotDashed size={18} /> : <CircleCheck size={18} />}</span><div><strong>{execution.error ? "Execução interrompida" : executionActive ? "Acompanhamento ao vivo" : stopped ? "Execução pausada" : "Execução concluída"}</strong><small>{executionActive ? "A página recebe novas etapas automaticamente, sem piscar." : stopped ? "O administrador pausou o processamento. Quando a plataforma estiver liberada, esta mesma execução pode ser retomada." : "Resumo factual das últimas etapas executadas."}</small></div><em>{execution.stage}</em></header>
+              <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
+            </section>
+            {showConversation && <ExecutionEnvironmentActivity executionId={execution.id} />}
+          </div>
 
-          {showConversation && <ExecutionConversation executionId={execution.id} status={execution.status} messages={conversationMessages} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} maxAdjustments={settings.executionConversationMaxAdjustments} conversationReady={conversationReady} />}
+          {showConversation && <ExecutionConversation executionId={execution.id} status={execution.status} messages={conversationMessages} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} conversationReady={conversationReady} />}
         </div>
 
         <div className="execution-review-grid">
@@ -146,7 +150,7 @@ export default async function ExecutionPage({ params }) {
           <div className="execution-collapsible-content"><div className="execution-timeline">{execution.logs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; return <div key={entry.id}><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Ver detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>; })}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div></div>
         </details>
 
-        {execution.demand.type !== "DOCUMENTATION" && <EvidenceCard artifacts={execution.artifacts} projectId={execution.demand.projectId} branchName={execution.branchName} />}
+        {execution.demand.type !== "DOCUMENTATION" && <EvidenceCard artifacts={execution.artifacts} />}
 
         <details className="form-card detail-card full-card execution-collapsible execution-diff-card">
           <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Diff para revisão</strong><small>{diff?.content ? "Alterações exatas geradas antes da abertura do Pull Request" : "Disponível após as validações"}</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>

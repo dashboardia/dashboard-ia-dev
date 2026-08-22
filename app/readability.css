@@ -1,0 +1,21 @@
+/*
+ * O layout original foi desenhado com tipografia muito pequena. Em desktop,
+ * a interface passa a usar a mesma escala visual de um navegador em 120%,
+ * mantendo o comportamento responsivo em telas menores.
+ */
+@media (min-width: 1100px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  .shell {
+    width: 83.333333%;
+    min-height: 83.333333vh;
+    zoom: 1.2;
+  }
+
+  .shell > .content {
+    min-height: 83.333333vh;
+  }
+}

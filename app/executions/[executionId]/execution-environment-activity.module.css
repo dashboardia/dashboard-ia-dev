@@ -1,0 +1,141 @@
+.card {
+  padding: 11px;
+  border: 1px solid color-mix(in srgb, var(--purple) 22%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--purple) 4%, var(--soft));
+  box-shadow: 0 5px 18px #0000000a;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: 30px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 12%, var(--soft));
+}
+
+.header > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.header strong {
+  color: var(--ink);
+  font-size: 9px;
+}
+
+.header small {
+  color: var(--muted);
+  font-size: 7px;
+  line-height: 1.35;
+}
+
+.header em {
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 10%, transparent);
+  font-size: 6px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: .4px;
+}
+
+.timeline {
+  margin: 9px 0 0;
+  padding: 8px 0 0;
+  display: grid;
+  gap: 5px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  list-style: none;
+}
+
+.timeline li {
+  display: grid;
+  grid-template-columns: 15px minmax(0,1fr);
+  align-items: start;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.timeline li > svg {
+  margin-top: 1px;
+}
+
+.timeline li > span {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.timeline strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 7px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 6px;
+}
+
+.running { color: var(--purple)!important; }
+.completed { color: var(--success)!important; }
+.failed { color: var(--danger)!important; }
+
+.open {
+  min-height: 32px;
+  margin-top: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  color: white;
+  background: linear-gradient(135deg,#7657ff,#6240ee);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.note {
+  margin: 9px 0 0;
+  padding: 7px 8px;
+  border-radius: 7px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--purple) 6%, transparent);
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.ready {
+  border-color: color-mix(in srgb, var(--success) 35%, var(--line));
+}
+
+.repairing {
+  border-color: color-mix(in srgb, var(--warning) 38%, var(--line));
+}
+
+.failed {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+}
+
+@media (max-width:1180px) {
+  .timeline strong { white-space: normal; }
+}

@@ -61,18 +61,24 @@
   grid-template-columns: 1fr;
 }
 
-.execution-workbench > .execution-live-progress,
+.execution-workbench > .execution-live-column,
 .execution-workbench > .execution-conversation {
   min-width: 0;
   margin: 0;
 }
 
-.execution-workbench > .execution-live-progress {
+.execution-live-column {
   position: sticky;
   top: 82px;
   align-self: start;
+  display: grid;
+  gap: 8px;
+}
+
+.execution-live-column > .execution-live-progress {
   height: auto;
   min-height: 0;
+  margin: 0;
   border-radius: 11px;
   box-shadow: none;
 }
@@ -352,7 +358,7 @@
     grid-template-columns: 1fr;
   }
 
-  .execution-workbench > .execution-live-progress {
+  .execution-live-column {
     position: static;
   }
 

@@ -6,6 +6,7 @@ import "./environment-recovery.css";
 import "./sidebar-collapsible.css";
 import "./execution-workbench.css";
 import "./execution-automation.css";
+import "./readability.css";
 
 export const metadata = {
   title: "Dashboard IA",
