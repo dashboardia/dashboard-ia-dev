@@ -1,9 +1,13 @@
 .banner {
+  position: sticky;
+  top: 80px;
+  z-index: 9;
   margin: 14px 24px 0;
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--purple) 32%, var(--line));
   border-radius: 14px;
   background: color-mix(in srgb, var(--purple) 7%, var(--soft));
+  box-shadow: 0 10px 30px rgba(24, 18, 52, .14);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -56,6 +60,7 @@
 
 @media (max-width: 760px) {
   .banner {
+    top: 72px;
     margin: 10px 14px 0;
     grid-template-columns: auto minmax(0, 1fr);
   }

@@ -4,6 +4,7 @@ import "./gray-theme.css";
 import "./settings-theme-fix.css";
 import "./environment-recovery.css";
 import "./sidebar-collapsible.css";
+import "./execution-workbench.css";
 
 export const metadata = {
   title: "Dashboard IA",

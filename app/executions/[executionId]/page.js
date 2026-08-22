@@ -73,6 +73,9 @@ export default async function ExecutionPage({ params }) {
   const explainedError = execution.error ? explainError(execution.error) : null;
   const progressLogs = execution.logs.slice(-5);
   const executionActive = activeExecutionStatuses.has(execution.status) && !execution.cancelRequestedAt;
+  const showConversation = execution.demand.type !== "DOCUMENTATION";
+  const conversationReady = Boolean(execution.pullRequest || execution.messages.length > 0 || execution.status === "AWAITING_CLIENT");
+  const conversationMessages = execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
 
   return (
     <AppShell user={user}>
@@ -92,10 +95,14 @@ export default async function ExecutionPage({ params }) {
           <div><Zap size={17} /><span><small>Tokens</small><strong>{(execution.inputTokens ?? 0) + (execution.outputTokens ?? 0) || "—"}</strong></span></div>
         </section>
 
-        <section className={`execution-live-progress ${execution.error ? "failed" : executionActive ? "active" : "completed"}`}>
-          <header><span>{execution.error ? <CircleX size={18} /> : executionActive ? <CircleDotDashed className="spin-slow" size={18} /> : stopped ? <CircleDotDashed size={18} /> : <CircleCheck size={18} />}</span><div><strong>{execution.error ? "Execução interrompida" : executionActive ? "Acompanhamento ao vivo" : stopped ? "Execução pausada" : "Execução concluída"}</strong><small>{executionActive ? "A página recebe novas etapas automaticamente, sem piscar." : stopped ? "O administrador pausou o processamento. Quando a plataforma estiver liberada, esta mesma execução pode ser retomada." : "Resumo factual das últimas etapas executadas."}</small></div><em>{execution.stage}</em></header>
-          <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
-        </section>
+        <div className={`execution-workbench ${showConversation ? "with-chat" : "single"}`}>
+          <section className={`execution-live-progress ${execution.error ? "failed" : executionActive ? "active" : "completed"}`}>
+            <header><span>{execution.error ? <CircleX size={18} /> : executionActive ? <CircleDotDashed className="spin-slow" size={18} /> : stopped ? <CircleDotDashed size={18} /> : <CircleCheck size={18} />}</span><div><strong>{execution.error ? "Execução interrompida" : executionActive ? "Acompanhamento ao vivo" : stopped ? "Execução pausada" : "Execução concluída"}</strong><small>{executionActive ? "A página recebe novas etapas automaticamente, sem piscar." : stopped ? "O administrador pausou o processamento. Quando a plataforma estiver liberada, esta mesma execução pode ser retomada." : "Resumo factual das últimas etapas executadas."}</small></div><em>{execution.stage}</em></header>
+            <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
+          </section>
+
+          {showConversation && <ExecutionConversation executionId={execution.id} status={execution.status} messages={conversationMessages} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} maxAdjustments={settings.executionConversationMaxAdjustments} conversationReady={conversationReady} />}
+        </div>
 
         <div className="execution-review-grid">
           <section className="form-card detail-card execution-summary-card">
@@ -110,8 +117,6 @@ export default async function ExecutionPage({ params }) {
             <div className="commit-list"><span><small>Base</small><code>{execution.baseSha ?? "—"}</code></span><span><small>Resultado</small><code>{execution.headSha ?? "—"}</code></span><span><small>Modelo</small><code>{execution.model ?? "—"}</code></span></div>
           </section>
         </div>
-
-        {(execution.pullRequest || execution.messages.length > 0) && <ExecutionConversation executionId={execution.id} status={execution.status} messages={execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} maxAdjustments={settings.executionConversationMaxAdjustments} />}
 
         {user.globalRole === "ADMIN" && execution.financialSnapshot && <section className="form-card detail-card full-card financial-execution-card">
           <div className="card-heading"><div><h2>Simulação financeira</h2><p>Visível somente para administradores. O custo segue silencioso; créditos são liquidados pelo consumo medido.</p></div><div className="shadow-mode-badge"><Coins size={14} />CUSTO SILENCIOSO</div></div>
