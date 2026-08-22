@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, Sparkles } from "lucide-react";
+import { ArrowRight, LoaderCircle, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 const STORAGE_KEY = "dashboardia:environment-recovery";
@@ -24,9 +24,19 @@ export default function EnvironmentRecoveryAction({ environmentId }) {
     }
   }
 
-  return <section className="environment-credentials data_only">
-    <div><Sparkles size={16} /><span><strong>Corrigir esta falha com IA</strong><small>Se esta branch tiver uma interação aberta, o erro será preparado nela. Caso contrário, o Dashboard IA abrirá uma nova demanda já vinculada à branch e com os detalhes técnicos preenchidos.</small></span></div>
-    <div className="environment-actions"><button className="primary compact" type="button" onClick={recover} disabled={loading}>{loading ? <LoaderCircle className="spin" size={14} /> : <Sparkles size={14} />}{loading ? "Preparando correção..." : "Preparar correção"}</button></div>
-    {error && <small className="field-warning">{error}</small>}
+  return <section className="environment-recovery-card">
+    <div className="environment-recovery-copy">
+      <span className="environment-recovery-icon"><Sparkles size={16} /></span>
+      <div>
+        <strong>Corrigir falha com IA</strong>
+        <small>Se esta branch tiver uma interação aberta, continuamos nela. Caso contrário, preparamos uma nova demanda com a branch e o erro já preenchidos.</small>
+      </div>
+    </div>
+    <button className="environment-recovery-button" type="button" onClick={recover} disabled={loading}>
+      {loading ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}
+      <span>{loading ? "Preparando correção..." : "Corrigir com IA"}</span>
+      {!loading && <ArrowRight size={15} />}
+    </button>
+    {error && <small className="environment-recovery-error">{error}</small>}
   </section>;
 }

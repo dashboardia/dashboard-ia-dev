@@ -1,0 +1,75 @@
+.environment-recovery-card {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--purple) 34%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--purple) 7%, transparent);
+}
+
+.environment-recovery-copy {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.environment-recovery-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 14%, var(--soft));
+}
+
+.environment-recovery-copy > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.environment-recovery-copy strong {
+  color: var(--ink);
+  font-size: .82rem;
+  line-height: 1.25;
+}
+
+.environment-recovery-copy small {
+  color: var(--muted);
+  font-size: .72rem;
+  line-height: 1.45;
+}
+
+.environment-recovery-button {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  background: linear-gradient(135deg, #7657ff, #6240ee);
+  color: #fff;
+  font-size: .76rem;
+  font-weight: 700;
+  box-shadow: 0 8px 20px #6d4aff31;
+}
+
+.environment-recovery-button:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.environment-recovery-button:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
+.environment-recovery-error {
+  color: var(--danger);
+  font-size: .7rem;
+  line-height: 1.4;
+}
