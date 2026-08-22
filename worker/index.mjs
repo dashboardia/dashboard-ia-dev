@@ -10,6 +10,7 @@ import { pruneWorkerHeartbeats, recordWorkerHeartbeat, removeWorkerHeartbeat } f
 import { checkProjectHealth, pruneHealthChecks } from "./health.mjs";
 import { processExecution } from "./processor.mjs";
 import { evaluateWorkerAutoscaling } from "./autoscaler.mjs";
+import { requestExecutionPreviewAutomation, syncExecutionPreviewAutomations } from "./execution-preview-automation.mjs";
 
 const workerId = `${process.env.RAILWAY_REPLICA_ID || os.hostname()}:${process.pid}`;
 const LOCAL_CONCURRENCY_LIMIT = 1;
@@ -20,6 +21,7 @@ let lastStaleRecovery = 0;
 let lastConversationExpiration = 0;
 let lastAutoscaleEvaluation = 0;
 let lastEnvironmentSynchronization = 0;
+let lastExecutionPreviewSynchronization = 0;
 const workerStartedAt = new Date();
 let heartbeatTimer = null;
 let heartbeatPromise = null;
@@ -28,6 +30,7 @@ let processingEnabled = true;
 let lastConcurrencyRefresh = 0;
 let runtimeSettings = null;
 const activeExecutions = new Set();
+const activePreviewRequests = new Set();
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -63,8 +66,16 @@ async function refreshConcurrencyLimit() {
   lastConcurrencyRefresh = Date.now();
 }
 
+function startExecutionPreview(executionId) {
+  const task = requestExecutionPreviewAutomation(executionId, db, { settings: runtimeSettings })
+    .catch((error) => console.error(`[worker:${workerId}] ambiente automático da execução ${executionId} falhou ao iniciar`, error))
+    .finally(() => activePreviewRequests.delete(task));
+  activePreviewRequests.add(task);
+}
+
 function startExecution(executionId) {
   const task = processExecution(executionId, workerId)
+    .then(() => startExecutionPreview(executionId))
     .catch(async (error) => {
       console.error(`[worker:${workerId}] execução falhou`, error);
       try {
@@ -114,6 +125,11 @@ async function main() {
       await expireInactiveExecutionConversations(db).catch((error) => console.error(`[worker:${workerId}] expiração de conversas falhou`, error));
       lastConversationExpiration = Date.now();
     }
+    if (Date.now() - lastExecutionPreviewSynchronization >= 5_000) {
+      await syncExecutionPreviewAutomations(db, { settings: runtimeSettings })
+        .catch((error) => console.error(`[worker:${workerId}] automação dos ambientes de execução falhou`, error));
+      lastExecutionPreviewSynchronization = Date.now();
+    }
     if (Date.now() - lastEnvironmentSynchronization >= 30_000) {
       await syncActiveDevEnvironments(db).catch((error) => console.error(`[worker:${workerId}] sincronização de ambientes falhou`, error));
       lastEnvironmentSynchronization = Date.now();
@@ -157,9 +173,9 @@ async function main() {
     await delay(env.WORKER_POLL_INTERVAL_MS);
   }
 
-  if (activeExecutions.size) {
-    console.log(`[worker:${workerId}] aguardando ${activeExecutions.size} execução(ões) ativa(s)`);
-    await Promise.allSettled(activeExecutions);
+  if (activeExecutions.size || activePreviewRequests.size) {
+    console.log(`[worker:${workerId}] aguardando ${activeExecutions.size} execução(ões) e ${activePreviewRequests.size} publicação(ões) de ambiente ativas`);
+    await Promise.allSettled([...activeExecutions, ...activePreviewRequests]);
   }
   await stopHeartbeat();
   await db.$disconnect();

@@ -63,16 +63,24 @@ export function previewUpstreamHeaders(headers = {}, port) {
   const originalHost = headers.host;
   const forwardedProto = String(headers["x-forwarded-proto"] || "https").split(",")[0].trim().toLowerCase();
   const publicProto = ["http", "https"].includes(forwardedProto) ? forwardedProto : "https";
+  const upstreamHeaders = { ...headers };
+
+  // Frameworks como Rails validam tanto Host quanto X-Forwarded-Host. O host
+  // público do preview é usado apenas pelo controlador para localizar o
+  // container e não deve chegar à aplicação como autoridade HTTP. O container
+  // recebe um host local seguro, enquanto protocolo/porta continuam disponíveis
+  // para frameworks que precisam saber que o acesso externo usa HTTPS.
+  delete upstreamHeaders.host;
+  delete upstreamHeaders.forwarded;
+  delete upstreamHeaders["x-forwarded-host"];
+  delete upstreamHeaders["x-original-host"];
+  delete upstreamHeaders["x-forwarded-server"];
+
   return {
-    ...headers,
-    ...(originalHost ? {
-      "x-forwarded-host": originalHost,
-      "x-forwarded-proto": publicProto,
-      "x-forwarded-port": publicProto === "https" ? "443" : "80",
-    } : {}),
-    // Vite 4 valida o Host antes de servir a aplicação. Endereços IP são
-    // aceitos por padrão, enquanto aliases Docker e, em algumas versões,
-    // localhost recebido por proxy podem resultar em HTTP 403.
+    ...upstreamHeaders,
+    ...(originalHost ? { "x-dashboardia-public-host": originalHost } : {}),
+    "x-forwarded-proto": publicProto,
+    "x-forwarded-port": publicProto === "https" ? "443" : "80",
     host: `127.0.0.1:${port}`,
   };
 }

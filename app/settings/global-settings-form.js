@@ -106,7 +106,7 @@ export default function GlobalSettingsForm({ initialSettings, workerInstances = 
             <option value="BALANCED">Equilibrada</option>
             <option value="MAXIMUM">Máxima</option>
           </select>
-          <small>Controla raciocínio, quantidade de interações, tokens de saída e tempo mínimo conforme o escopo.</small>
+          <small>Controla raciocínio, profundidade da execução, tokens de saída e tempo mínimo conforme o escopo.</small>
         </label>
         <label>
           <span>Memória máxima do Node por execução</span>
@@ -171,10 +171,9 @@ export default function GlobalSettingsForm({ initialSettings, workerInstances = 
           <label><span>Retenção da saúde (dias)</span><input name="healthCheckRetentionDays" type="number" min="1" max="365" value={form.healthCheckRetentionDays} onChange={change} /><small>Histórico mantido no banco.</small></label>
           <label><span>Espera do ambiente (min)</span><input name="previewPreparationTimeoutMinutes" type="number" min="1" max="60" value={form.previewPreparationTimeoutMinutes} onChange={change} /><small>Quando uma subida presa em preparação passa a ser considerada falha.</small></label>
           <label><span>Duração do ambiente (min)</span><input name="environmentTtlMinutes" type="number" min="15" max="1440" value={form.environmentTtlMinutes} onChange={change} /><small>Tempo de vida do container antes da expiração automática.</small></label>
-          <label><span>Custo por ambiente publicado (créditos)</span><input name="environmentCreditCost" type="number" min="0" max="100000" value={form.environmentCreditCost} onChange={change} /><small>O saldo fica protegido durante o build e só é cobrado quando o ambiente estiver disponível. Falhas não consomem créditos.</small></label>
-          <label><span>Ambientes por usuário</span><input name="environmentMaxPerUser" type="number" min="1" max="20" value={form.environmentMaxPerUser} onChange={change} /><small>Quantidade máxima de ambientes ativos por usuário.</small></label>
-          <label><span>Inatividade da execução (min)</span><input name="executionConversationTimeoutMinutes" type="number" min="1440" max="10080" value={form.executionConversationTimeoutMinutes} onChange={change} /><small>Mínimo: 1.440 minutos (24 horas) sem interação do usuário.</small></label>
-          <label><span>Máximo de ajustes</span><input name="executionConversationMaxAdjustments" type="number" min="1" max="100" value={form.executionConversationMaxAdjustments} onChange={change} /><small>Limite de respostas do cliente dentro da mesma execução.</small></label>
+          <label><span>Custo por ambiente publicado (créditos)</span><input name="environmentCreditCost" type="number" min="0" max="100000" value={form.environmentCreditCost} onChange={change} /><small>Aplica-se aos ambientes criados manualmente. O ambiente automático da execução faz parte do próprio ciclo da execução.</small></label>
+          <label><span>Ambientes por usuário</span><input name="environmentMaxPerUser" type="number" min="1" max="20" value={form.environmentMaxPerUser} onChange={change} /><small>Quantidade máxima de ambientes manuais ativos por usuário.</small></label>
+          <label><span>Inatividade da execução (min)</span><input name="executionConversationTimeoutMinutes" type="number" min="1440" max="10080" value={form.executionConversationTimeoutMinutes} onChange={change} /><small>Mínimo: 1.440 minutos (24 horas). Não há limite fixo de ajustes; a continuidade é controlada pelo saldo de créditos.</small></label>
         </div>
       </div>
       <div className="financial-settings">

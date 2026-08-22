@@ -49,9 +49,6 @@ export async function POST(request, context) {
     if (execution.conversationExpiresAt && execution.conversationExpiresAt <= new Date()) {
       return NextResponse.json({ error: "A sessão expirou após 24 horas sem interação. A execução será encerrada por inatividade." }, { status: 409 });
     }
-    if (execution.adjustmentCount >= settings.executionConversationMaxAdjustments) {
-      return NextResponse.json({ error: "O limite de ajustes desta execução foi atingido. Conclua a execução quando estiver satisfeito ou abra uma nova demanda para iniciar um novo ciclo." }, { status: 409 });
-    }
     const creditBudget = await getExecutionCreditBudget(db, { executionId, marginPercent: settings.creditBalanceSafetyMarginPercent });
     if (creditBudget && creditBudget.hardLimitCredits < 1) {
       throw new BillingAccessError("Não há saldo disponível para processar este ajuste. Adicione créditos e tente novamente.", 402, "INSUFFICIENT_CREDITS");

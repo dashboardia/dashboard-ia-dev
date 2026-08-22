@@ -261,14 +261,23 @@ test("não considera 404 como preview pronto", () => {
   assert.equal(isPreviewReadyStatus(500), false);
 });
 
-test("usa IP local aceito pelo Vite no upstream sem perder o domínio público original", () => {
-  assert.deepEqual(previewUpstreamHeaders({ host: "preview.example.com", accept: "text/html" }, 5173), {
-    host: "127.0.0.1:5173",
+test("usa Host local no upstream e remove hosts encaminhados que Rails bloquearia", () => {
+  const result = previewUpstreamHeaders({
+    host: "cmt123.preview.dashboardia.app",
     accept: "text/html",
-    "x-forwarded-host": "preview.example.com",
-    "x-forwarded-proto": "https",
-    "x-forwarded-port": "443",
-  });
+    forwarded: "host=cmt123.preview.dashboardia.app;proto=https",
+    "x-forwarded-host": "cmt123.preview.dashboardia.app",
+    "x-original-host": "cmt123.preview.dashboardia.app",
+  }, 5173);
+
+  assert.equal(result.host, "127.0.0.1:5173");
+  assert.equal(result.accept, "text/html");
+  assert.equal(result["x-dashboardia-public-host"], "cmt123.preview.dashboardia.app");
+  assert.equal(result["x-forwarded-proto"], "https");
+  assert.equal(result["x-forwarded-port"], "443");
+  assert.equal(result["x-forwarded-host"], undefined);
+  assert.equal(result.forwarded, undefined);
+  assert.equal(result["x-original-host"], undefined);
 });
 
 test("reconhece documentos Swagger/OpenAPI sem confundir a interface HTML", () => {

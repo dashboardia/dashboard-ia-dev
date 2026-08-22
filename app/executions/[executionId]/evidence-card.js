@@ -1,11 +1,10 @@
 "use client";
 
-import { ChevronDown, Download, Images, Maximize2, ServerCog, X } from "lucide-react";
+import { ChevronDown, Download, Images, Maximize2, X } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
-export default function EvidenceCard({ artifacts, projectId, branchName }) {
+export default function EvidenceCard({ artifacts }) {
   const visuals = artifacts.filter((artifact) => artifact.type === "visual");
   const [selected, setSelected] = useState(null);
 
@@ -26,7 +25,6 @@ export default function EvidenceCard({ artifacts, projectId, branchName }) {
     <details className="form-card detail-card full-card execution-collapsible execution-evidence-card" open>
       <summary className="execution-collapsible-header"><Images size={19} /><span><strong>Prévia visual</strong><small>{visuals.length} captura{visuals.length === 1 ? "" : "s"} da implementação em desktop e celular</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
       <div className="execution-collapsible-content execution-evidence-content">
-        {branchName && <div className="execution-evidence-environment"><span><strong>Testar a versão completa</strong><small>Abra um ambiente temporário com a branch desta execução já selecionada.</small></span><Link href={{ pathname: "/environments", query: { projectId, branch: branchName } }}><ServerCog size={15} />Subir ambiente</Link></div>}
         <div className="execution-screenshot-grid">{visuals.map((artifact) => {
           const href = `/api/artifacts/${artifact.id}`;
           return <button type="button" className="execution-screenshot" onClick={() => setSelected({ ...artifact, href })} key={artifact.id} aria-label={`Ampliar ${artifact.name}`}>

@@ -1,7 +1,6 @@
 "use client";
 
-import { ArrowRight, ServerCog } from "lucide-react";
-import Link from "next/link";
+import { CircleAlert, ExternalLink, LoaderCircle, ServerCog, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import styles from "./execution-environment-shortcut.module.css";
@@ -9,6 +8,39 @@ import styles from "./execution-environment-shortcut.module.css";
 function executionIdFromPath(pathname) {
   const match = String(pathname ?? "").match(/^\/executions\/([^/?#]+)\/?$/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+function presentation(shortcut) {
+  if (shortcut.state === "READY") return {
+    tone: "ready",
+    icon: ServerCog,
+    title: "Ambiente pronto",
+    detail: "A versão navegável desta execução está disponível.",
+  };
+  if (shortcut.state === "REPAIRING") return {
+    tone: "repairing",
+    icon: Sparkles,
+    title: "IA corrigindo o ambiente",
+    detail: "A falha foi enviada automaticamente para a IA.",
+  };
+  if (["STARTING", "PREPARING"].includes(shortcut.state)) return {
+    tone: "preparing",
+    icon: LoaderCircle,
+    title: "Preparando ambiente",
+    detail: "Build e inicialização acontecem automaticamente.",
+  };
+  if (shortcut.state === "FAILED") return {
+    tone: "failed",
+    icon: CircleAlert,
+    title: "Ambiente não ficou disponível",
+    detail: "A execução continua aberta. Se houver saldo, a IA tenta a correção automaticamente.",
+  };
+  return {
+    tone: "expired",
+    icon: CircleAlert,
+    title: "Ambiente expirado",
+    detail: "A execução e o histórico continuam preservados.",
+  };
 }
 
 export default function ExecutionEnvironmentShortcut({ pathname }) {
@@ -33,7 +65,7 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
     }
 
     loadShortcut();
-    const timer = window.setInterval(loadShortcut, 5_000);
+    const timer = window.setInterval(loadShortcut, 4_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -41,17 +73,19 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
   }, [executionId]);
 
   if (!executionId || !shortcut?.available) return null;
+  const view = presentation(shortcut);
+  const Icon = view.icon;
 
   return (
-    <aside className={styles.banner} aria-live="polite">
-      <div className={styles.icon}><ServerCog size={17} /></div>
+    <aside className={`${styles.banner} ${styles[view.tone]}`} aria-live="polite">
+      <div className={styles.icon}><Icon className={view.tone === "preparing" ? styles.spin : ""} size={17} /></div>
       <div className={styles.copy}>
-        <strong>Ambiente disponível</strong>
-        <span>Teste esta branch em uma versão navegável.</span>
+        <strong>{view.title}</strong>
+        <span>{view.detail}</span>
       </div>
-      <Link className={styles.action} href={{ pathname: "/environments", query: { projectId: shortcut.projectId, branch: shortcut.branchName } }}>
-        <ServerCog size={14} />Subir ambiente<ArrowRight size={12} />
-      </Link>
+      {shortcut.state === "READY" && shortcut.url && <a className={styles.action} href={shortcut.url} target="_blank" rel="noreferrer">
+        Abrir<ExternalLink size={12} />
+      </a>}
     </aside>
   );
 }
