@@ -2,7 +2,7 @@
 
 import { CheckCircle2, LoaderCircle, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import styles from "./project-settings-form.module.css";
 
@@ -17,9 +17,36 @@ function initialForm(project) {
 export default function ProjectSettingsForm({ project }) {
   const router = useRouter();
   const [form, setForm] = useState(() => initialForm(project));
+  const [branches, setBranches] = useState([]);
+  const [loadingBranches, setLoadingBranches] = useState(true);
+  const [branchError, setBranchError] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoadingBranches(true);
+    setBranchError("");
+    fetch(`/api/projects/${project.id}/branches`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error ?? "Não foi possível carregar as branches do GitHub");
+        setBranches(Array.isArray(result.branches) ? result.branches : []);
+      })
+      .catch((fetchError) => {
+        if (fetchError.name !== "AbortError") setBranchError(fetchError.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingBranches(false);
+      });
+    return () => controller.abort();
+  }, [project.id]);
+
+  const branchOptions = useMemo(() => {
+    const names = branches.map((branch) => branch.name).filter(Boolean);
+    return names.includes(form.defaultBranch) ? names : [form.defaultBranch, ...names].filter(Boolean);
+  }, [branches, form.defaultBranch]);
 
   function change(event) {
     setSaved(false);
@@ -53,7 +80,14 @@ export default function ProjectSettingsForm({ project }) {
     <form className={styles.form} onSubmit={submit}>
       <div className={styles.grid}>
         <label><span>Nome do projeto</span><input name="name" value={form.name} onChange={change} required /></label>
-        <label><span>Branch padrão</span><input name="defaultBranch" value={form.defaultBranch} onChange={change} required /></label>
+        <label>
+          <span>Branch padrão</span>
+          <select name="defaultBranch" value={form.defaultBranch} onChange={change} disabled={loadingBranches} required>
+            {loadingBranches && <option value={form.defaultBranch}>Carregando branches...</option>}
+            {!loadingBranches && branchOptions.map((branchName) => <option value={branchName} key={branchName}>{branchName}</option>)}
+          </select>
+          {branchError && <small className={styles.branchError}>{branchError}. A branch atual foi mantida.</small>}
+        </label>
         <label><span>URL de produção <small>(opcional)</small></span><input name="productionUrl" type="url" value={form.productionUrl} onChange={change} placeholder="https://app.exemplo.com" /></label>
       </div>
       <div className={styles.note}>O repositório é <strong>{project.repositoryFullName}</strong>. Tecnologia, diretório, instalação, testes, build, comando de ambiente e porta são detectados automaticamente pela Dashboard IA.</div>

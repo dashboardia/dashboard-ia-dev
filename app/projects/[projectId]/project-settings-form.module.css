@@ -22,7 +22,8 @@
   font-weight: 700;
 }
 
-.grid input {
+.grid input,
+.grid select {
   min-height: 42px;
   width: 100%;
   padding: 0 12px;
@@ -33,9 +34,25 @@
   outline: none;
 }
 
-.grid input:focus {
+.grid select {
+  cursor: pointer;
+}
+
+.grid select:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
+.grid input:focus,
+.grid select:focus {
   border-color: color-mix(in srgb, var(--purple) 55%, var(--line));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--purple) 10%, transparent);
+}
+
+.branchError {
+  color: var(--danger);
+  font-size: 9px;
+  line-height: 1.4;
 }
 
 .note {
