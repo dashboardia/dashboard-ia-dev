@@ -11,6 +11,7 @@ import { detectGitHubProjectRuntime, environmentRuntimeConfiguration, mavenBuild
 import { redactSensitiveData } from "../lib/redaction.js";
 
 const ACTIVE_PREVIEW_STATUSES = ["QUEUED", "BUILDING", "DEPLOYING"];
+const WATCHED_PREVIEW_STATUSES = [...ACTIVE_PREVIEW_STATUSES, "FAILED"];
 const MINIMUM_CONVERSATION_TIMEOUT_MINUTES = 24 * 60;
 const MAX_TECHNICAL_ERROR_LENGTH = 8_000;
 const INFRASTRUCTURE_FAILURES = [
@@ -217,7 +218,7 @@ export async function syncExecutionPreviewAutomations(database = db, options = {
   const settings = options.settings ?? await getGlobalSettings(database);
   const previews = await database.previewEnvironment.findMany({
     where: {
-      status: { in: ACTIVE_PREVIEW_STATUSES },
+      status: { in: WATCHED_PREVIEW_STATUSES },
       execution: {
         status: "AWAITING_CLIENT",
         closedAt: null,
@@ -232,6 +233,11 @@ export async function syncExecutionPreviewAutomations(database = db, options = {
 
   let requeued = 0;
   for (const preview of previews) {
+    if (preview.status === "FAILED") {
+      if (await queueAutomaticCorrection(preview, settings, database)) requeued += 1;
+      continue;
+    }
+
     let current;
     try {
       current = await syncDashboardiaPreview(database, preview);

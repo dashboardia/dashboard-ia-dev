@@ -1,0 +1,32 @@
+.execution-live-progress[data-runtime-focus="1"] ol {
+  display: none;
+}
+
+.execution-live-progress[data-runtime-focus="1"]::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  margin: 4px 0 0 14px;
+  display: inline-block;
+  border: 2px solid color-mix(in srgb, var(--purple) 28%, transparent);
+  border-top-color: var(--purple);
+  border-radius: 50%;
+  animation: execution-cycle-spin .8s linear infinite;
+  vertical-align: middle;
+}
+
+.execution-live-progress[data-runtime-focus="1"]::after {
+  content: attr(data-runtime-label) " · " attr(data-runtime-detail);
+  display: inline-block;
+  max-width: calc(100% - 54px);
+  margin: 11px 12px 12px 8px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  vertical-align: top;
+}
+
+@keyframes execution-cycle-spin {
+  to { transform: rotate(360deg); }
+}

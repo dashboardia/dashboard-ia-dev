@@ -6,7 +6,7 @@ import AppShell from "../../../components/app-shell";
 import SectionHeader from "../../../components/section-header";
 import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
-import { executionLivePresentation, executionStageLabel, executionStatusLabel } from "../../../lib/execution-presentation";
+import { executionLivePresentation, executionProgressLogs, executionStageLabel, executionStatusLabel } from "../../../lib/execution-presentation";
 import { requirePageUser } from "../../../lib/page-access";
 import { redactSensitiveData } from "../../../lib/redaction";
 import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error-messages";
@@ -58,6 +58,7 @@ export default async function ExecutionPage({ params }) {
       logs: { orderBy: { createdAt: "asc" } },
       artifacts: { orderBy: { createdAt: "asc" } },
       pullRequest: true,
+      previewEnvironment: { select: { status: true, url: true, error: true } },
       financialSnapshot: true,
       creditReservation: true,
       messages: { orderBy: { createdAt: "asc" }, include: { attachments: { orderBy: { createdAt: "asc" } } } },
@@ -71,9 +72,8 @@ export default async function ExecutionPage({ params }) {
   const canResume = role === "MANAGER" && execution.status === "STOPPED" && !execution.cancelRequestedAt;
   const shouldAutoOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.pullRequest && !execution.cancelRequestedAt;
   const interrupted = execution.status === "CANCELLED" || Boolean(execution.cancelRequestedAt);
-  const stopped = execution.status === "STOPPED";
   const explainedError = execution.error ? explainError(execution.error) : null;
-  const progressLogs = execution.logs.slice(-5);
+  const progressLogs = executionProgressLogs(execution);
   const executionActive = activeExecutionStatuses.has(execution.status) && !execution.cancelRequestedAt;
   const showConversation = execution.demand.type !== "DOCUMENTATION";
   const conversationReady = Boolean(execution.pullRequest || execution.messages.length > 0 || execution.status === "AWAITING_CLIENT");

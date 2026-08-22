@@ -12,15 +12,27 @@ function executionIdFromPath(pathname) {
 
 function presentation(shortcut, control) {
   if (control?.canResume) return { tone: "paused", icon: PauseCircle, title: "Processos pausados", detail: "Você pode conversar com a IA ou reexecutar de onde parou." };
-  if (shortcut?.state === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "IA corrigindo o ambiente", detail: "A falha foi enviada automaticamente para a IA." };
-  if (shortcut?.state === "WAITING_IMPLEMENTATION") return { tone: "processing", icon: LoaderCircle, title: "IA aplicando novo ajuste", detail: "Ao concluir, o ambiente será publicado novamente automaticamente." };
-  if (["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"].includes(control?.status)) return { tone: "processing", icon: LoaderCircle, title: control?.status === "WAITING_APPROVAL" ? "Publicando novo resultado" : "IA aplicando novo ajuste", detail: "O ambiente será atualizado automaticamente quando esta etapa terminar." };
   if (shortcut?.state === "READY") return { tone: "ready", icon: ServerCog, title: "Ambiente pronto", detail: "A versão navegável desta execução está disponível." };
+  if (control?.previewState === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: control.displayStatus || "IA corrigindo ambiente", detail: "Uma nova tentativa de correção está em andamento." };
+  if (control?.previewState === "WAITING_IMPLEMENTATION") return { tone: "repairing", icon: Sparkles, title: control.displayStatus || "IA aplicando ajuste", detail: "A nova interação será republicada assim que a IA terminar." };
+  if (shortcut?.state === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "IA corrigindo o ambiente", detail: "A falha foi enviada automaticamente para a IA." };
   if (["STARTING", "PREPARING"].includes(shortcut?.state)) return { tone: "preparing", icon: LoaderCircle, title: "Preparando ambiente", detail: "Build e inicialização acontecem automaticamente." };
-  if (shortcut?.state === "FAILED") return { tone: "failed", icon: CircleAlert, title: "Ambiente não ficou disponível", detail: "A execução continua preservada e a correção automática será tentada quando possível." };
+  if (shortcut?.state === "FAILED") return { tone: "failed", icon: CircleAlert, title: "Ambiente com falha", detail: "A automação tentará encaminhar uma nova correção quando possível." };
   if (shortcut?.state === "EXPIRED") return { tone: "expired", icon: CircleAlert, title: "Ambiente encerrado", detail: "A execução e o histórico continuam preservados." };
   if (control?.canPause) return { tone: "processing", icon: LoaderCircle, title: control.displayStatus || "Processamento em andamento", detail: "Você pode pausar os processos sem cancelar a execução." };
   if (control?.canCancel) return { tone: "processing", icon: ServerCog, title: control.displayStatus || "Execução em andamento", detail: "Você pode cancelar esta execução a qualquer momento." };
+  return null;
+}
+
+function liveFocus(control) {
+  if (!control) return null;
+  if (control.previewState === "REPAIRING") return { label: control.displayStatus || "IA corrigindo ambiente", detail: "O ciclo anterior foi encerrado. Acompanhe esta nova tentativa de correção." };
+  if (control.previewState === "WAITING_IMPLEMENTATION") return { label: control.displayStatus || "IA aplicando ajuste", detail: "A versão anterior não representa mais o último pedido. A IA está preparando a nova versão." };
+  if (control.awaitingEnvironment) {
+    if (control.previewState === "FAILED") return { label: "Ambiente com falha", detail: "A publicação falhou. A automação está preparando a próxima ação." };
+    return { label: "Preparando ambiente", detail: "A implementação terminou e agora o ambiente está sendo construído e validado." };
+  }
+  if (control.status === "STOPPED") return { label: "Processos pausados", detail: "O trabalho foi preservado e pode ser retomado a partir deste ponto." };
   return null;
 }
 
@@ -74,18 +86,25 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
     const statusTarget = document.querySelector(".execution-detail-page .execution-metrics > div:first-child strong");
     if (statusTarget) statusTarget.textContent = control.displayStatus;
 
-    const liveTitle = document.querySelector(".execution-live-progress header strong");
-    const liveSubtitle = document.querySelector(".execution-live-progress header small");
+    const live = document.querySelector(".execution-live-progress");
+    const liveTitle = live?.querySelector("header strong");
+    const liveSubtitle = live?.querySelector("header small");
+    const focus = liveFocus(control);
+    if (live) {
+      if (focus) {
+        live.dataset.runtimeFocus = "1";
+        live.dataset.runtimeLabel = focus.label;
+        live.dataset.runtimeDetail = focus.detail;
+      } else {
+        delete live.dataset.runtimeFocus;
+        delete live.dataset.runtimeLabel;
+        delete live.dataset.runtimeDetail;
+      }
+    }
     if (!liveTitle || !liveSubtitle) return;
-    if (["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"].includes(control.status) && control.previewState === "WAITING_IMPLEMENTATION") {
-      liveTitle.textContent = "IA aplicando novo ajuste";
-      liveSubtitle.textContent = "A versão anterior não é mais o resultado atual. Quando a IA terminar, o ambiente será publicado novamente automaticamente.";
-    } else if (control.awaitingEnvironment) {
-      liveTitle.textContent = ["REPAIRING", "FAILED"].includes(control.previewState) ? "Corrigindo ambiente" : "Preparando ambiente";
-      liveSubtitle.textContent = "A execução só será liberada para novos ajustes quando a versão navegável estiver pronta.";
-    } else if (control.status === "STOPPED") {
-      liveTitle.textContent = "Processos pausados";
-      liveSubtitle.textContent = "O trabalho foi preservado. Você pode conversar com a IA ou reexecutar de onde parou.";
+    if (focus) {
+      liveTitle.textContent = focus.label;
+      liveSubtitle.textContent = focus.detail;
     } else if (control.status === "AWAITING_CLIENT" && control.interactionAvailable) {
       liveTitle.textContent = "Aguardando você";
       liveSubtitle.textContent = "O ambiente está pronto. Teste o resultado e peça novos ajustes pelo chat quando quiser.";
