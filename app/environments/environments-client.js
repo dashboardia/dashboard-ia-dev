@@ -24,17 +24,15 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
   const [error, setError] = useState("");
   const [copiedCredential, setCopiedCredential] = useState("");
 
-  const latestFailedEnvironmentIds = useMemo(() => {
-    const handledBranches = new Set();
-    const latestFailedIds = new Set();
+  const latestEnvironmentIds = useMemo(() => {
+    const latestByBranch = new Map();
     for (const environment of environments) {
-      if (environment.status !== "FAILED" || !environment.error) continue;
       const branchKey = `${environment.projectId}:${environment.branchName}`;
-      if (handledBranches.has(branchKey)) continue;
-      handledBranches.add(branchKey);
-      latestFailedIds.add(environment.id);
+      const current = latestByBranch.get(branchKey);
+      const createdAt = new Date(environment.createdAt ?? environment.requestedAt ?? 0).getTime();
+      if (!current || createdAt > current.createdAt) latestByBranch.set(branchKey, { id: environment.id, createdAt });
     }
-    return latestFailedIds;
+    return new Set(Array.from(latestByBranch.values(), ({ id }) => id));
   }, [environments]);
 
   useEffect(() => {
@@ -117,7 +115,7 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
     const activity = Array.isArray(environment.activity) ? environment.activity : [];
     const demoAccess = environment.credentials;
     const isActive = ["QUEUED", "BUILDING", "DEPLOYING", "STOPPING"].includes(environment.status);
-    const canRecoverFailure = latestFailedEnvironmentIds.has(environment.id);
+    const canRecoverFailure = environment.status === "FAILED" && Boolean(environment.error) && latestEnvironmentIds.has(environment.id);
     return <article className="resource-card environment-card" key={environment.id}>
       <header className="environment-card-header"><span className="resource-icon"><ServerCog size={19} /></span><div><strong>{environment.project.name}</strong><small>{environment.project.repositoryFullName}</small></div><em className={`status-pill ${environment.status.toLowerCase()}`}>{isActive && <span className="status-pulse" />}{labels[environment.status] ?? environment.status}</em></header>
       <div className="resource-meta environment-meta"><span><GitBranch size={13} />{environment.branchName}</span><span>{environment.runtime ?? "Detectando stack"}</span><span>{environment.creditChargedAt ? `${environment.creditCost} créditos cobrados` : environment.status === "FAILED" || environment.creditRefundedAt ? "Nenhum crédito cobrado" : `${environment.creditCost} créditos protegidos · cobra somente no sucesso`}</span></div>
