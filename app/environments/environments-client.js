@@ -24,6 +24,19 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
   const [error, setError] = useState("");
   const [copiedCredential, setCopiedCredential] = useState("");
 
+  const latestFailedEnvironmentIds = useMemo(() => {
+    const handledBranches = new Set();
+    const latestFailedIds = new Set();
+    for (const environment of environments) {
+      if (environment.status !== "FAILED" || !environment.error) continue;
+      const branchKey = `${environment.projectId}:${environment.branchName}`;
+      if (handledBranches.has(branchKey)) continue;
+      handledBranches.add(branchKey);
+      latestFailedIds.add(environment.id);
+    }
+    return latestFailedIds;
+  }, [environments]);
+
   useEffect(() => {
     const synchronization = window.setTimeout(() => setEnvironments(initialEnvironments), 0);
     return () => window.clearTimeout(synchronization);
@@ -104,6 +117,7 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
     const activity = Array.isArray(environment.activity) ? environment.activity : [];
     const demoAccess = environment.credentials;
     const isActive = ["QUEUED", "BUILDING", "DEPLOYING", "STOPPING"].includes(environment.status);
+    const canRecoverFailure = latestFailedEnvironmentIds.has(environment.id);
     return <article className="resource-card environment-card" key={environment.id}>
       <header className="environment-card-header"><span className="resource-icon"><ServerCog size={19} /></span><div><strong>{environment.project.name}</strong><small>{environment.project.repositoryFullName}</small></div><em className={`status-pill ${environment.status.toLowerCase()}`}>{isActive && <span className="status-pulse" />}{labels[environment.status] ?? environment.status}</em></header>
       <div className="resource-meta environment-meta"><span><GitBranch size={13} />{environment.branchName}</span><span>{environment.runtime ?? "Detectando stack"}</span><span>{environment.creditChargedAt ? `${environment.creditCost} créditos cobrados` : environment.status === "FAILED" || environment.creditRefundedAt ? "Nenhum crédito cobrado" : `${environment.creditCost} créditos protegidos · cobra somente no sucesso`}</span></div>
@@ -124,7 +138,7 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
         {demoAccess.source && <small className="environment-credential-source">Detectado em {demoAccess.source}</small>}
       </section>}
       {environment.error && <details className="environment-error"><summary>Ver falha técnica</summary><pre>{environment.error}</pre></details>}
-      {environment.status === "FAILED" && environment.error && <EnvironmentRecoveryAction environmentId={environment.id} />}
+      {canRecoverFailure && <EnvironmentRecoveryAction environmentId={environment.id} />}
       <div className="environment-actions">{environment.url && <a className="primary compact" href={environment.url} target="_blank" rel="noreferrer"><ExternalLink size={14} />Abrir ambiente</a>}{ACTIVE.has(environment.status) && <button className="environment-stop-button" type="button" onClick={() => stopEnvironment(environment.id)}><Square size={13} />Encerrar ambiente</button>}</div>
     </article>;
   }
