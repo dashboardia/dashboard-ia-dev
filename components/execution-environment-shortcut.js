@@ -13,11 +13,11 @@ function executionIdFromPath(pathname) {
 function presentation(shortcut, control) {
   if (control?.canResume) return { tone: "paused", icon: PauseCircle, title: "Processos pausados", detail: "Você pode conversar com a IA ou reexecutar de onde parou." };
   if (shortcut?.state === "READY") return { tone: "ready", icon: ServerCog, title: "Ambiente pronto", detail: "A versão navegável desta execução está disponível." };
-  if (control?.previewState === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: control.displayStatus || "IA corrigindo ambiente", detail: "Uma nova tentativa de correção está em andamento." };
-  if (control?.previewState === "WAITING_IMPLEMENTATION") return { tone: "repairing", icon: Sparkles, title: control.displayStatus || "IA aplicando ajuste", detail: "A nova interação será republicada assim que a IA terminar." };
-  if (shortcut?.state === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "IA corrigindo o ambiente", detail: "A falha foi enviada automaticamente para a IA." };
+  if (control?.previewState === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "Corrigindo ambiente", detail: "Uma nova tentativa de correção está em andamento." };
+  if (control?.previewState === "WAITING_IMPLEMENTATION") return { tone: "repairing", icon: Sparkles, title: "IA aplicando ajuste", detail: "A nova interação será republicada assim que a IA terminar." };
+  if (shortcut?.state === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "Corrigindo ambiente", detail: "A falha foi enviada automaticamente para a IA." };
   if (["STARTING", "PREPARING"].includes(shortcut?.state)) return { tone: "preparing", icon: LoaderCircle, title: "Preparando ambiente", detail: "Build e inicialização acontecem automaticamente." };
-  if (shortcut?.state === "FAILED") return { tone: "failed", icon: CircleAlert, title: "Ambiente com falha", detail: "A automação tentará encaminhar uma nova correção quando possível." };
+  if (shortcut?.state === "FAILED") return { tone: "failed", icon: CircleAlert, title: "Ambiente com falha", detail: "A publicação falhou. Quando uma correção começar, o acompanhamento será reiniciado automaticamente." };
   if (shortcut?.state === "EXPIRED") return { tone: "expired", icon: CircleAlert, title: "Ambiente encerrado", detail: "A execução e o histórico continuam preservados." };
   if (control?.canPause) return { tone: "processing", icon: LoaderCircle, title: control.displayStatus || "Processamento em andamento", detail: "Você pode pausar os processos sem cancelar a execução." };
   if (control?.canCancel) return { tone: "processing", icon: ServerCog, title: control.displayStatus || "Execução em andamento", detail: "Você pode cancelar esta execução a qualquer momento." };
@@ -26,11 +26,11 @@ function presentation(shortcut, control) {
 
 function liveFocus(control) {
   if (!control) return null;
-  if (control.previewState === "REPAIRING") return { label: control.displayStatus || "IA corrigindo ambiente", detail: "O ciclo anterior foi encerrado. Acompanhe esta nova tentativa de correção." };
-  if (control.previewState === "WAITING_IMPLEMENTATION") return { label: control.displayStatus || "IA aplicando ajuste", detail: "A versão anterior não representa mais o último pedido. A IA está preparando a nova versão." };
+  if (control.previewState === "REPAIRING") return { label: "Corrigindo ambiente", detail: "O ciclo anterior foi encerrado. Acompanhe esta nova tentativa de correção." };
+  if (control.previewState === "WAITING_IMPLEMENTATION") return { label: "IA aplicando ajuste", detail: "A versão anterior não representa mais o último pedido. A IA está preparando a nova versão." };
   if (control.awaitingEnvironment) {
-    if (control.previewState === "FAILED") return { label: "Ambiente com falha", detail: "A publicação falhou. A automação está preparando a próxima ação." };
-    return { label: "Preparando ambiente", detail: "A implementação terminou e agora o ambiente está sendo construído e validado." };
+    if (control.previewState === "FAILED") return { label: "Ambiente com falha", detail: "A publicação falhou. Quando a correção começar, este acompanhamento será reiniciado automaticamente." };
+    return { label: control.environmentStatus || "Preparando ambiente", detail: "A implementação terminou e agora o ambiente está sendo construído e validado." };
   }
   if (control.status === "STOPPED") return { label: "Processos pausados", detail: "O trabalho foi preservado e pode ser retomado a partir deste ponto." };
   return null;
@@ -106,7 +106,7 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
       liveTitle.textContent = focus.label;
       liveSubtitle.textContent = focus.detail;
     } else if (control.status === "AWAITING_CLIENT" && control.interactionAvailable) {
-      liveTitle.textContent = "Aguardando você";
+      liveTitle.textContent = "Aguardando cliente";
       liveSubtitle.textContent = "O ambiente está pronto. Teste o resultado e peça novos ajustes pelo chat quando quiser.";
     }
   }, [control]);
