@@ -30,6 +30,7 @@ import { useState } from "react";
 
 import ActionCenter from "./action-center";
 import AutoRefresh from "./auto-refresh";
+import ExecutionGitHubRecovery from "./execution-github-recovery";
 import GlobalSearch from "./global-search";
 import { PreferencesProvider, usePreferences } from "./preferences-provider";
 import SupportChat from "./support-chat";
@@ -101,6 +102,7 @@ function AppShellContent({ children, user = null, setupMode = false }) {
           <ActionCenter disabled={setupMode} />
           <button className="github-status" onClick={() => notify(setupMode ? "GitHub OAuth aguardando configuração" : "GitHub conectado e operacional")}><Github size={18} /><span>{setupMode ? "Configurar GitHub" : t("githubConnected")}</span><CheckCircle2 size={15} /></button>
         </header>
+        {!setupMode && <ExecutionGitHubRecovery pathname={pathname} />}
         <LocalizedContent>{children}</LocalizedContent>
       </section>
       {sidebarOpen && <button className="overlay" onClick={() => setSidebarOpen(false)} aria-label="Fechar menu" />}
