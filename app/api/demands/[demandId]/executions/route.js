@@ -47,14 +47,15 @@ export async function POST(request, context) {
       }, { status: 409 });
     }
 
-    const billing = await prepareExecutionBilling({ demand });
+    const adminLimitBypass = user.globalRole === "ADMIN";
+    const billing = adminLimitBypass ? { bypass: true } : await prepareExecutionBilling({ demand });
     const { activeExecutionId, execution } = await queueDemandExecution({ demand, requestedById: user.id, billing, allowEmptyRepository });
     if (activeExecutionId) {
       return NextResponse.json({ error: "Já existe uma execução ativa", executionId: activeExecutionId }, { status: 409 });
     }
 
     await db.auditLog.create({
-      data: auditData({ actorId: user.id, projectId: demand.projectId, action: "execution.queue", entityType: "Execution", entityId: execution.id, metadata: { allowEmptyRepository, baseBranch: demand.baseBranch }, request }),
+      data: auditData({ actorId: user.id, projectId: demand.projectId, action: "execution.queue", entityType: "Execution", entityId: execution.id, metadata: { allowEmptyRepository, baseBranch: demand.baseBranch, adminLimitBypass }, request }),
     });
     return NextResponse.json({ execution }, { status: 202 });
   } catch (error) {
