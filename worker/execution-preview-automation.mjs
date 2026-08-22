@@ -1,7 +1,6 @@
 import { getExecutionCreditBudget } from "../lib/billing.js";
 import { db } from "../lib/db.js";
 import { detectEnvironmentRuntimeLabel } from "../lib/environment-runtime-label.js";
-import { requeueFailedExecutionData } from "../lib/executions.js";
 import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBranch } from "../lib/github.js";
 import { getGlobalSettings } from "../lib/global-settings.js";
 import { createDashboardiaPreview, dashboardiaPreviewConfigured, deleteDashboardiaPreview, syncDashboardiaPreview } from "../lib/preview-host-client.js";
@@ -9,38 +8,30 @@ import { queuePreviewEnvironment, transitionPreviewEnvironment } from "../lib/pr
 import { retireProjectEnvironments } from "../lib/project-environment-exclusivity.js";
 import { detectGitHubProjectRuntime, environmentRuntimeConfiguration, mavenBuildCommandInRepository } from "../lib/project-runtime.js";
 import { redactSensitiveData } from "../lib/redaction.js";
+import {
+  MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS,
+  automaticPreviewCorrectionRequeueData,
+  classifyPreviewFailure,
+  isPreviewCircuitOpen,
+  isRetryableInfrastructureFailure,
+  previewCircuitOpenError,
+  previewFailureSignature,
+} from "./preview-recovery-policy.mjs";
 
 const ACTIVE_PREVIEW_STATUSES = ["QUEUED", "BUILDING", "DEPLOYING"];
 const WATCHED_PREVIEW_STATUSES = [...ACTIVE_PREVIEW_STATUSES, "FAILED"];
 const MINIMUM_CONVERSATION_TIMEOUT_MINUTES = 24 * 60;
 const MAX_TECHNICAL_ERROR_LENGTH = 8_000;
-const INFRASTRUCTURE_FAILURES = [
-  /temporary failure in name resolution/i,
-  /tls handshake timeout/i,
-  /too many requests/i,
-  /toomanyrequests/i,
-  /service unavailable/i,
-  /no space left on device/i,
-  /cannot connect to the docker daemon/i,
-  /connection reset by peer/i,
-  /host de previews reiniciou/i,
-  /\[INFRASTRUCTURE\]/i,
-  /\[UNSUPPORTED\]/i,
-];
-
-function isInfrastructureFailure(error) {
-  const value = String(error ?? "");
-  return INFRASTRUCTURE_FAILURES.some((pattern) => pattern.test(value));
-}
 
 function correctionMessage(preview) {
   const technical = redactSensitiveData(String(preview.error || "O ambiente encerrou sem detalhar a causa"))
     .slice(-MAX_TECHNICAL_ERROR_LENGTH);
   return [
     "## Correção automática do ambiente",
-    "A publicação automática do ambiente navegável desta execução falhou.",
+    "A publicação automática do ambiente navegável desta execução falhou por uma causa atribuída ao build ou à inicialização da aplicação.",
     "Corrija a aplicação na mesma branch e no mesmo Pull Request para que ela compile, inicie e responda corretamente pela porta configurada.",
     "Preserve o escopo e todo o trabalho válido já realizado. Não substitua a aplicação por conteúdo estático apenas para mascarar a falha.",
+    "Não repita uma correção já tentada para o mesmo erro. Se a causa não estiver no código da aplicação, não altere arquivos e informe explicitamente o bloqueio.",
     "Depois da correção, o Dashboard IA subirá e validará o ambiente novamente automaticamente.",
     `Erro real do ambiente:\n${technical}`,
   ].join("\n\n");
@@ -48,6 +39,204 @@ function correctionMessage(preview) {
 
 async function executionLog(database, executionId, message, level = "info", metadata = undefined) {
   return database.executionLog.create({ data: { executionId, scope: "preview", message, level, metadata } });
+}
+
+function logMetadata(entry) {
+  return entry?.metadata && typeof entry.metadata === "object" && !Array.isArray(entry.metadata)
+    ? entry.metadata
+    : {};
+}
+
+function signatureSeen(logs, signature, predicate = () => true) {
+  return logs.some((entry) => {
+    const metadata = logMetadata(entry);
+    return metadata.failureSignature === signature && predicate(metadata, entry);
+  });
+}
+
+async function loadExecutionForRecovery(preview, database) {
+  return database.execution.findUnique({
+    where: { id: preview.executionId },
+    include: {
+      demand: true,
+      logs: {
+        where: { scope: "preview" },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, message: true, metadata: true, createdAt: true },
+      },
+    },
+  });
+}
+
+async function openPreviewCircuit(preview, execution, database, {
+  failureClass,
+  failureSignature,
+  message,
+}) {
+  const technical = redactSensitiveData(String(preview.error || "")).slice(-4_000);
+  const markedError = previewCircuitOpenError(preview.error);
+  const updated = await database.previewEnvironment.updateMany({
+    where: { id: preview.id, status: "FAILED", error: preview.error },
+    data: { error: markedError },
+  });
+  if (updated.count !== 1) return false;
+
+  await executionLog(database, execution.id, message, "warn", {
+    automatic: true,
+    circuitOpen: true,
+    aiInvoked: false,
+    failureClass,
+    failureSignature,
+    previewEnvironmentId: preview.id,
+    previewAttempts: preview.attempts,
+    technical,
+  });
+  return true;
+}
+
+async function queueAutomaticCorrection(preview, settings, database, execution, failureSignature) {
+  const maxExecutionAttempts = Math.max(1, Number(settings.executionMaxAttempts) || 3);
+  if (Number(execution.attempts || 0) >= maxExecutionAttempts) {
+    await openPreviewCircuit(preview, execution, database, {
+      failureClass: "APPLICATION",
+      failureSignature,
+      message: `Falha de aplicação — IA não acionada. O limite de ${maxExecutionAttempts} tentativas da execução foi atingido e o circuit breaker interrompeu novas cobranças.`,
+    });
+    return false;
+  }
+  if (signatureSeen(execution.logs, failureSignature, (metadata) => metadata.aiInvoked === true)) {
+    await openPreviewCircuit(preview, execution, database, {
+      failureClass: "APPLICATION",
+      failureSignature,
+      message: "Falha repetida — IA não acionada. O mesmo erro já foi enviado à IA nesta execução e o circuit breaker interrompeu novas cobranças.",
+    });
+    return false;
+  }
+
+  const creditBudget = await getExecutionCreditBudget(database, {
+    executionId: execution.id,
+    marginPercent: settings.creditBalanceSafetyMarginPercent,
+  });
+  if (creditBudget && creditBudget.hardLimitCredits < 1) return false;
+
+  const now = new Date();
+  const timeoutMinutes = Math.max(MINIMUM_CONVERSATION_TIMEOUT_MINUTES, settings.executionConversationTimeoutMinutes);
+  const content = correctionMessage(preview);
+  return database.$transaction(async (transaction) => {
+    const updated = await transaction.execution.updateMany({
+      where: {
+        id: execution.id,
+        status: "AWAITING_CLIENT",
+        closedAt: null,
+        cancelRequestedAt: null,
+        stopRequestedAt: null,
+      },
+      data: automaticPreviewCorrectionRequeueData({ now, timeoutMinutes }),
+    });
+    if (updated.count !== 1) return false;
+
+    await transaction.executionMessage.create({
+      data: {
+        executionId: execution.id,
+        authorId: null,
+        role: "USER",
+        content,
+      },
+    });
+    await transaction.executionLog.create({
+      data: {
+        executionId: execution.id,
+        scope: "preview",
+        level: "warn",
+        message: "O ambiente falhou por uma causa atribuída à aplicação; o erro foi enviado uma única vez à IA e esta execução retornou à fila para correção.",
+        metadata: {
+          automatic: true,
+          aiInvoked: true,
+          failureClass: "APPLICATION",
+          failureSignature,
+          previewEnvironmentId: preview.id,
+          technical: redactSensitiveData(String(preview.error || "")).slice(-4_000),
+        },
+      },
+    });
+    await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "QUEUED" } });
+    return true;
+  });
+}
+
+async function retryInfrastructurePreview(preview, settings, database, execution, failureClass, failureSignature) {
+  const repeatedSignature = signatureSeen(execution.logs, failureSignature, (metadata) => metadata.infrastructureRetryScheduled === true);
+  const retryable = failureClass === "INFRASTRUCTURE" && isRetryableInfrastructureFailure(preview.error);
+  const attemptLimitReached = Number(preview.attempts || 0) >= MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS;
+
+  if (!retryable || repeatedSignature || attemptLimitReached) {
+    const reason = repeatedSignature
+      ? "a mesma assinatura de erro de infraestrutura se repetiu"
+      : attemptLimitReached
+        ? `o limite de ${MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS} tentativas internas foi atingido`
+        : "não existe evidência suficiente de que o código da aplicação seja a causa";
+    await openPreviewCircuit(preview, execution, database, {
+      failureClass,
+      failureSignature,
+      message: `Falha de infraestrutura — IA não acionada. ${reason}; o circuit breaker interrompeu novas tentativas automáticas.`,
+    });
+    return false;
+  }
+
+  const claimed = await database.previewEnvironment.updateMany({
+    where: { id: preview.id, status: "FAILED", error: preview.error },
+    data: {
+      status: "QUEUED",
+      externalId: null,
+      url: null,
+      error: null,
+      requestedAt: new Date(),
+      startedAt: null,
+      readyAt: null,
+      stoppedAt: null,
+      lastHeartbeatAt: null,
+    },
+  });
+  if (claimed.count !== 1) return false;
+
+  await executionLog(database, execution.id, `Falha de infraestrutura — IA não acionada. Retentativa interna gratuita ${Math.min(Number(preview.attempts || 0) + 1, MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS)}/${MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS} do preview.`, "warn", {
+    automatic: true,
+    aiInvoked: false,
+    infrastructureRetryScheduled: true,
+    failureClass,
+    failureSignature,
+    previewEnvironmentId: preview.id,
+    previewAttempts: preview.attempts,
+    technical: redactSensitiveData(String(preview.error || "")).slice(-4_000),
+  });
+
+  const retried = await requestExecutionPreviewAutomation(preview.executionId, database, {
+    settings,
+    infrastructureRetry: true,
+  });
+  if (retried.status === "SKIPPED") {
+    await database.previewEnvironment.updateMany({
+      where: { id: preview.id, status: "QUEUED" },
+      data: { status: "FAILED", error: previewCircuitOpenError(preview.error) },
+    }).catch(() => null);
+  }
+  return retried.status !== "SKIPPED";
+}
+
+async function handleFailedPreview(preview, settings, database) {
+  if (!preview?.error || isPreviewCircuitOpen(preview.error)) return false;
+
+  const execution = await loadExecutionForRecovery(preview, database);
+  if (!execution || execution.status !== "AWAITING_CLIENT" || execution.closedAt || execution.cancelRequestedAt || execution.stopRequestedAt) return false;
+
+  const failureClass = classifyPreviewFailure(preview.error);
+  const failureSignature = previewFailureSignature(preview.error);
+
+  if (failureClass === "APPLICATION") {
+    return queueAutomaticCorrection(preview, settings, database, execution, failureSignature);
+  }
+
+  return retryInfrastructurePreview(preview, settings, database, execution, failureClass, failureSignature);
 }
 
 export async function requestExecutionPreviewAutomation(executionId, database = db, options = {}) {
@@ -81,6 +270,10 @@ export async function requestExecutionPreviewAutomation(executionId, database = 
   const environment = await queuePreviewEnvironment(database, {
     executionId: execution.id,
     ttlMinutes: settings.environmentTtlMinutes,
+  });
+  await database.previewEnvironment.update({
+    where: { id: environment.id },
+    data: { attempts: { increment: 1 } },
   });
 
   try {
@@ -125,11 +318,13 @@ export async function requestExecutionPreviewAutomation(executionId, database = 
         externalId: remote.id,
         runtime: runtimeLabel,
         port: configuration.previewPort,
-        attempts: { increment: 1 },
       },
     });
-    await executionLog(database, execution.id, "Ambiente navegável iniciado automaticamente para esta execução.", "info", {
+    await executionLog(database, execution.id, options.infrastructureRetry
+      ? "Retentativa interna do ambiente navegável iniciada sem acionar a IA."
+      : "Ambiente navegável iniciado automaticamente para esta execução.", "info", {
       automatic: true,
+      infrastructureRetry: Boolean(options.infrastructureRetry),
       previewEnvironmentId: environment.id,
       branchName: execution.branchName,
       runtime: runtimeLabel,
@@ -139,68 +334,15 @@ export async function requestExecutionPreviewAutomation(executionId, database = 
     const technical = redactSensitiveData(error instanceof Error ? error.message : String(error));
     await deleteDashboardiaPreview(environment.id).catch(() => null);
     await transitionPreviewEnvironment(database, environment.id, "FAILED", { error: `[INFRASTRUCTURE] ${technical}` }).catch(() => null);
-    await executionLog(database, execution.id, "Não foi possível iniciar o ambiente automático por uma falha de infraestrutura; a execução continua aberta.", "warn", {
+    await executionLog(database, execution.id, "Falha de infraestrutura — IA não acionada. Não foi possível iniciar o ambiente automático.", "warn", {
       automatic: true,
+      aiInvoked: false,
+      failureClass: "INFRASTRUCTURE",
+      failureSignature: previewFailureSignature(technical),
       technical: technical.slice(-4_000),
     }).catch(() => null);
     return { status: "FAILED", reason: "infrastructure" };
   }
-}
-
-async function queueAutomaticCorrection(preview, settings, database) {
-  const execution = await database.execution.findUnique({
-    where: { id: preview.executionId },
-    include: { demand: true },
-  });
-  if (!execution || execution.status !== "AWAITING_CLIENT" || execution.closedAt || execution.cancelRequestedAt || execution.stopRequestedAt) return false;
-  if (isInfrastructureFailure(preview.error)) return false;
-
-  const creditBudget = await getExecutionCreditBudget(database, {
-    executionId: execution.id,
-    marginPercent: settings.creditBalanceSafetyMarginPercent,
-  });
-  if (creditBudget && creditBudget.hardLimitCredits < 1) return false;
-
-  const now = new Date();
-  const timeoutMinutes = Math.max(MINIMUM_CONVERSATION_TIMEOUT_MINUTES, settings.executionConversationTimeoutMinutes);
-  const content = correctionMessage(preview);
-  return database.$transaction(async (transaction) => {
-    const updated = await transaction.execution.updateMany({
-      where: {
-        id: execution.id,
-        status: "AWAITING_CLIENT",
-        closedAt: null,
-        cancelRequestedAt: null,
-        stopRequestedAt: null,
-      },
-      data: requeueFailedExecutionData({ now, timeoutMinutes }),
-    });
-    if (updated.count !== 1) return false;
-
-    await transaction.executionMessage.create({
-      data: {
-        executionId: execution.id,
-        authorId: null,
-        role: "USER",
-        content,
-      },
-    });
-    await transaction.executionLog.create({
-      data: {
-        executionId: execution.id,
-        scope: "preview",
-        level: "warn",
-        message: "O ambiente automático falhou; o erro foi enviado à IA e esta mesma execução retornou à fila para correção.",
-        metadata: {
-          automatic: true,
-          previewEnvironmentId: preview.id,
-          technical: redactSensitiveData(String(preview.error || "")).slice(-4_000),
-        },
-      },
-    });
-    await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "QUEUED" } });
-    return true;
-  });
 }
 
 async function markTimedOut(preview, settings, database) {
@@ -208,7 +350,7 @@ async function markTimedOut(preview, settings, database) {
   if (Date.now() - new Date(preview.requestedAt).getTime() < timeoutMinutes * 60_000) return preview;
 
   await deleteDashboardiaPreview(preview.externalId ?? preview.id).catch(() => null);
-  const error = `O ambiente automático não ficou pronto dentro de ${timeoutMinutes} minutos.`;
+  const error = `[INFRASTRUCTURE] O ambiente automático não ficou pronto dentro de ${timeoutMinutes} minutos.`;
   return transitionPreviewEnvironment(database, preview.id, "FAILED", { error }).catch(async () => (
     database.previewEnvironment.update({ where: { id: preview.id }, data: { status: "FAILED", error } })
   ));
@@ -234,7 +376,7 @@ export async function syncExecutionPreviewAutomations(database = db, options = {
   let requeued = 0;
   for (const preview of previews) {
     if (preview.status === "FAILED") {
-      if (await queueAutomaticCorrection(preview, settings, database)) requeued += 1;
+      if (await handleFailedPreview(preview, settings, database)) requeued += 1;
       continue;
     }
 
@@ -249,7 +391,13 @@ export async function syncExecutionPreviewAutomations(database = db, options = {
     if (ACTIVE_PREVIEW_STATUSES.includes(current.status)) {
       current = await markTimedOut(current, settings, database);
     }
-    if (current.status === "FAILED" && await queueAutomaticCorrection(current, settings, database)) requeued += 1;
+    if (current.status === "READY" && preview.attempts > 0) {
+      await database.previewEnvironment.updateMany({
+        where: { id: preview.id, status: "READY" },
+        data: { attempts: 0 },
+      }).catch(() => null);
+    }
+    if (current.status === "FAILED" && await handleFailedPreview(current, settings, database)) requeued += 1;
   }
   return { checked: previews.length, requeued };
 }
