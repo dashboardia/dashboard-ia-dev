@@ -46,9 +46,18 @@ export async function PATCH(request, context) {
     const canEdit = demand.createdById === user.id || isAtLeastProjectRole(role, "MANAGER");
     if (!canEdit) throw new AccessDeniedError();
     const input = demandUpdateSchema.parse(await request.json());
-    const normalizedInput = input.type === "DOCUMENTATION"
+    const nextType = input.type ?? demand.type;
+    const normalizedInput = nextType === "DOCUMENTATION"
       ? { ...input, visualValidation: false, visualPaths: [] }
-      : input;
+      : {
+          ...input,
+          visualValidation: true,
+          visualPaths: Array.isArray(input.visualPaths) && input.visualPaths.length
+            ? input.visualPaths
+            : Array.isArray(demand.visualPaths) && demand.visualPaths.length
+              ? demand.visualPaths
+              : ["/"],
+        };
     if (normalizedInput.aiModel) await assertProjectAiModelAccess(demand.projectId, normalizedInput.aiModel);
     if (normalizedInput.baseBranch) {
       const token = await getProjectGitHubAccessToken(demand.project, user.id);
@@ -56,7 +65,7 @@ export async function PATCH(request, context) {
     }
     const updated = await db.$transaction(async (transaction) => {
       const current = await transaction.demand.findUniqueOrThrow({ where: { id: demandId }, select: { status: true } });
-      if (!["DRAFT", "PENDING_APPROVAL"].includes(current.status)) {
+      if (!["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(current.status)) {
         throw new AccessDeniedError("Esta demanda não pode mais ser editada", 409);
       }
       const result = await transaction.demand.update({

@@ -52,11 +52,8 @@ export default async function LoginPage({ searchParams }) {
     }
   }
 
-  const returningFromGitHubSetup = Boolean(params?.state || params?.setup_action || params?.installation_id);
   const cookieStore = await cookies();
-  const rememberedPath = returningFromGitHubSetup
-    ? decodeRememberedPath(cookieStore.get(RETURN_PATH_COOKIE)?.value)
-    : null;
+  const rememberedPath = decodeRememberedPath(cookieStore.get(RETURN_PATH_COOKIE)?.value);
   const callbackUrl = safeInternalReturnPath(params?.callbackUrl ?? params?.state ?? rememberedPath ?? "/");
 
   if (configured) {

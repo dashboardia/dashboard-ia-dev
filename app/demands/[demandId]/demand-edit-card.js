@@ -4,7 +4,6 @@ import { FileCode2, LoaderCircle, Pencil, Save, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import BranchCombobox from "../../../components/branch-combobox";
 import { AI_MODELS, DEFAULT_AI_MODEL, FREE_PLAN_AI_MODEL, getAiModel } from "../../../lib/ai-models";
 
 function initialForm(demand, lunaOnly = false) {
@@ -15,8 +14,6 @@ function initialForm(demand, lunaOnly = false) {
     acceptanceCriteria: demand.acceptanceCriteria ?? "",
     type: demand.type,
     priority: demand.priority,
-    visualValidation: demand.visualValidation,
-    visualPaths: Array.isArray(demand.visualPaths) ? demand.visualPaths.join("\n") : "/",
     aiModel: lunaOnly ? FREE_PLAN_AI_MODEL : demand.aiModel ?? DEFAULT_AI_MODEL,
   };
 }
@@ -38,10 +35,11 @@ export default function DemandEditCard({ demand, canEdit, lunaOnly = false }) {
       .then(async (response) => {
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error ?? "Não foi possível consultar as branches");
-        setBranches(result.branches);
-        setForm((current) => result.branches.some((branch) => branch.name === current.baseBranch)
+        const nextBranches = Array.isArray(result.branches) ? result.branches : [];
+        setBranches(nextBranches);
+        setForm((current) => nextBranches.some((branch) => branch.name === current.baseBranch)
           ? current
-          : { ...current, baseBranch: result.branches.some((branch) => branch.name === "main") ? "main" : result.branches[0]?.name ?? "" });
+          : { ...current, baseBranch: nextBranches[0]?.name ?? "" });
       })
       .catch((fetchError) => {
         if (fetchError.name !== "AbortError") setError(fetchError.message);
@@ -53,10 +51,10 @@ export default function DemandEditCard({ demand, canEdit, lunaOnly = false }) {
   }, [editing, demand.projectId]);
 
   function change(event) {
-    const { name, type, checked, value } = event.target;
+    const { name, value } = event.target;
     setForm((current) => name === "type" && value === "DOCUMENTATION"
-      ? { ...current, type: value, aiModel: "gpt-5.6-luna", visualValidation: false, visualPaths: "/" }
-      : { ...current, [name]: type === "checkbox" ? checked : value });
+      ? { ...current, type: value, aiModel: "gpt-5.6-luna" }
+      : { ...current, [name]: value });
   }
 
   function cancel() {
@@ -74,10 +72,11 @@ export default function DemandEditCard({ demand, canEdit, lunaOnly = false }) {
     setSaving(true);
     setError("");
     try {
+      const visualValidation = form.type !== "DOCUMENTATION";
       const response = await fetch(`/api/demands/${demand.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, visualPaths: form.visualValidation ? form.visualPaths.split("\n").map((path) => path.trim()).filter(Boolean) : [] }),
+        body: JSON.stringify({ ...form, visualValidation, visualPaths: visualValidation ? ["/"] : [] }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Não foi possível atualizar a demanda");
@@ -111,7 +110,7 @@ export default function DemandEditCard({ demand, canEdit, lunaOnly = false }) {
           <label><span>Tipo</span><select name="type" value={form.type} onChange={change}><option value="BUG">Correção</option><option value="FEATURE">Nova funcionalidade</option><option value="REFACTOR">Refatoração</option><option value="TEST">Testes</option><option value="INVESTIGATION">Investigação</option><option value="DOCUMENTATION">Documentação de negócio</option></select></label>
           <label><span>Prioridade</span><select name="priority" value={form.priority} onChange={change}><option value="LOW">Baixa</option><option value="NORMAL">Normal</option><option value="HIGH">Alta</option><option value="URGENT">Urgente</option></select></label>
         </div>
-        <label className="full-field"><span>Branch base {branchesLoading && <LoaderCircle className="spin branch-loader" size={12} />}</span><BranchCombobox branches={branches} value={form.baseBranch} onChange={(baseBranch) => setForm((current) => ({ ...current, baseBranch }))} disabled={branchesLoading || !branches.length} /><small className="field-guidance">A execução e o Pull Request usarão esta branch como base.</small></label>
+        <label className="full-field"><span>Branch base {branchesLoading && <LoaderCircle className="spin branch-loader" size={12} />}</span><select value={form.baseBranch} onChange={(event) => setForm((current) => ({ ...current, baseBranch: event.target.value }))} disabled={branchesLoading || !branches.length} required>{branchesLoading && <option value={form.baseBranch}>Carregando branches...</option>}{!branchesLoading && branches.map((branch) => <option value={branch.name} key={branch.name}>{branch.name}{branch.protected ? " · protegida" : ""}</option>)}</select><small className="field-guidance">A execução e o Pull Request usarão esta branch como base.</small></label>
         <label className="full-field"><span>Título</span><input name="title" value={form.title} onChange={change} maxLength={140} required /></label>
         <label className="full-field"><span>Contexto e resultado esperado</span><textarea name="description" value={form.description} onChange={change} rows={7} required /></label>
         <label className="full-field"><span>Critérios de aceite</span><textarea name="acceptanceCriteria" value={form.acceptanceCriteria} onChange={change} rows={4} /></label>
@@ -124,8 +123,7 @@ export default function DemandEditCard({ demand, canEdit, lunaOnly = false }) {
             {AI_MODELS.map((option) => { const locked = lunaOnly && option.value !== FREE_PLAN_AI_MODEL; return <label className={`${form.aiModel === option.value ? "selected" : ""}${locked ? " locked" : ""}`} key={option.value}><input type="radio" name="aiModel" value={option.value} checked={form.aiModel === option.value} onChange={change} disabled={locked} /><span><strong>{option.label}</strong><em>{option.model}</em><small>{option.description}</small><b>Custo de IA estimado: {option.relativeAiCost}× Luna</b>{locked && <small className="model-lock">Requer plano Studio ou superior.</small>}</span></label>; })}
           </div>
         </fieldset>
-        {form.type !== "DOCUMENTATION" && <label className="visual-validation-option"><input name="visualValidation" type="checkbox" checked={form.visualValidation} onChange={change} /><span><strong>Exigir validação visual</strong><small>Gera evidências em desktop e celular, sem substituir a aprovação do código.</small></span></label>}
-        {form.type !== "DOCUMENTATION" && form.visualValidation && <label className="full-field"><span>Rotas para validar (uma por linha)</span><textarea name="visualPaths" value={form.visualPaths} onChange={change} rows={3} required /></label>}
+        {form.type !== "DOCUMENTATION" && <div className="form-success full-field">A validação visual em desktop e celular será executada automaticamente.</div>}
         {error && <div className="form-error">{error}</div>}
         <div className="form-actions"><button className="secondary-button" type="button" onClick={cancel}>Cancelar</button><button className="primary" type="submit" disabled={saving}>{saving ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}{saving ? "Salvando..." : "Salvar demanda"}</button></div>
       </form>

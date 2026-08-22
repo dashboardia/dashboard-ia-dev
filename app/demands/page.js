@@ -10,7 +10,7 @@ import { requirePageUser } from "../../lib/page-access";
 import { projectAccessWhere } from "../../lib/projects";
 
 const typeLabels = { BUG: "Correção", FEATURE: "Funcionalidade", REFACTOR: "Refatoração", TEST: "Testes", INVESTIGATION: "Investigação", DOCUMENTATION: "Documentação de negócio" };
-const statusLabels = { DRAFT: "Rascunho", PENDING_APPROVAL: "Aguardando aprovação", APPROVED: "Aprovada", QUEUED: "Na fila", RUNNING: "Em execução", REVIEW: "Em revisão", SUCCEEDED: "Concluída", FAILED: "Falhou", CANCELLED: "Cancelada", STOPPED: "Parada pelo administrador" };
+const statusLabels = { DRAFT: "Rascunho", PENDING_APPROVAL: "Pronta para iniciar", APPROVED: "Pronta para iniciar", QUEUED: "Na fila", RUNNING: "Em execução", REVIEW: "Em revisão", SUCCEEDED: "Concluída", FAILED: "Falha aguardando correção", CANCELLED: "Cancelada", STOPPED: "Parada pelo administrador" };
 const validStatuses = new Set(Object.keys(statusLabels));
 const PAGE_SIZE = 25;
 
@@ -46,7 +46,7 @@ export default async function DemandsPage({ searchParams }) {
   return (
     <AppShell user={user}>
       <div className="section-page">
-        <SectionHeader eyebrow="TRABALHO" title="Demandas" description="Solicitações estruturadas, aprovações e histórico de execução." action={<Link className="primary" href="/demands/new"><Plus size={18} />Nova demanda</Link>} />
+        <SectionHeader eyebrow="TRABALHO" title="Demandas" description="Solicitações estruturadas, execuções e histórico de alterações." action={<Link className="primary" href="/demands/new"><Plus size={18} />Nova demanda</Link>} />
         <form className="list-filters" method="get">
           <label className="filter-search"><span>Buscar</span><div><Search size={15} /><input name="q" defaultValue={query} placeholder="Título ou descrição" /></div></label>
           <label><span>Projeto</span><select name="projectId" defaultValue={projectId}><option value="">Todos</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></label>

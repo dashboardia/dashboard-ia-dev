@@ -29,8 +29,8 @@ export async function POST(request, context) {
     });
     const { user } = await requireProjectRole(demand.projectId, "MANAGER");
     await assertOperationalAccess(user);
-    if (!["APPROVED", "FAILED", "STOPPED"].includes(demand.status)) {
-      return NextResponse.json({ error: "A demanda precisa estar aprovada para entrar na fila" }, { status: 409 });
+    if (!["PENDING_APPROVAL", "APPROVED", "FAILED", "STOPPED"].includes(demand.status)) {
+      return NextResponse.json({ error: "Esta demanda não está disponível para iniciar uma execução" }, { status: 409 });
     }
 
     const token = await getProjectGitHubAccessToken(demand.project, user.id);
@@ -55,7 +55,7 @@ export async function POST(request, context) {
     }
 
     await db.auditLog.create({
-      data: auditData({ actorId: user.id, projectId: demand.projectId, action: "execution.queue", entityType: "Execution", entityId: execution.id, metadata: { allowEmptyRepository, baseBranch: demand.baseBranch, adminLimitBypass }, request }),
+      data: auditData({ actorId: user.id, projectId: demand.projectId, action: "execution.queue", entityType: "Execution", entityId: execution.id, metadata: { allowEmptyRepository, baseBranch: demand.baseBranch, adminLimitBypass, approvalStepSkipped: demand.status === "PENDING_APPROVAL" }, request }),
     });
     return NextResponse.json({ execution }, { status: 202 });
   } catch (error) {

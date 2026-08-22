@@ -44,7 +44,7 @@ export async function POST(request) {
     const input = demandInputSchema.parse(await request.json());
     const normalizedInput = input.type === "DOCUMENTATION"
       ? { ...input, visualValidation: false, visualPaths: [] }
-      : input;
+      : { ...input, visualValidation: true, visualPaths: input.visualPaths?.length ? input.visualPaths : ["/"] };
     const { user } = await requireProjectRole(input.projectId, "DEVELOPER");
     const project = await db.project.findUniqueOrThrow({
       where: { id: input.projectId },
@@ -64,7 +64,7 @@ export async function POST(request) {
         include: { project: { select: { id: true, name: true, slug: true } } },
       });
       await transaction.auditLog.create({
-        data: auditData({ actorId: user.id, projectId: input.projectId, action: "demand.create", entityType: "Demand", entityId: created.id, metadata: { type: created.type, priority: created.priority, baseBranch: created.baseBranch }, request }),
+        data: auditData({ actorId: user.id, projectId: input.projectId, action: "demand.create", entityType: "Demand", entityId: created.id, metadata: { type: created.type, priority: created.priority, baseBranch: created.baseBranch, visualValidation: created.visualValidation }, request }),
       });
       return created;
     });
