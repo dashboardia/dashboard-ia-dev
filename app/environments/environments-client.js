@@ -88,7 +88,7 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
       const response = await fetch("/api/environments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, branchName }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? "Não foi possível subir o ambiente");
-      setEnvironments((current) => [{ ...result.environment, project: { name: selectedProject.name, repositoryFullName: selectedProject.repositoryFullName }, requestedBy: {} }, ...current]);
+      setEnvironments((current) => [{ ...result.environment, source: "MANUAL", project: { name: selectedProject.name, repositoryFullName: selectedProject.repositoryFullName }, requestedBy: {} }, ...current.map((environment) => environment.projectId === projectId && ACTIVE.has(environment.status) ? { ...environment, status: "EXPIRED", url: null } : environment)]);
     } catch (submitError) {
       setError(submitError.message);
     } finally {
@@ -114,14 +114,24 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
   function environmentCard(environment) {
     const activity = Array.isArray(environment.activity) ? environment.activity : [];
     const demoAccess = environment.credentials;
+    const isAutomatic = environment.source === "EXECUTION";
     const isActive = ["QUEUED", "BUILDING", "DEPLOYING", "STOPPING"].includes(environment.status);
-    const canRecoverFailure = environment.status === "FAILED" && Boolean(environment.error) && latestEnvironmentIds.has(environment.id);
+    const canRecoverFailure = !isAutomatic && environment.status === "FAILED" && Boolean(environment.error) && latestEnvironmentIds.has(environment.id);
+    const billingLabel = isAutomatic
+      ? "Automático da execução · sem cobrança separada de ambiente"
+      : environment.creditChargedAt
+        ? `${environment.creditCost} créditos cobrados`
+        : environment.status === "FAILED" || environment.creditRefundedAt
+          ? "Nenhum crédito cobrado"
+          : `${environment.creditCost} créditos protegidos · cobra somente no sucesso`;
+
     return <article className="resource-card environment-card" key={environment.id}>
       <header className="environment-card-header"><span className="resource-icon"><ServerCog size={19} /></span><div><strong>{environment.project.name}</strong><small>{environment.project.repositoryFullName}</small></div><em className={`status-pill ${environment.status.toLowerCase()}`}>{isActive && <span className="status-pulse" />}{labels[environment.status] ?? environment.status}</em></header>
-      <div className="resource-meta environment-meta"><span><GitBranch size={13} />{environment.branchName}</span><span>{environment.runtime ?? "Detectando stack"}</span><span>{environment.creditChargedAt ? `${environment.creditCost} créditos cobrados` : environment.status === "FAILED" || environment.creditRefundedAt ? "Nenhum crédito cobrado" : `${environment.creditCost} créditos protegidos · cobra somente no sucesso`}</span></div>
+      <div className="resource-meta environment-meta"><span><GitBranch size={13} />{environment.branchName}</span><span>{environment.runtime ?? "Detectando stack"}</span><span>{billingLabel}</span></div>
+      {isAutomatic && <div className="field-guidance">Este ambiente foi criado automaticamente pela execução e também é encerrado automaticamente quando outro ambiente do mesmo projeto é iniciado.</div>}
       {activity.length > 0 && <details className="environment-progress" open={isActive}>
         <summary><span><strong>{isActive ? "Publicação em andamento" : "Etapas da publicação"}</strong><small>{activity.at(-1)?.message}</small></span><ChevronDown size={16} /></summary>
-        <ol>{activity.map((entry, index) => <li className={entry.status.toLowerCase()} key={`${entry.key}-${index}`}>{entry.status === "COMPLETED" ? <CircleCheck size={15} /> : entry.status === "FAILED" ? <CircleX size={15} /> : <CircleDotDashed className="spin-slow" size={15} />}<span>{entry.message}</span></li>)}</ol>
+        <ol>{activity.map((entry, index) => <li className={String(entry.status ?? "RUNNING").toLowerCase()} key={`${entry.key}-${index}`}>{entry.status === "COMPLETED" ? <CircleCheck size={15} /> : entry.status === "FAILED" ? <CircleX size={15} /> : <CircleDotDashed className="spin-slow" size={15} />}<span>{entry.message}</span></li>)}</ol>
       </details>}
       {Array.isArray(environment.adjustments) && environment.adjustments.length > 0 && <details className="environment-adjustments">
         <summary>Ajustes aplicados para subir o ambiente ({environment.adjustments.length})</summary>
@@ -137,7 +147,11 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
       </section>}
       {environment.error && <details className="environment-error"><summary>Ver falha técnica</summary><pre>{environment.error}</pre></details>}
       {canRecoverFailure && <EnvironmentRecoveryAction environmentId={environment.id} />}
-      <div className="environment-actions">{environment.url && <a className="primary compact" href={environment.url} target="_blank" rel="noreferrer"><ExternalLink size={14} />Abrir ambiente</a>}{ACTIVE.has(environment.status) && <button className="environment-stop-button" type="button" onClick={() => stopEnvironment(environment.id)}><Square size={13} />Encerrar ambiente</button>}</div>
+      <div className="environment-actions">
+        {environment.url && <a className="primary compact" href={environment.url} target="_blank" rel="noreferrer"><ExternalLink size={14} />Abrir ambiente</a>}
+        {isAutomatic && environment.executionId && <a className="secondary compact" href={`/executions/${environment.executionId}`}><ExternalLink size={14} />Ver execução</a>}
+        {ACTIVE.has(environment.status) && <button className="environment-stop-button" type="button" onClick={() => stopEnvironment(environment.id)}><Square size={13} />Encerrar ambiente</button>}
+      </div>
     </article>;
   }
 
@@ -146,7 +160,7 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
 
   return <>
     <form className="form-card detail-card full-card environment-create-form" onSubmit={createEnvironment}>
-      <div className="card-heading"><div><h2>Novo ambiente</h2><p>A stack e os comandos são detectados na branch e podem usar as configurações salvas no projeto.</p></div><ServerCog size={20} /></div>
+      <div className="card-heading"><div><h2>Novo ambiente</h2><p>Subir uma nova branch encerra automaticamente qualquer outro ambiente ativo deste mesmo projeto.</p></div><ServerCog size={20} /></div>
       <div className="form-grid">
         <label><span>Projeto</span><select value={projectId} onChange={(event) => { const nextProject = initialProjects.find((project) => project.id === event.target.value); setBranchesLoading(true); setBranchError(""); setBranches(nextProject ? [{ name: nextProject.defaultBranch }] : []); setProjectId(event.target.value); setBranchName(nextProject?.defaultBranch ?? "main"); }} required>{initialProjects.map((project) => <option value={project.id} key={project.id}>{project.name} · {project.repositoryFullName}</option>)}</select></label>
         <label><span>Branch {branchesLoading && <LoaderCircle className="spin branch-loader" size={12} />}</span><BranchCombobox key={projectId} branches={branches} value={branchName} onChange={setBranchName} disabled={branchesLoading || !branches.length} /><small className={branchError ? "field-warning" : "field-guidance"}>{branchError || `Cole ou digite para filtrar entre ${branches.length} branch${branches.length === 1 ? "" : "es"}.`}</small></label>
@@ -157,7 +171,7 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
 
     <section className="resource-grid environment-grid">
       {latestEnvironments.map(environmentCard)}
-      {!environments.length && <div className="resource-empty"><ServerCog size={28} /><strong>Nenhum ambiente criado</strong><span>Escolha um projeto e uma branch para iniciar o primeiro container.</span></div>}
+      {!environments.length && <div className="resource-empty"><ServerCog size={28} /><strong>Nenhum ambiente criado</strong><span>Ambientes automáticos das execuções e ambientes manuais aparecerão aqui.</span></div>}
     </section>
 
     {olderEnvironments.length > 0 && <details className="form-card detail-card full-card execution-collapsible environment-history-panel">

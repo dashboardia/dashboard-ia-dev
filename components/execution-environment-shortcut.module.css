@@ -1,10 +1,11 @@
 .banner {
-  position: sticky;
+  position: fixed;
   top: 78px;
-  z-index: 40;
-  width: min(430px, calc(100% - 36px));
+  right: 18px;
+  z-index: 60;
+  width: min(430px, calc(100vw - 36px));
   min-height: 44px;
-  margin: 10px 18px 0 auto;
+  margin: 0;
   padding: 7px 8px;
   border: 1px solid color-mix(in srgb, var(--purple) 24%, var(--line));
   border-radius: 11px;
@@ -91,8 +92,8 @@
 
 @media (max-width: 900px) {
   .banner {
-    width: min(360px, calc(100% - 28px));
-    margin-right: 14px;
+    width: min(360px, calc(100vw - 28px));
+    right: 14px;
   }
   .copy span { display: none; }
 }
@@ -100,8 +101,8 @@
 @media (max-width: 760px) {
   .banner {
     top: 70px;
-    width: calc(100% - 20px);
-    margin: 8px 10px 0;
+    right: 10px;
+    width: calc(100vw - 20px);
   }
   .copy strong { font-size: 8px; }
   .action { padding: 0 8px; }

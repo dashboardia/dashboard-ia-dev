@@ -13,6 +13,7 @@ import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBra
 import { getGlobalSettings } from "../../../lib/global-settings";
 import { assertOperationalAccess } from "../../../lib/operational-access";
 import { createDashboardiaPreview, dashboardiaPreviewConfigured } from "../../../lib/preview-host-client";
+import { retireProjectEnvironments } from "../../../lib/project-environment-exclusivity";
 import { detectGitHubProjectRuntime, environmentRuntimeConfiguration, mavenBuildCommandInRepository } from "../../../lib/project-runtime";
 import { devEnvironmentInputSchema } from "../../../lib/validation";
 
@@ -31,11 +32,16 @@ export async function POST(request) {
     ]);
 
     if (user.globalRole !== "ADMIN") {
-      const activeCount = await db.devEnvironment.count({
-        where: { requestedById: user.id, status: { in: ACTIVE_ENVIRONMENT_STATUSES }, expiresAt: { gt: new Date() } },
+      const activeOtherProjects = await db.devEnvironment.count({
+        where: {
+          requestedById: user.id,
+          projectId: { not: project.id },
+          status: { in: ACTIVE_ENVIRONMENT_STATUSES },
+          expiresAt: { gt: new Date() },
+        },
       });
-      if (activeCount >= settings.environmentMaxPerUser) {
-        return NextResponse.json({ error: `Você já possui ${activeCount} ambiente(s) ativo(s). Encerre um deles antes de criar outro.` }, { status: 409 });
+      if (activeOtherProjects >= settings.environmentMaxPerUser) {
+        return NextResponse.json({ error: `Você já possui ${activeOtherProjects} ambiente(s) ativo(s) em outros projetos. Encerre um deles antes de criar outro.` }, { status: 409 });
       }
     }
 
@@ -51,6 +57,8 @@ export async function POST(request) {
     if (!configuration.previewCommand || !configuration.previewPort) {
       return NextResponse.json({ error: `A stack ${runtimeLabel} foi detectada, mas não há comando de inicialização. Configure o projeto antes de subir o ambiente.` }, { status: 422 });
     }
+
+    const retired = await retireProjectEnvironments(db, project.id);
 
     environment = await db.devEnvironment.create({
       data: {
@@ -100,9 +108,24 @@ export async function POST(request) {
       data: { externalId: remote.id, status: remote.status, activity: remote.activity, requestedAt: new Date() },
     });
     await db.auditLog.create({
-      data: auditData({ actorId: user.id, projectId: project.id, action: "environment.create", entityType: "DevEnvironment", entityId: environment.id, metadata: { branchName: input.branchName, runtime: runtimeLabel, buildRuntime: detected.runtime, creditCost: settings.environmentCreditCost, adminLimitBypass: user.globalRole === "ADMIN" }, request }),
+      data: auditData({
+        actorId: user.id,
+        projectId: project.id,
+        action: "environment.create",
+        entityType: "DevEnvironment",
+        entityId: environment.id,
+        metadata: {
+          branchName: input.branchName,
+          runtime: runtimeLabel,
+          buildRuntime: detected.runtime,
+          creditCost: settings.environmentCreditCost,
+          adminLimitBypass: user.globalRole === "ADMIN",
+          retiredPreviousEnvironments: retired.total,
+        },
+        request,
+      }),
     });
-    return NextResponse.json({ environment }, { status: 202 });
+    return NextResponse.json({ environment: { ...environment, source: "MANUAL", executionId: null } }, { status: 202 });
   } catch (error) {
     const refunded = charge ? Boolean(await refundFixedCredits(charge, "Liberação: ambiente não enviado ao host Docker").catch(() => null)) : false;
     if (environment) await db.devEnvironment.update({ where: { id: environment.id }, data: { status: "FAILED", error: error instanceof Error ? error.message : String(error), ...(refunded ? { creditRefundedAt: new Date() } : {}) } }).catch(() => null);

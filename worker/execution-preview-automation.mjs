@@ -6,6 +6,7 @@ import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBra
 import { getGlobalSettings } from "../lib/global-settings.js";
 import { createDashboardiaPreview, dashboardiaPreviewConfigured, deleteDashboardiaPreview, syncDashboardiaPreview } from "../lib/preview-host-client.js";
 import { queuePreviewEnvironment, transitionPreviewEnvironment } from "../lib/preview-environments.js";
+import { retireProjectEnvironments } from "../lib/project-environment-exclusivity.js";
 import { detectGitHubProjectRuntime, environmentRuntimeConfiguration, mavenBuildCommandInRepository } from "../lib/project-runtime.js";
 import { redactSensitiveData } from "../lib/redaction.js";
 
@@ -66,11 +67,20 @@ export async function requestExecutionPreviewAutomation(executionId, database = 
     return { status: "SKIPPED", reason: "execution-not-ready" };
   }
 
+  const project = execution.demand.project;
+  const retired = await retireProjectEnvironments(database, project.id, { exceptExecutionId: execution.id });
+  if (retired.total) {
+    await executionLog(database, execution.id, `${retired.total} ambiente(s) anterior(es) deste projeto foram encerrados antes da nova publicação automática.`, "info", {
+      automatic: true,
+      retiredDevEnvironments: retired.devEnvironments,
+      retiredExecutionPreviews: retired.executionPreviews,
+    });
+  }
+
   const environment = await queuePreviewEnvironment(database, {
     executionId: execution.id,
     ttlMinutes: settings.environmentTtlMinutes,
   });
-  const project = execution.demand.project;
 
   try {
     const token = await getProjectGitHubAccessToken(project, execution.requestedById);
