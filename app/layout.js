@@ -1,5 +1,6 @@
 import "./globals.css";
 import "./preferences.css";
+import "./gray-theme.css";
 import "./settings-theme-fix.css";
 import "./environment-recovery.css";
 import "./sidebar-collapsible.css";

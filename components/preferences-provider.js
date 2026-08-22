@@ -18,7 +18,7 @@ export function PreferencesProvider({ children, initialLocale, initialTheme }) {
       const resolved = theme === "SYSTEM" ? (media.matches ? "dark" : "light") : theme.toLowerCase();
       document.documentElement.dataset.theme = resolved;
       document.documentElement.lang = locale;
-      document.documentElement.style.colorScheme = resolved;
+      document.documentElement.style.colorScheme = resolved === "gray" ? "dark" : resolved;
       localStorage.setItem("dashboardia.preferences", JSON.stringify({ locale, theme }));
     };
     apply();

@@ -1,0 +1,162 @@
+html[data-theme="gray"] {
+  --ink:#f4f5f7;
+  --muted:#b7bcc6;
+  --line:#454b55;
+  --soft:#30343b;
+  --warning:#e5ae4d;
+  --success:#5fc99a;
+  --danger:#ef8996;
+}
+
+[data-theme="gray"] body,
+[data-theme="gray"] .content,
+[data-theme="gray"] .localized-content,
+[data-theme="gray"] .page,
+[data-theme="gray"] .section-page { background:#24282e; color:#f4f5f7; }
+
+[data-theme="gray"] .topbar { background:#2c3037; border-color:#474d57; }
+[data-theme="gray"] .sidebar { background:#1d2025; }
+
+[data-theme="gray"] .metric,
+[data-theme="gray"] .panel,
+[data-theme="gray"] .resource-card,
+[data-theme="gray"] .form-card,
+[data-theme="gray"] .detail-card,
+[data-theme="gray"] .table-card,
+[data-theme="gray"] .billing-section,
+[data-theme="gray"] .billing-plan,
+[data-theme="gray"] .credit-pack-grid article,
+[data-theme="gray"] .preview-state,
+[data-theme="gray"] .preview-unavailable,
+[data-theme="gray"] .web-preview,
+[data-theme="gray"] .api-preview-heading,
+[data-theme="gray"] .api-example,
+[data-theme="gray"] .api-endpoints,
+[data-theme="gray"] .execution-metrics>div,
+[data-theme="gray"] .financial-summary-grid>span,
+[data-theme="gray"] .billing-overview-card>div,
+[data-theme="gray"] .list-filters,
+[data-theme="gray"] .faq-card,
+[data-theme="gray"] .support-panel { background:#30343b; border-color:#4b515b; box-shadow:none; }
+
+[data-theme="gray"] .project,
+[data-theme="gray"] .demand,
+[data-theme="gray"] .data-row,
+[data-theme="gray"] .simple-list>a,
+[data-theme="gray"] .simple-list>div:not(.list-empty),
+[data-theme="gray"] .configuration-list>div,
+[data-theme="gray"] .billing-history>div:last-child>span { background:#30343b; border-color:#4a505a; }
+
+[data-theme="gray"] .project:hover,
+[data-theme="gray"] .demand:hover,
+[data-theme="gray"] .data-row:hover { background:#393e46; }
+
+[data-theme="gray"] .metric strong,
+[data-theme="gray"] .health-score strong,
+[data-theme="gray"] .health-score b,
+[data-theme="gray"] .project-name strong,
+[data-theme="gray"] .demand-title strong,
+[data-theme="gray"] .panel-title h2,
+[data-theme="gray"] .billing-overview-card strong,
+[data-theme="gray"] .billing-plan>strong,
+[data-theme="gray"] .financial-summary-grid strong,
+[data-theme="gray"] .execution-metrics strong,
+[data-theme="gray"] .table-title strong,
+[data-theme="gray"] .resource-card strong,
+[data-theme="gray"] .detail-list strong,
+[data-theme="gray"] .faq-list summary,
+[data-theme="gray"] .card-heading h2 { color:#f7f8fa; }
+
+[data-theme="gray"] .metric p,
+[data-theme="gray"] .metric small,
+[data-theme="gray"] .panel-title p,
+[data-theme="gray"] .project-name small,
+[data-theme="gray"] .branch,
+[data-theme="gray"] .deploy,
+[data-theme="gray"] .demand,
+[data-theme="gray"] .time,
+[data-theme="gray"] .health-score span,
+[data-theme="gray"] .health-legend,
+[data-theme="gray"] .data-row,
+[data-theme="gray"] .billing-plan li,
+[data-theme="gray"] .billing-overview-card span,
+[data-theme="gray"] .financial-summary-grid small,
+[data-theme="gray"] .execution-metrics small,
+[data-theme="gray"] .card-heading p { color:#b8bec8; }
+
+[data-theme="gray"] .search,
+[data-theme="gray"] .search-dialog,
+[data-theme="gray"] .search-footer,
+[data-theme="gray"] input,
+[data-theme="gray"] select,
+[data-theme="gray"] textarea,
+[data-theme="gray"] .secondary-button,
+[data-theme="gray"] .faq-tools label,
+[data-theme="gray"] .faq-tools button,
+[data-theme="gray"] .github-status,
+[data-theme="gray"] .icon-button { color:#f2f3f5; background:#393e46; border-color:#565d68; }
+
+[data-theme="gray"] input::placeholder,
+[data-theme="gray"] textarea::placeholder,
+[data-theme="gray"] .search-trigger span { color:#9fa6b1; opacity:1; }
+
+[data-theme="gray"] .type,
+[data-theme="gray"] .member-row,
+[data-theme="gray"] .commit-list code,
+[data-theme="gray"] .api-example>div,
+[data-theme="gray"] .web-preview-address,
+[data-theme="gray"] .data-head { color:#d9dde3; background:#3a3f47; border-color:#555c66; }
+
+[data-theme="gray"] .model-options>label,
+[data-theme="gray"] .demand-example>div>span,
+[data-theme="gray"] .execution-chat-header,
+[data-theme="gray"] .execution-message-list,
+[data-theme="gray"] .execution-reply-form,
+[data-theme="gray"] .execution-collapsible-header,
+[data-theme="gray"] .execution-screenshot { background:#363b43; border-color:#505762; }
+
+[data-theme="gray"] .model-options>label:hover { background:#3e444d; border-color:#686f7a; }
+[data-theme="gray"] .model-options>label.selected { background:#403754; border-color:#9b82ff; box-shadow:0 0 0 1px #9b82ff; }
+[data-theme="gray"] .model-options strong,
+[data-theme="gray"] .execution-collapsible-header strong,
+[data-theme="gray"] .execution-screenshot strong { color:#f5f6f8; }
+[data-theme="gray"] .model-options small,
+[data-theme="gray"] .execution-collapsible-header small,
+[data-theme="gray"] .execution-screenshot small { color:#bbc0c9; }
+
+[data-theme="gray"] .execution-message { color:#eef0f3; background:#3a3f47; border-color:#555c66; }
+[data-theme="gray"] .execution-message.user { background:#463b5d; border-color:#6b578e; }
+[data-theme="gray"] .execution-message.system { background:#3e434c; }
+[data-theme="gray"] .execution-chat-processing { background:#343941; border-color:#4e5560; }
+[data-theme="gray"] .execution-reply-form textarea { color:#f3f4f6; background:#393e46; border-color:#565d68; caret-color:#b49aff; }
+[data-theme="gray"] .execution-reply-form textarea:focus { background:#40464f; border-color:#9b82ff; box-shadow:0 0 0 3px rgba(155,130,255,.16); }
+
+[data-theme="gray"] .diff-viewer,
+[data-theme="gray"] .diff-index,
+[data-theme="gray"] .diff-file,
+[data-theme="gray"] .diff-file-content,
+[data-theme="gray"] .diff-hunk { color:#e7e9ec; background:#292d33; border-color:#505761; }
+[data-theme="gray"] .diff-summary,
+[data-theme="gray"] .diff-index>summary,
+[data-theme="gray"] .diff-file-header { background:#353a42; border-color:#505761; }
+[data-theme="gray"] .diff-files { background:#262a30; }
+[data-theme="gray"] .diff-line i { background:#2b3036; border-color:#474e58; }
+[data-theme="gray"] .diff-line.addition { background:#273d32; }
+[data-theme="gray"] .diff-line.deletion { background:#4a2d32; }
+
+[data-theme="gray"] .support-messages { background:#2b2f35; }
+[data-theme="gray"] .assistant-message { color:#eef0f3; background:#383d45; border-color:#515862; }
+[data-theme="gray"] .environment-credentials { border-color:#8a70ff70; background:#6f55ff16; }
+[data-theme="gray"] .environment-credentials code,
+[data-theme="gray"] .environment-credentials button { border-color:#575e69; background:#393e46; }
+
+[data-theme="gray"] .billing-page {
+  --billing-surface:#30343b;
+  --billing-surface-raised:#383d45;
+  --billing-border:#4e5560;
+  --billing-heading:#f5f6f8;
+  --billing-text:#d5d9df;
+  --billing-muted:#aeb4bf;
+  --billing-accent:#9a80ff;
+  --billing-accent-soft:#43385a;
+}
