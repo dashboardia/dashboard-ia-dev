@@ -1,71 +1,104 @@
 .banner {
   position: sticky;
-  top: 80px;
-  z-index: 9;
-  margin: 14px 24px 0;
-  padding: 14px 16px;
-  border: 1px solid color-mix(in srgb, var(--purple) 32%, var(--line));
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--purple) 7%, var(--soft));
-  box-shadow: 0 10px 30px rgba(24, 18, 52, .14);
+  top: 78px;
+  z-index: 40;
+  width: min(430px, calc(100% - 36px));
+  min-height: 46px;
+  margin: 10px 18px 0 auto;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--purple) 26%, var(--line));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--purple) 8%, var(--soft));
+  box-shadow: 0 8px 24px rgba(24, 18, 52, .12);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   color: var(--purple);
-  background: color-mix(in srgb, var(--purple) 12%, var(--soft));
+  background: color-mix(in srgb, var(--purple) 13%, var(--soft));
+}
+
+.icon svg {
+  width: 15px;
+  height: 15px;
 }
 
 .copy {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .copy strong {
+  overflow: hidden;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .copy span {
+  overflow: hidden;
   color: var(--muted);
-  font-size: 10px;
-  line-height: 1.45;
+  font-size: 7px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action {
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 9px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 5px;
   color: #fff;
   background: linear-gradient(135deg, #7657ff, #6240ee);
-  font-size: 11px;
+  font-size: 8px;
   font-weight: 800;
   white-space: nowrap;
-  box-shadow: 0 8px 20px #6d4aff2e;
+  box-shadow: 0 6px 16px #6d4aff22;
+}
+
+.action svg {
+  width: 13px;
+  height: 13px;
+}
+
+@media (max-width: 900px) {
+  .banner {
+    width: min(360px, calc(100% - 28px));
+    margin-right: 14px;
+  }
+
+  .copy span {
+    display: none;
+  }
 }
 
 @media (max-width: 760px) {
   .banner {
-    top: 72px;
-    margin: 10px 14px 0;
-    grid-template-columns: auto minmax(0, 1fr);
+    top: 70px;
+    width: calc(100% - 20px);
+    margin: 8px 10px 0;
   }
+
+  .copy strong {
+    font-size: 8px;
+  }
+
   .action {
-    grid-column: 1 / -1;
-    width: 100%;
+    padding: 0 8px;
   }
 }

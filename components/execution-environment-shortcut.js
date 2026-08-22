@@ -44,13 +44,13 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
 
   return (
     <aside className={styles.banner} aria-live="polite">
-      <div className={styles.icon}><ServerCog size={19} /></div>
+      <div className={styles.icon}><ServerCog size={17} /></div>
       <div className={styles.copy}>
-        <strong>Ambiente disponível para esta execução</strong>
-        <span>A branch já foi publicada no GitHub. Você pode subir uma versão navegável para testar o resultado.</span>
+        <strong>Ambiente disponível</strong>
+        <span>Teste esta branch em uma versão navegável.</span>
       </div>
       <Link className={styles.action} href={{ pathname: "/environments", query: { projectId: shortcut.projectId, branch: shortcut.branchName } }}>
-        <ServerCog size={15} />Subir ambiente<ArrowRight size={14} />
+        <ServerCog size={14} />Subir ambiente<ArrowRight size={12} />
       </Link>
     </aside>
   );
