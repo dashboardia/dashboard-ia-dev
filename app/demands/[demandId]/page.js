@@ -10,6 +10,7 @@ import { planIsPaid } from "../../../lib/billing-plans";
 import { executionControlState } from "../../../lib/execution-control-state";
 import { requirePageUser } from "../../../lib/page-access";
 import { explainError } from "../../../lib/error-messages";
+import { syncExecutionPreviewForPresentation } from "../../../lib/preview-host-client";
 import CancelExecutionButton from "./cancel-execution-button";
 import DemandEditCard from "./demand-edit-card";
 import OpenPullRequestButton from "./open-pull-request-button";
@@ -29,7 +30,7 @@ export default async function DemandPage({ params }) {
     include: {
       project: { include: { createdBy: { select: { globalRole: true, billingAccount: { select: { plan: true, planDefinition: { select: { priceCents: true, includedCredits: true } } } } } } } },
       createdBy: { select: { id: true, name: true, githubLogin: true } },
-      executions: { include: { pullRequest: true, previewEnvironment: { select: { status: true, url: true } } }, orderBy: { createdAt: "desc" } },
+      executions: { include: { pullRequest: true, previewEnvironment: true }, orderBy: { createdAt: "desc" } },
     },
   });
   if (!demand) notFound();
@@ -38,6 +39,9 @@ export default async function DemandPage({ params }) {
   const canEdit = ["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(demand.status) && !demand.executions.length && (demand.createdBy.id === user.id || role === "MANAGER");
   const lunaOnly = user.globalRole !== "ADMIN" && demand.project.createdBy.globalRole !== "ADMIN" && demand.project.createdBy.billingAccount?.plan !== "CUSTOM" && !planIsPaid(demand.project.createdBy.billingAccount?.planDefinition);
   const canStart = role === "MANAGER" && ["PENDING_APPROVAL", "APPROVED", "FAILED", "STOPPED"].includes(demand.status);
+  const executions = await Promise.all(
+    demand.executions.map((execution) => syncExecutionPreviewForPresentation(db, { ...execution, demand: { type: demand.type } })),
+  );
 
   return (
     <AppShell user={user}>
@@ -47,7 +51,7 @@ export default async function DemandPage({ params }) {
           <DemandEditCard demand={{ id: demand.id, projectId: demand.projectId, baseBranch: demand.baseBranch, title: demand.title, description: demand.description, acceptanceCriteria: demand.acceptanceCriteria, type: demand.type, priority: demand.priority, visualValidation: demand.visualValidation, visualPaths: demand.visualPaths, aiModel: demand.aiModel }} canEdit={canEdit} lunaOnly={lunaOnly} />
           <section className="form-card detail-card"><h2>Informações</h2><div className="detail-list"><span><Clock3 size={17} /><strong>Status</strong><em>{statusLabels[demand.status]}</em></span><span><GitBranch size={17} /><strong>Branch base</strong><em>{demand.baseBranch}</em></span><span><CheckCircle2 size={17} /><strong>Prioridade</strong><em>{demand.priority}</em></span></div></section>
         </div>
-        <section className="form-card detail-card full-card"><div className="card-heading execution-history-heading"><div><h2>Execuções</h2><p>Clique em uma execução para acompanhar etapas, ambiente, logs, custos e resultado em tempo real.</p></div><span><MousePointerClick size={15} />Itens clicáveis</span></div><div className="simple-list execution-history-list">{demand.executions.map((execution) => { const error = execution.error ? explainError(execution.error) : null; const control = executionControlState({ ...execution, demand: { type: demand.type } }); return <article className="execution-entry" key={execution.id}><Link className="execution-open-link" href={`/executions/${execution.id}`}><span><strong>{execution.stage}</strong><small>Execução {execution.id.slice(-8)}</small></span><span className={`status-pill ${toneClass[control.displayTone] ?? execution.status.toLowerCase()}`}>{control.displayStatus}</span><em>{execution.model ?? "modelo pendente"}</em><b>Abrir execução <ArrowRight size={14} /></b></Link><div className="execution-entry-actions">{execution.pullRequest && <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} />}{role === "MANAGER" && control.canCancel && <CancelExecutionButton executionId={execution.id} />}</div>{execution.summary && <p>{execution.summary}</p>}{error && <p className="execution-error"><strong>{error.title}</strong><span>{error.action}</span></p>}</article>; })}{!demand.executions.length && <div className="list-empty">Clique em “Iniciar execução” para começar e acompanhar o processamento ao vivo.</div>}</div></section>
+        <section className="form-card detail-card full-card"><div className="card-heading execution-history-heading"><div><h2>Execuções</h2><p>Clique em uma execução para acompanhar etapas, ambiente, logs, custos e resultado em tempo real.</p></div><span><MousePointerClick size={15} />Itens clicáveis</span></div><div className="simple-list execution-history-list">{executions.map((execution) => { const error = execution.error ? explainError(execution.error) : null; const control = executionControlState(execution); return <article className="execution-entry" key={execution.id}><Link className="execution-open-link" href={`/executions/${execution.id}`}><span><strong>{execution.stage}</strong><small>Execução {execution.id.slice(-8)}</small></span><span className={`status-pill ${toneClass[control.displayTone] ?? execution.status.toLowerCase()}`}>{control.displayStatus}</span><em>{execution.model ?? "modelo pendente"}</em><b>Abrir execução <ArrowRight size={14} /></b></Link><div className="execution-entry-actions">{execution.pullRequest && <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} />}{role === "MANAGER" && control.canCancel && <CancelExecutionButton executionId={execution.id} />}</div>{execution.summary && <p>{execution.summary}</p>}{error && <p className="execution-error"><strong>{error.title}</strong><span>{error.action}</span></p>}</article>; })}{!executions.length && <div className="list-empty">Clique em “Iniciar execução” para começar e acompanhar o processamento ao vivo.</div>}</div></section>
       </div>
     </AppShell>
   );
