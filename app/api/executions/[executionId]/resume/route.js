@@ -21,7 +21,7 @@ export async function POST(request, context) {
     await assertPlatformProcessingEnabled(db);
 
     if (execution.status !== "STOPPED") {
-      return NextResponse.json({ error: "Somente execuções pausadas pelo administrador podem ser retomadas." }, { status: 409 });
+      return NextResponse.json({ error: "Somente execuções pausadas podem ser retomadas." }, { status: 409 });
     }
 
     await db.$transaction(async (transaction) => {
@@ -44,7 +44,7 @@ export async function POST(request, context) {
       });
       await transaction.demand.update({ where: { id: execution.demand.id }, data: { status: "QUEUED" } });
       await transaction.executionLog.create({
-        data: { executionId, scope: "worker", level: "info", message: "Execução retomada após a liberação do processamento global." },
+        data: { executionId, scope: "worker", level: "info", message: "Execução retomada pelo cliente a partir do estado preservado desta mesma execução." },
       });
       await transaction.auditLog.create({
         data: auditData({
@@ -53,7 +53,7 @@ export async function POST(request, context) {
           action: "execution.resume",
           entityType: "Execution",
           entityId: executionId,
-          metadata: { previousStatus: execution.status, reason: "admin-platform-pause" },
+          metadata: { previousStatus: execution.status, reason: "client-resume" },
           request,
         }),
       });

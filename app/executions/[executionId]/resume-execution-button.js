@@ -28,7 +28,7 @@ export default function ResumeExecutionButton({ executionId, processingEnabled =
     <div className="execution-action">
       <button className="primary" disabled={loading || !processingEnabled} onClick={resume} type="button">
         {loading ? <LoaderCircle className="spin" size={14} /> : <PlayCircle size={14} />}
-        {loading ? "Retomando..." : processingEnabled ? "Retomar execução" : "Processamento pausado"}
+        {loading ? "Reexecutando..." : processingEnabled ? "Reexecutar de onde parou" : "Processamento pausado"}
       </button>
       {error && <small>{error}</small>}
     </div>

@@ -7,6 +7,7 @@ import "./sidebar-collapsible.css";
 import "./execution-workbench.css";
 import "./execution-automation.css";
 import "./execution-status.css";
+import "./action-center-toast.css";
 import "./readability.css";
 
 export const metadata = {

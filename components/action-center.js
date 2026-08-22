@@ -1,17 +1,20 @@
 "use client";
 
-import { Activity, Bell, CheckCircle2, FileClock, HeartPulse, LoaderCircle, TriangleAlert } from "lucide-react";
+import { Activity, Bell, CheckCircle2, FileClock, HeartPulse, LoaderCircle, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { markActionCenterItemRead, unreadActionCenterData } from "../lib/action-center-read";
+import { actionCenterItemKey, markActionCenterItemRead, unreadActionCenterData } from "../lib/action-center-read";
 
 const itemIcons = {
+  EXECUTION_READY: CheckCircle2,
   EXECUTION_FAILED: TriangleAlert,
   PROJECT_HEALTH: HeartPulse,
   DEMAND_APPROVAL: FileClock,
   EXECUTION_APPROVAL: Activity,
 };
+const READY_TOAST_PREFIX = "dashboardia:execution-ready-toast:";
+const READY_TOAST_FRESHNESS_MS = 2 * 60_000;
 
 function relativeTime(value) {
   const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
@@ -29,7 +32,21 @@ export default function ActionCenter({ disabled = false }) {
   const [data, setData] = useState({ count: 0, items: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [readyToast, setReadyToast] = useState(null);
   const rootRef = useRef(null);
+  const readyToastTimerRef = useRef(null);
+
+  const showReadyToast = useCallback((item) => {
+    if (!item || typeof window === "undefined") return;
+    const occurredAt = new Date(item.occurredAt).getTime();
+    if (!Number.isFinite(occurredAt) || Date.now() - occurredAt > READY_TOAST_FRESHNESS_MS) return;
+    const storageKey = `${READY_TOAST_PREFIX}${actionCenterItemKey(item)}`;
+    if (window.localStorage.getItem(storageKey)) return;
+    window.localStorage.setItem(storageKey, "1");
+    setReadyToast(item);
+    if (readyToastTimerRef.current) window.clearTimeout(readyToastTimerRef.current);
+    readyToastTimerRef.current = window.setTimeout(() => setReadyToast(null), 5_000);
+  }, []);
 
   const load = useCallback(async (signal) => {
     if (disabled) return;
@@ -39,13 +56,16 @@ export default function ActionCenter({ disabled = false }) {
       const response = await fetch("/api/action-center", { signal, headers: { Accept: "application/json" } });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível carregar as pendências");
-      setData(unreadActionCenterData(payload, window.localStorage));
+      const unread = unreadActionCenterData(payload, window.localStorage);
+      setData(unread);
+      const readyItem = unread.items.find((item) => item.kind === "EXECUTION_READY");
+      if (readyItem) showReadyToast(readyItem);
     } catch (loadError) {
       if (loadError.name !== "AbortError") setError(loadError.message);
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [disabled]);
+  }, [disabled, showReadyToast]);
 
   useEffect(() => {
     if (disabled) return;
@@ -58,6 +78,7 @@ export default function ActionCenter({ disabled = false }) {
       controller.abort();
       window.clearTimeout(initialLoad);
       window.clearInterval(interval);
+      if (readyToastTimerRef.current) window.clearTimeout(readyToastTimerRef.current);
     };
   }, [disabled, load]);
 
@@ -84,29 +105,41 @@ export default function ActionCenter({ disabled = false }) {
       items: current.items.filter((candidate) => candidate.id !== item.id),
     }));
     setOpen(false);
+    if (readyToast?.id === item.id) setReadyToast(null);
   }
 
   return (
-    <div className="notification-center" ref={rootRef}>
-      <button className="icon-button" type="button" disabled={disabled} onClick={() => setOpen((current) => !current)} aria-label={`Pendências operacionais: ${data.count}`} aria-expanded={open}>
-        <Bell size={19} />
-        {data.count > 0 && <><i /><b>{data.count > 9 ? "9+" : data.count}</b></>}
-      </button>
+    <>
+      <div className="notification-center" ref={rootRef}>
+        <button className="icon-button" type="button" disabled={disabled} onClick={() => setOpen((current) => !current)} aria-label={`Pendências operacionais: ${data.count}`} aria-expanded={open}>
+          <Bell size={19} />
+          {data.count > 0 && <><i /><b>{data.count > 9 ? "9+" : data.count}</b></>}
+        </button>
 
-      {open && (
-        <section className="notification-panel" aria-label="Pendências operacionais">
-          <header><span><strong>Requer atenção</strong><small>Falhas, saúde e aprovações</small></span>{loading && <LoaderCircle className="spin" size={16} />}</header>
-          <div className="notification-list">
-            {data.items.map((item) => {
-              const Icon = itemIcons[item.kind] ?? Bell;
-              return <Link href={item.href} key={item.id} onClick={() => openItem(item)}><i className={item.tone}><Icon size={16} /></i><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><time>{relativeTime(item.occurredAt)}</time></Link>;
-            })}
-            {!loading && !error && !data.items.length && <div className="notification-empty"><CheckCircle2 size={25} /><strong>Tudo em ordem</strong><span>Não há pendências operacionais para seu acesso.</span></div>}
-            {error && <div className="notification-empty notification-error"><TriangleAlert size={24} /><strong>Não foi possível atualizar</strong><span>{error}</span><button type="button" onClick={() => load()}>Tentar novamente</button></div>}
-          </div>
-          <footer><Link href="/demands" onClick={() => setOpen(false)}>Ver demandas</Link><Link href="/health" onClick={() => setOpen(false)}>Ver saúde</Link></footer>
-        </section>
-      )}
-    </div>
+        {open && (
+          <section className="notification-panel" aria-label="Pendências operacionais">
+            <header><span><strong>Requer atenção</strong><small>Execuções prontas, falhas e saúde</small></span>{loading && <LoaderCircle className="spin" size={16} />}</header>
+            <div className="notification-list">
+              {data.items.map((item) => {
+                const Icon = itemIcons[item.kind] ?? Bell;
+                return <Link href={item.href} key={item.id} onClick={() => openItem(item)}><i className={item.tone}><Icon size={16} /></i><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><time>{relativeTime(item.occurredAt)}</time></Link>;
+              })}
+              {!loading && !error && !data.items.length && <div className="notification-empty"><CheckCircle2 size={25} /><strong>Tudo em ordem</strong><span>Não há pendências operacionais para seu acesso.</span></div>}
+              {error && <div className="notification-empty notification-error"><TriangleAlert size={24} /><strong>Não foi possível atualizar</strong><span>{error}</span><button type="button" onClick={() => load()}>Tentar novamente</button></div>}
+            </div>
+            <footer><Link href="/executions" onClick={() => setOpen(false)}>Ver execuções</Link><Link href="/health" onClick={() => setOpen(false)}>Ver saúde</Link></footer>
+          </section>
+        )}
+      </div>
+
+      {readyToast && <aside className="execution-ready-toast" role="status" aria-live="polite">
+        <span className="execution-ready-toast-icon"><CheckCircle2 size={17} /></span>
+        <Link href={readyToast.href} onClick={() => openItem(readyToast)}>
+          <strong>Execução concluída e pronta para você</strong>
+          <small>{readyToast.subtitle}</small>
+        </Link>
+        <button type="button" onClick={() => setReadyToast(null)} aria-label="Fechar aviso"><X size={14} /></button>
+      </aside>}
+    </>
   );
 }

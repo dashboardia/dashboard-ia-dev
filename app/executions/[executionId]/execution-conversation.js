@@ -33,17 +33,51 @@ export default function ExecutionConversation({ executionId, status, messages, e
   const [attachments, setAttachments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [controlState, setControlState] = useState(null);
   const messageListRef = useRef(null);
   const fileInputRef = useRef(null);
   const previewUrlsRef = useRef(new Set());
-  const available = status === "AWAITING_CLIENT";
-  const processing = ["QUEUED", "PREPARING", "RUNNING", "VALIDATING"].includes(status);
-  const chatTitle = available ? "Converse com a IA" : processing ? (conversationReady ? "A IA está aplicando seu ajuste" : "A IA está executando a demanda") : "Histórico da conversa";
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadControlState() {
+      try {
+        const response = await fetch(`/api/executions/${encodeURIComponent(executionId)}/control-state`, { cache: "no-store" });
+        const result = await response.json().catch(() => ({}));
+        if (!cancelled && response.ok) setControlState(result);
+      } catch {
+        if (!cancelled) setControlState(null);
+      }
+    }
+    loadControlState();
+    const timer = window.setInterval(loadControlState, 3_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [executionId]);
+
+  const effectiveStatus = controlState?.status ?? status;
+  const paused = effectiveStatus === "STOPPED";
+  const environmentPreparing = effectiveStatus === "AWAITING_CLIENT" && !controlState?.interactionAvailable;
+  const available = Boolean(controlState?.interactionAvailable ?? (paused || effectiveStatus === "FAILED"));
+  const processing = ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"].includes(effectiveStatus) || environmentPreparing;
+  const chatTitle = available
+    ? paused ? "Processos pausados · converse com a IA" : "Converse com a IA"
+    : environmentPreparing
+      ? "Finalizando o ambiente antes de liberar o chat"
+      : processing
+        ? (conversationReady ? "A IA está aplicando seu ajuste" : "A IA está executando a demanda")
+        : "Histórico da conversa";
   const chatDescription = available
-    ? "Escreva o que deseja mudar. A IA aplica na mesma branch e no mesmo Pull Request."
-    : processing
-      ? (conversationReady ? "Acompanhe a execução ao lado. Quando terminar, você pode pedir outro ajuste aqui." : "Assim que a primeira implementação terminar, você poderá pedir ajustes sem sair desta execução.")
-      : "As decisões e ajustes desta execução ficam preservados aqui.";
+    ? paused
+      ? "Você pode pedir um novo ajuste agora ou reexecutar a execução sem perder este histórico."
+      : "Escreva o que deseja mudar. A IA aplica na mesma branch e no mesmo Pull Request."
+    : environmentPreparing
+      ? "O ambiente está sendo construído e validado automaticamente. Assim que ficar pronto, o chat será liberado para evitar ajustes sobre uma versão ainda incompleta."
+      : processing
+        ? (conversationReady ? "Acompanhe a execução ao lado. Quando terminar, você pode pedir outro ajuste aqui." : "Assim que a primeira implementação terminar, você poderá pedir ajustes sem sair desta execução.")
+        : "As decisões e ajustes desta execução ficam preservados aqui.";
 
   useEffect(() => {
     const list = messageListRef.current;
@@ -154,12 +188,12 @@ export default function ExecutionConversation({ executionId, status, messages, e
   }
 
   return <section className="form-card detail-card execution-conversation">
-    <header className="execution-chat-header"><span className="execution-chat-icon"><MessageSquareText size={19} /></span><div><h2>{chatTitle}</h2><p>{chatDescription}</p></div><em className={`execution-chat-status ${available ? "available" : processing ? "processing" : "closed"}`}>{available ? "Escreva aqui" : processing ? "IA trabalhando" : "Concluída"}</em></header>
-    {available && <div className="execution-chat-guidance"><Sparkles size={16} /><span><strong>Peça mudanças em linguagem natural</strong><small>Você pode pedir para corrigir um erro, mudar uma tela, adicionar uma função ou colar um print. A IA continua exatamente deste ponto.</small></span></div>}
-    <div className="execution-message-list" ref={messageListRef}>{messages.map((message) => <article className={`execution-message ${message.role.toLowerCase()}${message.role === "USER" && !message.authorId ? " automatic" : ""}`} key={message.id}><header><strong>{messageAuthor(message)}</strong><time>{new Date(message.createdAt).toLocaleString("pt-BR")}</time></header><p>{message.content}</p>{message.attachments?.length > 0 && <div className="execution-message-attachments">{message.attachments.map((attachment) => <StoredAttachment attachment={attachment} key={attachment.id} />)}</div>}</article>)}{!messages.length && <div className="list-empty">{conversationReady ? "O histórico dos seus ajustes aparecerá aqui." : "A conversa ficará disponível assim que a primeira implementação terminar."}</div>}</div>
-    {processing && <div className="execution-chat-processing"><LoaderCircle className="spin" size={16} /><span><strong>{conversationReady ? "A IA está aplicando seu ajuste" : "A IA está trabalhando na implementação"}</strong><small>Acompanhe as etapas ao lado. A tela atualiza automaticamente.</small></span></div>}
-    {available && <form className="execution-reply-form" onSubmit={sendAdjustment}><label htmlFor="execution-adjustment">O que você quer que a IA faça agora?</label><textarea id="execution-adjustment" value={content} onPaste={pasteAttachments} onChange={(event) => setContent(event.target.value)} placeholder="Ex.: corrija este erro, altere o menu, adicione este campo ou use o print anexado como referência..." maxLength={12000} />{attachments.length > 0 && <div className="execution-pending-attachments">{attachments.map((attachment, index) => <span key={fileKey(attachment.file)}>{attachment.previewUrl ? <Image unoptimized src={attachment.previewUrl} alt={attachment.file.name} width={42} height={42} /> : <FileText size={18} />}<small>{attachment.file.name}</small><button type="button" onClick={() => removeAttachment(index)} aria-label={`Remover ${attachment.file.name}`}><Trash2 size={13} /></button></span>)}</div>}<div className="execution-attachment-tools"><input ref={fileInputRef} hidden type="file" accept={ATTACHMENT_ACCEPT} multiple onChange={selectAttachments} /><button type="button" onClick={() => fileInputRef.current?.click()} disabled={loading || attachments.length >= MAX_MESSAGE_ATTACHMENTS}><Paperclip size={15} />Anexar arquivos</button><small>Até 4 arquivos · 5 MB cada · imagens, PDF, Word, Excel, CSV ou TXT</small></div><div className="execution-conversation-actions"><small>{adjustmentCount} ajuste{adjustmentCount === 1 ? "" : "s"} enviado{adjustmentCount === 1 ? "" : "s"} · sem limite fixo, disponível enquanto houver créditos · cobrança pelo uso medido · expira somente após 24h sem sua interação{expiresAt ? ` (${new Date(expiresAt).toLocaleString("pt-BR")})` : ""}</small><div><button className="execution-complete-button" type="button" onClick={completeExecution} disabled={loading}><CheckCircle2 size={16} />Concluir</button><button className="primary compact" type="submit" disabled={loading || (!content.trim() && !attachments.length)}>{loading ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}{loading ? "Enviando..." : "Enviar para a IA"}</button></div></div></form>}
-    {!available && status === "SUCCEEDED" && <div className="form-success"><CheckCircle2 size={15} />Execução concluída. O histórico foi preservado.</div>}
+    <header className="execution-chat-header"><span className="execution-chat-icon"><MessageSquareText size={19} /></span><div><h2>{chatTitle}</h2><p>{chatDescription}</p></div><em className={`execution-chat-status ${available ? "available" : processing ? "processing" : "closed"}`}>{available ? paused ? "Pausada · escreva aqui" : "Escreva aqui" : environmentPreparing ? "Preparando ambiente" : processing ? "IA trabalhando" : "Concluída"}</em></header>
+    {available && <div className="execution-chat-guidance"><Sparkles size={16} /><span><strong>{paused ? "Processos pausados — você pode decidir o próximo passo" : "Peça mudanças em linguagem natural"}</strong><small>{paused ? "Envie um ajuste para a IA e a execução será retomada automaticamente, ou use Reexecutar de onde parou para continuar sem um novo pedido." : "Você pode pedir para corrigir um erro, mudar uma tela, adicionar uma função ou colar um print. A IA continua exatamente deste ponto."}</small></span></div>}
+    <div className="execution-message-list" ref={messageListRef}>{messages.map((message) => <article className={`execution-message ${message.role.toLowerCase()}${message.role === "USER" && !message.authorId ? " automatic" : ""}`} key={message.id}><header><strong>{messageAuthor(message)}</strong><time>{new Date(message.createdAt).toLocaleString("pt-BR")}</time></header><p>{message.content}</p>{message.attachments?.length > 0 && <div className="execution-message-attachments">{message.attachments.map((attachment) => <StoredAttachment attachment={attachment} key={attachment.id} />)}</div>}</article>)}{!messages.length && <div className="list-empty">{conversationReady ? "O histórico dos seus ajustes aparecerá aqui." : "A conversa ficará disponível assim que a primeira implementação e o ambiente terminarem."}</div>}</div>
+    {processing && <div className="execution-chat-processing"><LoaderCircle className="spin" size={16} /><span><strong>{environmentPreparing ? "Preparando e validando o ambiente" : conversationReady ? "A IA está aplicando seu ajuste" : "A IA está trabalhando na implementação"}</strong><small>{environmentPreparing ? "O chat será liberado automaticamente quando a versão navegável estiver pronta." : "Acompanhe as etapas ao lado. A tela atualiza automaticamente."}</small></span></div>}
+    {available && <form className="execution-reply-form" onSubmit={sendAdjustment}><label htmlFor="execution-adjustment">O que você quer que a IA faça agora?</label><textarea id="execution-adjustment" value={content} onPaste={pasteAttachments} onChange={(event) => setContent(event.target.value)} placeholder="Ex.: corrija este erro, altere o menu, adicione este campo ou use o print anexado como referência..." maxLength={12000} />{attachments.length > 0 && <div className="execution-pending-attachments">{attachments.map((attachment, index) => <span key={fileKey(attachment.file)}>{attachment.previewUrl ? <Image unoptimized src={attachment.previewUrl} alt={attachment.file.name} width={42} height={42} /> : <FileText size={18} />}<small>{attachment.file.name}</small><button type="button" onClick={() => removeAttachment(index)} aria-label={`Remover ${attachment.file.name}`}><Trash2 size={13} /></button></span>)}</div>}<div className="execution-attachment-tools"><input ref={fileInputRef} hidden type="file" accept={ATTACHMENT_ACCEPT} multiple onChange={selectAttachments} /><button type="button" onClick={() => fileInputRef.current?.click()} disabled={loading || attachments.length >= MAX_MESSAGE_ATTACHMENTS}><Paperclip size={15} />Anexar arquivos</button><small>Até 4 arquivos · 5 MB cada · imagens, PDF, Word, Excel, CSV ou TXT</small></div><div className="execution-conversation-actions"><small>{adjustmentCount} ajuste{adjustmentCount === 1 ? "" : "s"} enviado{adjustmentCount === 1 ? "" : "s"} · sem limite fixo, disponível enquanto houver créditos · cobrança pelo uso medido · expira somente após 24h sem sua interação{expiresAt ? ` (${new Date(expiresAt).toLocaleString("pt-BR")})` : ""}</small><div><button className="execution-complete-button" type="button" onClick={completeExecution} disabled={loading || paused}><CheckCircle2 size={16} />Concluir</button><button className="primary compact" type="submit" disabled={loading || (!content.trim() && !attachments.length)}>{loading ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}{loading ? "Enviando..." : paused ? "Enviar e retomar" : "Enviar para a IA"}</button></div></div></form>}
+    {!available && effectiveStatus === "SUCCEEDED" && <div className="form-success"><CheckCircle2 size={15} />Execução concluída. O histórico foi preservado.</div>}
     {error && <div className="form-error">{error}</div>}
   </section>;
 }
