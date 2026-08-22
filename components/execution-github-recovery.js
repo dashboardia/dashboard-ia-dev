@@ -63,8 +63,8 @@ export default function ExecutionGitHubRecovery({ pathname }) {
     <div className={styles.icon}><ShieldCheck size={20} /></div>
     <div className={styles.copy}>
       <strong>GitHub precisa de autorização para publicar</strong>
-      <span>Autorize o GitHub App para <b>{recovery.repositoryFullName}</b>. Depois volte a esta aba e reprocese a execução.</span>
-      {authorizationOpened && <small>Autorização aberta em uma nova aba. Quando concluir no GitHub, volte aqui e clique em reprocessar.</small>}
+      <span>Autorize o GitHub App para <b>{recovery.repositoryFullName}</b>. No GitHub, selecione o repositório e clique em <b>Save</b> antes de voltar.</span>
+      {authorizationOpened && <small>Autorização aberta em uma nova aba. Confirme o repositório, clique em Save e depois volte aqui para reprocessar.</small>}
       {error && <small className={styles.error}>{error}</small>}
     </div>
     <div className={styles.actions}>

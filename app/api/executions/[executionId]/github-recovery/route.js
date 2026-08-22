@@ -7,11 +7,12 @@ import { prepareExecutionBilling } from "../../../../../lib/billing";
 import { db } from "../../../../../lib/db";
 import { env } from "../../../../../lib/env";
 import { queueDemandExecution } from "../../../../../lib/executions";
-import { isGitHubAuthorizationFailure } from "../../../../../lib/github-authorization-recovery";
+import { githubInstallationPublicationAccess, installationRepositoryListIncludes, isGitHubAuthorizationFailure } from "../../../../../lib/github-authorization-recovery";
 import {
   findGitHubRepositoryInstallation,
   getGitHubAppInstallUrl,
   getGitHubInstallationToken,
+  githubRequest,
   verifyRepositoryAccess,
   verifyRepositoryBranch,
 } from "../../../../../lib/github";
@@ -39,6 +40,17 @@ function recoveryIsAvailable(execution) {
   return execution.status === "FAILED" && isGitHubAuthorizationFailure(execution.error);
 }
 
+async function installationIncludesRepository(token, repositoryFullName, repositorySelection) {
+  if (repositorySelection === "all") return true;
+  for (let page = 1; page <= 20; page += 1) {
+    const payload = await githubRequest(token, `/installation/repositories?per_page=100&page=${page}`);
+    if (installationRepositoryListIncludes(payload, repositoryFullName)) return true;
+    const repositories = Array.isArray(payload?.repositories) ? payload.repositories : [];
+    if (repositories.length < 100) return false;
+  }
+  return false;
+}
+
 export async function GET(_request, context) {
   try {
     const { executionId } = await context.params;
@@ -47,10 +59,13 @@ export async function GET(_request, context) {
     const required = recoveryIsAvailable(execution) && !(await newerExecutionExists(execution));
     if (!required) return NextResponse.json({ required: false }, { headers: { "Cache-Control": "no-store" } });
 
+    const repositoryFullName = execution.demand.project.repositoryFullName;
+    const installation = await findGitHubRepositoryInstallation(repositoryFullName).catch(() => null);
     return NextResponse.json({
       required: true,
-      repositoryFullName: execution.demand.project.repositoryFullName,
-      installUrl: getGitHubAppInstallUrl(),
+      repositoryFullName,
+      installUrl: installation?.html_url ?? getGitHubAppInstallUrl(),
+      installationDetected: Boolean(installation?.id),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiError(error);
@@ -78,17 +93,30 @@ export async function POST(request, context) {
     const installation = await findGitHubRepositoryInstallation(repositoryFullName);
     if (!installation?.id) {
       return NextResponse.json({
-        error: "A autorização ainda não foi encontrada. Clique em Autorizar GitHub, selecione este repositório e depois tente reprocessar novamente.",
+        error: "A autorização ainda não foi encontrada. Abra a autorização, selecione este repositório, clique em Save no GitHub e depois tente novamente.",
         code: "GITHUB_APP_NOT_AUTHORIZED",
       }, { status: 409 });
     }
 
+    const publicationAccess = githubInstallationPublicationAccess(installation);
+    if (!publicationAccess.canPublish) {
+      return NextResponse.json({
+        error: "O GitHub App está instalado, mas a instalação não possui permissão de escrita em Code e Pull requests. Atualize as permissões do App e tente novamente.",
+        code: "GITHUB_APP_WRITE_PERMISSION_REQUIRED",
+      }, { status: 403 });
+    }
+
     const githubInstallationId = String(installation.id);
     const token = await getGitHubInstallationToken(githubInstallationId);
-    const githubRepository = await verifyRepositoryAccess(token, repositoryFullName);
-    if (githubRepository.permissions?.push === false) {
-      return NextResponse.json({ error: "O GitHub App está instalado, mas ainda não possui permissão de escrita neste repositório." }, { status: 403 });
+    const repositorySelected = await installationIncludesRepository(token, repositoryFullName, installation.repository_selection);
+    if (!repositorySelected) {
+      return NextResponse.json({
+        error: "Este repositório ainda não foi salvo na seleção do GitHub App. No GitHub, marque o repositório e clique em Save; depois volte e reprocese.",
+        code: "GITHUB_REPOSITORY_NOT_SELECTED",
+      }, { status: 409 });
     }
+
+    const githubRepository = await verifyRepositoryAccess(token, repositoryFullName);
     await verifyRepositoryBranch(token, repositoryFullName, execution.demand.baseBranch);
 
     const project = await db.project.update({
@@ -123,6 +151,7 @@ export async function POST(request, context) {
             sourceExecutionId: execution.id,
             githubInstallationId,
             repositoryFullName,
+            repositorySelection: installation.repository_selection ?? null,
             adminLimitBypass,
           },
           request,
