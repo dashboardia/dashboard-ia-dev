@@ -16,7 +16,7 @@ import { isExecutionCreditBlocked } from "../../../lib/execution-credit-state";
 import { requirePageUser } from "../../../lib/page-access";
 import { redactSensitiveData } from "../../../lib/redaction";
 import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error-messages";
-import { formatBrlCents } from "../../../lib/financial-shadow";
+import { calculateDisplayedExecutionCredits, formatBrlCents } from "../../../lib/financial-shadow";
 import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings";
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
 import AutoOpenPullRequest from "./auto-open-pull-request";
@@ -83,12 +83,15 @@ export default async function ExecutionPage({ params }) {
   const liveRevision = executionRevision(execution);
   const shouldLiveRefresh = shouldPollExecutionDetail(execution);
   const livePresentation = executionLivePresentation(execution);
-  const consumedCredits = Math.max(0, Number(
-    execution.creditReservation?.consumedCredits
-      ?? execution.financialSnapshot?.simulatedConsumedCredits
-      ?? 0,
-  ) || 0);
   const measuredTokens = Math.max(0, Number(execution.inputTokens) || 0) + Math.max(0, Number(execution.outputTokens) || 0);
+  const consumedCredits = calculateDisplayedExecutionCredits({
+    reservationConsumedCredits: execution.creditReservation?.consumedCredits,
+    snapshotConsumedCredits: execution.financialSnapshot?.simulatedConsumedCredits,
+    model: execution.model ?? execution.demand.aiModel,
+    inputTokens: execution.inputTokens,
+    outputTokens: execution.outputTokens,
+    settings,
+  });
   const liveIcon = livePresentation.icon === "failed"
     ? <CircleX size={18} />
     : livePresentation.icon === "running"
