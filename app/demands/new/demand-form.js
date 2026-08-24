@@ -50,6 +50,11 @@ export default function DemandForm({ projects, initialProjectId }) {
   const previewUrlsRef = useRef(new Set());
   const selectedProject = projects.find((project) => project.id === context.projectId);
   const lunaOnly = Boolean(selectedProject?.lunaOnly);
+  const descriptionLength = prompt.trim().length;
+  const descriptionTooBrief = descriptionLength > 0 && descriptionLength < 20;
+  const descriptionBlockedReason = descriptionTooBrief
+    ? `Descrição muito breve. Conte um pouco mais sobre o que precisa para iniciar a execução — faltam ${20 - descriptionLength} caracteres.`
+    : "";
 
   useEffect(() => () => {
     previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
@@ -238,9 +243,10 @@ export default function DemandForm({ projects, initialProjectId }) {
       onSubmit={submit}
       placeholder={promptPlaceholder}
       loading={saving}
-      canSubmit={Boolean(selectedProject && context.baseBranch && prompt.trim().length >= 20)}
+      canSubmit={Boolean(selectedProject && context.baseBranch && descriptionLength >= 20)}
       submitLabel="Criar demanda"
       loadingLabel={copy.creating}
+      submitBlockedReason={descriptionBlockedReason}
       attachments={attachments.map((attachment) => ({ ...attachment, key: fileKey(attachment.file), name: attachment.file.name }))}
       renderAttachment={(attachment) => attachment.previewUrl ? <Image unoptimized src={attachment.previewUrl} alt={attachment.file.name} width={112} height={72} /> : <FileText size={20} />}
       onRemoveAttachment={removeAttachment}

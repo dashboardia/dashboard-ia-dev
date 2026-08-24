@@ -28,6 +28,7 @@ export default function ChatComposer({
   onFilesSelected,
   attachmentDisabled = false,
   attachmentHint,
+  submitBlockedReason,
   error,
   footer,
   compact = false,
@@ -96,11 +97,12 @@ export default function ChatComposer({
             {controls && <div className={styles.controls}>{controls}</div>}
           </div>
           {attachmentHint && <span className={styles.hint}>{attachmentHint}</span>}
-          <button className={styles.sendButton} type="submit" disabled={disabled || loading || !canSubmit} aria-label={loading ? loadingLabel : submitLabel} title={loading ? loadingLabel : `${submitLabel} · Enter`}>
+          <button className={styles.sendButton} type="submit" disabled={disabled || loading || !canSubmit} aria-label={loading ? loadingLabel : submitBlockedReason || submitLabel} title={loading ? loadingLabel : submitBlockedReason || `${submitLabel} · Enter`}>
             {loading ? <LoaderCircle className="spin" size={18} /> : <Send size={17} />}
           </button>
         </div>
       </div>
+      {submitBlockedReason && <div className={styles.validation} role="status">{submitBlockedReason}</div>}
       {error && <div className={styles.error}>{error}</div>}
       {footer && <div className={styles.footer}>{footer}</div>}
     </form>

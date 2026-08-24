@@ -123,15 +123,6 @@
   background: transparent;
 }
 
-.execution-workbench .execution-chat-control-group {
-  min-width: 0;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: flex-end;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .execution-workbench .execution-chat-controls {
   display: flex;
   align-items: center;
@@ -140,17 +131,17 @@
 }
 
 .execution-workbench .execution-chat-controls button {
-  min-height: 31px;
-  padding: 0 10px;
+  min-height: 36px;
+  padding: 0 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   border: 1px solid var(--line);
-  border-radius: 9px;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--soft) 82%, transparent);
-  font-size: 8px;
+  border-radius: 10px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--purple) 8%, var(--soft));
+  font-size: 9px;
   font-weight: 850;
   cursor: pointer;
 }
@@ -164,16 +155,43 @@
 .execution-workbench .execution-chat-controls button.resume {
   color: var(--success);
   border-color: color-mix(in srgb, var(--success) 34%, var(--line));
+  background: color-mix(in srgb, var(--success) 10%, var(--soft));
 }
 
 .execution-workbench .execution-chat-controls button.danger {
   color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 30%, var(--line));
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
+  background: color-mix(in srgb, var(--danger) 10%, var(--soft));
 }
 
 .execution-workbench .execution-chat-controls button:disabled {
   opacity: .48;
   cursor: not-allowed;
+}
+
+.execution-workbench .execution-chat-processing {
+  min-height: 62px;
+  gap: 10px;
+  padding: 12px 15px;
+  background: color-mix(in srgb, var(--soft) 86%, transparent);
+}
+
+.execution-workbench .execution-chat-processing > span {
+  min-width: 0;
+  flex: 1;
+}
+
+.execution-workbench .execution-chat-processing > .execution-chat-controls {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.execution-workbench .execution-chat-action-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 15px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--soft) 86%, transparent);
 }
 
 .execution-workbench .execution-chat-guidance {
@@ -800,18 +818,13 @@
     flex-wrap: wrap;
   }
 
-  .execution-workbench .execution-chat-control-group {
+  .execution-workbench .execution-chat-processing {
+    flex-wrap: wrap;
+  }
+
+  .execution-workbench .execution-chat-processing > .execution-chat-controls,
+  .execution-workbench .execution-chat-action-bar .execution-chat-controls {
     width: 100%;
-    flex-basis: 100%;
-    align-items: stretch;
-  }
-
-  .execution-workbench .execution-chat-control-group .execution-chat-status {
-    width: max-content;
-    margin-left: 0;
-  }
-
-  .execution-workbench .execution-chat-controls {
     justify-content: stretch;
   }
 

@@ -83,6 +83,7 @@
 .attachment > span { display: block; overflow: hidden; padding: 6px 8px; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .attachment > button { position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 50%; color: #fff; background: rgb(4 7 14 / 76%); cursor: pointer; backdrop-filter: blur(8px); }
 .footer { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 8px; }
+.validation { padding: 8px 11px; border: 1px solid color-mix(in srgb,var(--warning) 34%,var(--line)); border-radius: 10px; color: color-mix(in srgb,var(--warning) 82%,var(--ink)); background: color-mix(in srgb,var(--warning) 8%,transparent); font-size: 9px; font-weight: 700; line-height: 1.45; }
 .error { padding: 9px 11px; border: 1px solid color-mix(in srgb,var(--danger) 35%,var(--line)); border-radius: 10px; color: var(--danger); background: color-mix(in srgb,var(--danger) 8%,transparent); display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:9px; line-height:1.45; }
 .error > span { min-width:0; }
 .error > a { min-height:30px; padding:0 11px; flex:0 0 auto; display:inline-flex; align-items:center; border-radius:8px; color:#fff; background:var(--purple); font-weight:850; }
