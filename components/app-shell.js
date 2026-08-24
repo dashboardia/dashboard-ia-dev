@@ -93,7 +93,10 @@ function AppShellContent({ children, user = null, setupMode = false }) {
   return (
     <main className={`shell ${sidebarPinned ? "sidebar-pinned" : ""}`}>
       <aside className={`sidebar ${sidebarOpen ? "open" : ""} ${sidebarPinned ? "pinned" : ""}`}>
-        <Link href="/" className="brand"><span className="brand-mark"><Code2 size={19} /></span><span>Forgeboard</span></Link>
+        <Link href="/" className="brand">
+          <span className="brand-mark"><Code2 size={19} /><i aria-hidden="true" /></span>
+          <span className="brand-copy"><strong>Forgeboard</strong><small>Dashboard IA</small></span>
+        </Link>
         <button className="close" onClick={() => setSidebarOpen(false)} aria-label={t("closeMenu")}><X /></button>
         <button className="sidebar-pin" type="button" onClick={toggleSidebarPinned} aria-pressed={sidebarPinned} title={sidebarPinned ? "Recolher menu" : "Fixar menu aberto"}>
           {sidebarPinned ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
@@ -103,17 +106,17 @@ function AppShellContent({ children, user = null, setupMode = false }) {
         <button className="workspace" onClick={() => notify("Espaço de trabalho principal")}><span className="workspace-avatar">DW</span><span><strong>Dev Workspace</strong><small>{user?.globalRole === "ADMIN" ? t("admin") : t("projectAccess")}</small></span><ChevronDown size={16} /></button>
         <nav>
           {navigation.map(({ href, label, icon: Icon }) => (
-            <Link className={isActive(pathname, href) ? "active" : ""} href={setupMode ? "/login" : href} key={href} onClick={() => setSidebarOpen(false)}><Icon size={18} /><span>{t(label)}</span></Link>
+            <Link className={isActive(pathname, href) ? "active" : ""} href={setupMode ? "/login" : href} key={href} onClick={() => setSidebarOpen(false)}><i className="nav-icon"><Icon size={18} /></i><span>{t(label)}</span></Link>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/users"}><Users size={18} /><span>{t("users")}</span></Link>}
-          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/audit"}><History size={18} /><span>{t("audit")}</span></Link>}
-          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/financial"}><BadgeDollarSign size={18} /><span>{t("financial")}</span></Link>}
-          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/catalog"}><PackageOpen size={18} /><span>{t("catalog")}</span></Link>}
-          <Link href={setupMode ? "/login" : "/billing"}><WalletCards size={18} /><span>{t("billing")}</span></Link>
-          <Link href={setupMode ? "/login" : "/faq"}><HelpCircle size={18} /><span>{t("faq")}</span></Link>
-          <Link href={setupMode ? "/login" : "/settings"}><Settings size={18} /><span>{t("settings")}</span></Link>
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/users"}><i className="nav-icon"><Users size={18} /></i><span>{t("users")}</span></Link>}
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/audit"}><i className="nav-icon"><History size={18} /></i><span>{t("audit")}</span></Link>}
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/financial"}><i className="nav-icon"><BadgeDollarSign size={18} /></i><span>{t("financial")}</span></Link>}
+          {user?.globalRole === "ADMIN" && <Link href={setupMode ? "/login" : "/catalog"}><i className="nav-icon"><PackageOpen size={18} /></i><span>{t("catalog")}</span></Link>}
+          <Link href={setupMode ? "/login" : "/billing"}><i className="nav-icon"><WalletCards size={18} /></i><span>{t("billing")}</span></Link>
+          <Link href={setupMode ? "/login" : "/faq"}><i className="nav-icon"><HelpCircle size={18} /></i><span>{t("faq")}</span></Link>
+          <Link href={setupMode ? "/login" : "/settings"}><i className="nav-icon"><Settings size={18} /></i><span>{t("settings")}</span></Link>
           <div className="user"><span className="user-avatar">{initials}</span><span><strong>{displayName}</strong><small>{displayEmail}</small></span>{user && <button className="signout" onClick={() => signOut({ callbackUrl: "/login" })} aria-label={t("signOut")}><LogOut size={16} /></button>}</div>
         </div>
       </aside>

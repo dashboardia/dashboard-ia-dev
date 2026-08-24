@@ -6,10 +6,12 @@ import {
   Boxes,
   CheckCircle2,
   Clock3,
+  Code2,
   FileCode2,
   GitBranch,
   Github,
   HeartPulse,
+  Lightbulb,
   ListChecks,
   Plus,
   ServerCog,
@@ -57,6 +59,13 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
           <div><p className="eyebrow">{dateLabel}</p><h1>Visão geral</h1><p>Continue de onde parou ou escolha rapidamente o próximo passo.</p></div>
           <Link className="primary" href={baseHref("/demands/new")}><Plus size={18} />Nova demanda</Link>
         </div>
+
+        <section className={styles.flowRail} aria-label="Fluxo de trabalho da Dashboard IA">
+          <FlowStep icon={Github} label="Conecte" text="Repositório" tone="purple" />
+          <FlowStep icon={Lightbulb} label="Descreva" text="Sua demanda" tone="blue" />
+          <FlowStep icon={Code2} label="A IA implementa" text="Código e testes" tone="cyan" />
+          <FlowStep icon={CheckCircle2} label="Valide" text="Versão navegável" tone="success" />
+        </section>
 
         <section className={styles.focusPanel}>
           <header className={styles.focusHeader}>
@@ -125,6 +134,10 @@ function WorkCard({ item, setupMode }) {
 
 function QuickAction({ href, icon: Icon, title, text, primary = false }) {
   return <Link className={`${styles.quickAction} ${primary ? styles.primaryAction : ""}`} href={href}><span><Icon size={18} /></span><div><strong>{title}</strong><small>{text}</small></div><ArrowRight size={15} /></Link>;
+}
+
+function FlowStep({ icon: Icon, label, text, tone }) {
+  return <article className={`${styles.flowStep} ${styles[tone] ?? ""}`}><span><Icon size={19} /></span><div><strong>{label}</strong><small>{text}</small></div><i aria-hidden="true" /></article>;
 }
 
 function Summary({ icon: Icon, label, value, note, tone }) {
