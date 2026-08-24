@@ -167,14 +167,14 @@
 }
 
 .execution-workbench .execution-message.has-attachments > p {
-  margin-bottom: 10px;
+  margin-top: 10px;
 }
 
 .execution-workbench .execution-message-attachments {
   display: grid;
   grid-template-columns: repeat(2, minmax(120px, 220px));
   gap: 7px;
-  margin-top: 8px;
+  margin-top: 0;
 }
 
 .execution-workbench .execution-message-image {

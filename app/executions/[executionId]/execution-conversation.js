@@ -202,8 +202,8 @@ export default function ExecutionConversation({ executionId, status, messages, e
       const attachmentOnly = hasAttachments && !message.content?.trim();
       return <article className={`execution-message ${message.role.toLowerCase()}${message.role === "USER" && !message.authorId ? " automatic" : ""}${hasAttachments ? " has-attachments" : ""}${attachmentOnly ? " attachment-only" : ""}`} key={message.id}>
         <header><strong>{messageAuthor(message)}</strong><time>{new Date(message.createdAt).toLocaleString("pt-BR")}</time></header>
-        {!attachmentOnly && <p>{message.content}</p>}
         {hasAttachments && <div className="execution-message-attachments">{message.attachments.map((attachment) => <StoredAttachment attachment={attachment} key={attachment.id} />)}</div>}
+        {!attachmentOnly && <p>{message.content}</p>}
       </article>;
     })}{!messages.length && <div className="list-empty">{conversationReady ? "O histórico dos seus ajustes aparecerá aqui." : "A conversa ficará disponível assim que a primeira implementação e o ambiente terminarem."}</div>}</div>
     {processing && <div className="execution-chat-processing"><LoaderCircle className="spin" size={16} /><span><strong>{conversationReady ? "A IA está aplicando seu ajuste" : "A IA está trabalhando na implementação"}</strong><small>Acompanhe as etapas ao lado. A tela atualiza automaticamente.</small></span></div>}
