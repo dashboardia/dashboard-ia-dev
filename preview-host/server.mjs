@@ -477,6 +477,21 @@ async function recoverInterruptedBuilds() {
   }));
 }
 
+async function reconnectReadyPreviewNetworks() {
+  const files = await readdir(stateDirectory).catch(() => []);
+  const now = Date.now();
+  await Promise.all(files.filter((file) => file.endsWith(".json")).map(async (file) => {
+    const id = file.slice(0, -5);
+    const state = await readState(id).catch(() => null);
+    if (!state || state.status !== "READY" || new Date(state.expiresAt).getTime() <= now) return;
+    const runtime = await docker(["inspect", "--format", "{{.State.Status}}", previewContainerName(id)]).catch(() => null);
+    if (runtime?.stdout.trim() !== "running") return;
+    await docker(["network", "connect", previewNetworkName(id), hostContainerName]).catch((error) => {
+      if (!/already exists|endpoint with name/i.test(dockerErrorText(error))) console.error(error);
+    });
+  }));
+}
+
 async function handleApi(request, response, url) {
   if (!authorized(request)) return sendJson(response, 401, { error: "Não autorizado" });
   const match = url.pathname.match(/^\/v1\/previews\/([a-zA-Z0-9_-]+)$/);
@@ -630,6 +645,7 @@ await mkdir(stateDirectory, { recursive: true });
 await mkdir(workDirectory, { recursive: true });
 await recoverInterruptedBuilds();
 await cleanupExpired();
+await reconnectReadyPreviewNetworks();
 const cleanupTimer = setInterval(() => cleanupExpired().catch(console.error), 30_000);
 cleanupTimer.unref();
 server.listen(port, "0.0.0.0", () => console.log(`[preview-host] ouvindo na porta ${port}`));
