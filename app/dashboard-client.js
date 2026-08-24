@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 import AppShell from "../components/app-shell";
 import styles from "./dashboard-client.module.css";
@@ -54,6 +55,7 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
   const processing = activeWork.filter((item) => !attentionWork(item));
   const focusItems = [...waiting, ...processing].slice(0, 4);
   const baseHref = (href) => setupMode ? "/login" : href;
+  const [activityTab, setActivityTab] = useState("demands");
 
   return (
     <AppShell user={user} setupMode={setupMode}>
@@ -105,37 +107,30 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
           </section>
         </div>
 
-        <section className={styles.summaryGrid}>
-          <Summary icon={Clock3} label="Aguardando você" value={String(waiting.length)} note={waiting.length ? "Abra uma execução e continue no chat" : "Nada pendente"} tone="attention" />
-          <Summary icon={Activity} label="Em processamento" value={String(processing.length)} note={processing.length ? "Atualização automática em tempo real" : "Fila livre"} tone="running" />
-          <Summary icon={Boxes} label="Projetos conectados" value={String(dashboard.metrics.projects)} note="Repositórios disponíveis" tone="neutral" />
-          <Summary icon={HeartPulse} label="Saúde das aplicações" value={dashboard.metrics.availability} note={dashboard.health.attention ? `${dashboard.health.attention} requer atenção` : "Operação estável"} tone={dashboard.health.attention ? "attention" : "healthy"} />
+        <section className={styles.signalBar} aria-label="Resumo da operação">
+          <Summary icon={Clock3} label="Aguardando você" value={String(waiting.length)} tone="attention" />
+          <Summary icon={Activity} label="Em processamento" value={String(processing.length)} tone="running" />
+          <Summary icon={Boxes} label="Projetos" value={String(dashboard.metrics.projects)} tone="neutral" />
+          <Summary icon={HeartPulse} label="Disponibilidade" value={dashboard.metrics.availability} tone={dashboard.health.attention ? "attention" : "healthy"} />
         </section>
 
-        <div className={styles.lowerGrid}>
-          <section className={styles.panel}>
-            <PanelHeader title="Projetos recentes" subtitle="Entre no projeto para criar demandas e acompanhar o trabalho." href={baseHref("/projects")} action="Ver projetos" />
-            <div className={styles.simpleList}>
-              {dashboard.projects.slice(0, 4).map((project) => <ProjectRow project={project} setupMode={setupMode} key={project.id} />)}
-              {!dashboard.projects.length && <EmptyState title="Nenhum projeto conectado" text="Conecte um repositório para começar." />}
+        <section className={styles.activityHub}>
+          <header className={styles.activityHeader}>
+            <div><small>CONTINUIDADE</small><h2>Retome de onde parou</h2><p>Somente os itens recentes da categoria selecionada.</p></div>
+            <div className={styles.activityTabs} role="tablist" aria-label="Atividade recente">
+              <button type="button" role="tab" aria-selected={activityTab === "demands"} onClick={() => setActivityTab("demands")}><ListChecks size={14} />Demandas</button>
+              <button type="button" role="tab" aria-selected={activityTab === "projects"} onClick={() => setActivityTab("projects")}><Boxes size={14} />Projetos</button>
             </div>
-            <Link className={styles.secondaryCta} href={baseHref("/projects/new")}><Plus size={15} />Conectar novo projeto</Link>
-          </section>
-
-          <section className={styles.panel}>
-            <PanelHeader title="Demandas recentes" subtitle="Retome rapidamente algo que você abriu nos últimos dias." href={baseHref("/demands")} action="Ver demandas" />
-            <div className={styles.simpleList}>
-              {dashboard.demands.slice(0, 4).map((demand) => <DemandRow demand={demand} setupMode={setupMode} key={demand.id} />)}
-              {!dashboard.demands.length && <EmptyState title="Nenhuma demanda criada" text="Crie a primeira demanda para um projeto conectado." />}
-            </div>
-          </section>
-        </div>
-
-        <section className={styles.healthStrip}>
-          <span className={styles.healthIcon}><HeartPulse size={18} /></span>
-          <div><strong>{dashboard.health.title}</strong><small>{dashboard.health.subtitle}</small></div>
-          <span className={styles.healthNumbers}>{dashboard.health.availability}<small>{dashboard.health.healthy} saudáveis · {dashboard.health.attention} com atenção</small></span>
-          <Link href={baseHref("/health")}>Abrir monitor <ArrowRight size={14} /></Link>
+          </header>
+          <div className={styles.activityContent} role="tabpanel">
+            {activityTab === "demands" ? <>
+              <div className={styles.simpleList}>{dashboard.demands.slice(0, 4).map((demand) => <DemandRow demand={demand} setupMode={setupMode} key={demand.id} />)}{!dashboard.demands.length && <EmptyState title="Nenhuma demanda criada" text="Crie a primeira demanda para começar." />}</div>
+              <Link className={styles.activityMore} href={baseHref("/demands")}>Ver todas as demandas <ArrowRight size={13} /></Link>
+            </> : <>
+              <div className={styles.simpleList}>{dashboard.projects.slice(0, 4).map((project) => <ProjectRow project={project} setupMode={setupMode} key={project.id} />)}{!dashboard.projects.length && <EmptyState title="Nenhum projeto conectado" text="Conecte um repositório para começar." />}</div>
+              <Link className={styles.activityMore} href={baseHref("/projects")}>Ver todos os projetos <ArrowRight size={13} /></Link>
+            </>}
+          </div>
         </section>
       </div>
     </AppShell>
@@ -160,12 +155,8 @@ function FlowStep({ icon: Icon, label, text, tone }) {
   return <article className={`${styles.flowStep} ${styles[tone] ?? ""}`}><span><Icon size={18} /></span><div><strong>{label}</strong><small>{text}</small></div><i aria-hidden="true" /></article>;
 }
 
-function Summary({ icon: Icon, label, value, note, tone }) {
-  return <article className={`${styles.summary} ${styles[tone] ?? ""}`}><span><Icon size={17} /></span><div><small>{label}</small><strong>{value}</strong><p>{note}</p></div></article>;
-}
-
-function PanelHeader({ title, subtitle, href, action }) {
-  return <header className={styles.panelHeader}><div><h2>{title}</h2><p>{subtitle}</p></div><Link href={href}>{action} <ArrowRight size={13} /></Link></header>;
+function Summary({ icon: Icon, label, value, tone }) {
+  return <article className={`${styles.summary} ${styles[tone] ?? ""}`}><span><Icon size={16} /></span><div><small>{label}</small><strong>{value}</strong></div></article>;
 }
 
 function ProjectRow({ project, setupMode }) {

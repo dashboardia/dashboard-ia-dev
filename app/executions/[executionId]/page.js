@@ -131,6 +131,9 @@ export default async function ExecutionPage({ params }) {
           {showConversation && <ExecutionConversation executionId={execution.id} status={execution.status} messages={conversationMessages} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} conversationReady={conversationReady} creditBlocked={creditBlocked} />}
         </div>
 
+        <details className="form-card detail-card full-card execution-detail-disclosure">
+          <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Resultado e detalhes da execução</strong><small>Resumo, referências Git, créditos e informações administrativas</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+          <div className="execution-detail-disclosure-content">
         <div className="execution-review-grid">
           <section className="form-card detail-card execution-summary-card">
             <div className="card-heading"><div><h2>Resultado</h2><p>Resumo produzido pelo agente</p></div><Code2 size={20} /></div>
@@ -159,6 +162,8 @@ export default async function ExecutionPage({ params }) {
         </section>}
 
         {execution.creditReservation && <section className="form-card detail-card full-card execution-credit-card"><div className="card-heading"><div><h2>Estimativa de créditos</h2><p>A reserva não é uma cobrança: ela protege um limite aproximado enquanto o trabalho é executado.</p></div><Coins size={20} /></div><div className="financial-summary-grid"><span><small>Limite protegido</small><strong>Até {execution.creditReservation.reservedCredits}</strong></span><span><small>Uso real</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em cálculo" : execution.creditReservation.consumedCredits}</strong></span><span><small>Saldo liberado</small><strong>{execution.creditReservation.status === "RESERVED" ? "Após concluir" : Math.max(0, execution.creditReservation.reservedCredits - execution.creditReservation.consumedCredits)}</strong></span><span><small>Situação</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em execução" : execution.creditReservation.status === "SETTLED" ? "Consumo calculado" : "Reserva liberada"}</strong></span></div><p className="execution-credit-explanation">{creditEstimateExplanation(execution.creditReservation)} Ao concluir, somente o uso real é cobrado e todo o restante fica disponível novamente.</p></section>}
+          </div>
+        </details>
 
         {execution.demand.type === "DOCUMENTATION" && execution.summary && <section className="form-card detail-card full-card documentation-download-card">
           <div className="card-heading"><div><h2>Documentação de negócio</h2><p>Arquivos formatados para compartilhar, apresentar ou arquivar.</p></div><FileText size={20} /></div>

@@ -47,13 +47,16 @@ export default async function DemandsPage({ searchParams }) {
     <AppShell user={user}>
       <div className="section-page">
         <SectionHeader eyebrow="TRABALHO" title="Demandas" description="Solicitações estruturadas, execuções e histórico de alterações." action={<Link className="primary" href="/demands/new"><Plus size={18} />Nova demanda</Link>} />
-        <form className="list-filters" method="get">
+        <details className="filter-disclosure" open={Boolean(query || projectId || status)}>
+          <summary><Search size={15} /><span><strong>Buscar e filtrar</strong><small>{query || projectId || status ? "Filtros ativos" : "Encontre uma demanda específica"}</small></span></summary>
+          <form className="list-filters" method="get">
           <label className="filter-search"><span>Buscar</span><div><Search size={15} /><input name="q" defaultValue={query} placeholder="Título ou descrição" /></div></label>
           <label><span>Projeto</span><select name="projectId" defaultValue={projectId}><option value="">Todos</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></label>
           <label><span>Status</span><select name="status" defaultValue={status}><option value="">Todos</option>{Object.entries(statusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
           <button type="submit">Filtrar</button>
           {(query || projectId || status) && <Link href="/demands">Limpar</Link>}
-        </form>
+          </form>
+        </details>
         <section className="form-card table-card">
           <div className="data-table demand-table">
             <div className="data-head"><span>Demanda</span><span>Projeto</span><span>Tipo</span><span>Status</span><span>Execuções</span></div>
