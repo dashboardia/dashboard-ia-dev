@@ -67,8 +67,8 @@ export function previewUpstreamHeaders(headers = {}, port) {
 
   // O domínio público identifica o container apenas no gateway. Frameworks de
   // desenvolvimento costumam rejeitar hosts externos por padrão (Rails,
-  // Sinatra/Rack, Vite e Webpack). Encaminhar `localhost` remove esse bloqueio
-  // sem desativar o isolamento do preview ou expor a API de controle.
+  // Sinatra/Rack, Vite e Webpack). Encaminhar o endereço loopback numérico
+  // evita resolução ambígua de localhost e mantém o isolamento do preview.
   delete upstreamHeaders.host;
   delete upstreamHeaders.forwarded;
   delete upstreamHeaders["x-forwarded-host"];
@@ -80,7 +80,7 @@ export function previewUpstreamHeaders(headers = {}, port) {
     ...(originalHost ? { "x-dashboardia-public-host": originalHost } : {}),
     "x-forwarded-proto": publicProto,
     "x-forwarded-port": publicProto === "https" ? "443" : "80",
-    host: `localhost:${port}`,
+    host: `127.0.0.1:${port}`,
   };
 }
 

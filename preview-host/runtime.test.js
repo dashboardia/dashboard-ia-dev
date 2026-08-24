@@ -261,7 +261,7 @@ test("não considera 404 como preview pronto", () => {
   assert.equal(isPreviewReadyStatus(500), false);
 });
 
-test("usa localhost no upstream e remove hosts encaminhados que frameworks bloqueariam", () => {
+test("usa o loopback numérico no upstream e remove hosts encaminhados que frameworks bloqueariam", () => {
   const result = previewUpstreamHeaders({
     host: "cmt123.preview.dashboardia.app",
     accept: "text/html",
@@ -270,7 +270,7 @@ test("usa localhost no upstream e remove hosts encaminhados que frameworks bloqu
     "x-original-host": "cmt123.preview.dashboardia.app",
   }, 5173);
 
-  assert.equal(result.host, "localhost:5173");
+  assert.equal(result.host, "127.0.0.1:5173");
   assert.equal(result.accept, "text/html");
   assert.equal(result["x-dashboardia-public-host"], "cmt123.preview.dashboardia.app");
   assert.equal(result["x-forwarded-proto"], "https");
@@ -298,9 +298,9 @@ test("troca servidores locais do OpenAPI pelo domínio público do ambiente", ()
   assert.deepEqual(result.paths, { "/addresses": {} });
 });
 
-test("sonda uma rota do preview com localhost aceito pelos servidores de desenvolvimento", async () => {
+test("sonda uma rota do preview com o loopback aceito pelos servidores de desenvolvimento", async () => {
   const server = http.createServer((request, response) => {
-    const expectedHost = `localhost:${server.address().port}`;
+    const expectedHost = `127.0.0.1:${server.address().port}`;
     response.writeHead(request.headers.host === expectedHost && request.url === "/index.html" ? 204 : 403).end();
   });
   await new Promise((resolve) => server.listen(0, "localhost", resolve));
@@ -312,9 +312,9 @@ test("sonda uma rota do preview com localhost aceito pelos servidores de desenvo
   }
 });
 
-test("mantém a autoridade local em todas as rotas internas do preview", async () => {
+test("mantém a autoridade loopback em todas as rotas internas do preview", async () => {
   const server = http.createServer((request, response) => {
-    const expectedHost = `localhost:${server.address().port}`;
+    const expectedHost = `127.0.0.1:${server.address().port}`;
     const navigableRoute = ["/projects", "/projects/new"].includes(request.url);
     response.writeHead(request.headers.host === expectedHost && navigableRoute ? 200 : 403).end();
   });
