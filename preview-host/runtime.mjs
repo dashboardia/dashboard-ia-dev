@@ -65,11 +65,10 @@ export function previewUpstreamHeaders(headers = {}, port) {
   const publicProto = ["http", "https"].includes(forwardedProto) ? forwardedProto : "https";
   const upstreamHeaders = { ...headers };
 
-  // Frameworks como Rails validam tanto Host quanto X-Forwarded-Host. O host
-  // público do preview é usado apenas pelo controlador para localizar o
-  // container e não deve chegar à aplicação como autoridade HTTP. O container
-  // recebe um host local seguro, enquanto protocolo/porta continuam disponíveis
-  // para frameworks que precisam saber que o acesso externo usa HTTPS.
+  // O domínio público identifica o container apenas no gateway. Frameworks de
+  // desenvolvimento costumam rejeitar hosts externos por padrão (Rails,
+  // Sinatra/Rack, Vite e Webpack). Encaminhar `localhost` remove esse bloqueio
+  // sem desativar o isolamento do preview ou expor a API de controle.
   delete upstreamHeaders.host;
   delete upstreamHeaders.forwarded;
   delete upstreamHeaders["x-forwarded-host"];
@@ -81,7 +80,7 @@ export function previewUpstreamHeaders(headers = {}, port) {
     ...(originalHost ? { "x-dashboardia-public-host": originalHost } : {}),
     "x-forwarded-proto": publicProto,
     "x-forwarded-port": publicProto === "https" ? "443" : "80",
-    host: `127.0.0.1:${port}`,
+    host: `localhost:${port}`,
   };
 }
 

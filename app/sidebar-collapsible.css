@@ -6,6 +6,7 @@
     transition: width .18s ease, padding .18s ease, box-shadow .18s ease;
   }
 
+  .sidebar:hover,
   .sidebar.pinned {
     width: 248px;
     padding: 23px 16px 18px;
@@ -30,6 +31,7 @@
     white-space: nowrap;
   }
 
+  .sidebar:hover .brand,
   .sidebar.pinned .brand {
     justify-content: flex-start;
     padding: 0 8px 16px;
@@ -57,19 +59,19 @@
     color: #fff;
   }
 
-  .sidebar:not(.pinned) .sidebar-pin span,
-  .sidebar:not(.pinned) .brand > span:last-child,
-  .sidebar:not(.pinned) .workspace-label,
-  .sidebar:not(.pinned) .workspace > span:nth-child(2),
-  .sidebar:not(.pinned) .workspace > svg,
-  .sidebar:not(.pinned) nav a > span,
-  .sidebar:not(.pinned) .sidebar-bottom > a > span,
-  .sidebar:not(.pinned) .user > span:nth-child(2),
-  .sidebar:not(.pinned) .signout {
+  .sidebar:not(:hover):not(.pinned) .sidebar-pin span,
+  .sidebar:not(:hover):not(.pinned) .brand > span:last-child,
+  .sidebar:not(:hover):not(.pinned) .workspace-label,
+  .sidebar:not(:hover):not(.pinned) .workspace > span:nth-child(2),
+  .sidebar:not(:hover):not(.pinned) .workspace > svg,
+  .sidebar:not(:hover):not(.pinned) nav a > span,
+  .sidebar:not(:hover):not(.pinned) .sidebar-bottom > a > span,
+  .sidebar:not(:hover):not(.pinned) .user > span:nth-child(2),
+  .sidebar:not(:hover):not(.pinned) .signout {
     display: none;
   }
 
-  .sidebar:not(.pinned) .workspace {
+  .sidebar:not(:hover):not(.pinned) .workspace {
     width: 44px;
     min-height: 44px;
     margin-inline: auto;
@@ -77,29 +79,29 @@
     justify-content: center;
   }
 
-  .sidebar:not(.pinned) nav {
+  .sidebar:not(:hover):not(.pinned) nav {
     align-items: center;
   }
 
-  .sidebar:not(.pinned) nav a,
-  .sidebar:not(.pinned) .sidebar-bottom > a {
+  .sidebar:not(:hover):not(.pinned) nav a,
+  .sidebar:not(:hover):not(.pinned) .sidebar-bottom > a {
     width: 44px;
     padding: 0;
     justify-content: center;
   }
 
-  .sidebar:not(.pinned) .sidebar-bottom {
+  .sidebar:not(:hover):not(.pinned) .sidebar-bottom {
     align-items: center;
   }
 
-  .sidebar:not(.pinned) .user {
+  .sidebar:not(:hover):not(.pinned) .user {
     width: 44px;
     margin-inline: auto;
     padding: 14px 0 0;
     justify-content: center;
   }
 
-  .sidebar:not(.pinned) .user-avatar {
+  .sidebar:not(:hover):not(.pinned) .user-avatar {
     width: 30px;
     height: 30px;
   }
