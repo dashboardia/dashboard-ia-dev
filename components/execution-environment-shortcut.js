@@ -1,7 +1,7 @@
 "use client";
 
-import { CircleAlert, ExternalLink, LoaderCircle, PauseCircle, PlayCircle, ServerCog, Sparkles, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { CircleAlert, ExternalLink, LoaderCircle, PauseCircle, PlayCircle, RefreshCw, ServerCog, Sparkles, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "./execution-environment-shortcut.module.css";
 
@@ -31,7 +31,7 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
   const [actionLoading, setActionLoading] = useState("");
   const [actionError, setActionError] = useState("");
 
-  async function loadState(signal) {
+  const loadState = useCallback(async (signal) => {
     if (!executionId) return;
     try {
       const [shortcutResponse, controlResponse] = await Promise.all([
@@ -50,24 +50,26 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
         setControl(null);
       }
     }
-  }
+  }, [executionId]);
 
   useEffect(() => {
-    if (!executionId) {
+    if (!executionId) return undefined;
+    const controller = new AbortController();
+    let timer = null;
+    const frame = window.requestAnimationFrame(() => {
       setShortcut(null);
       setControl(null);
-      return undefined;
-    }
-    const controller = new AbortController();
-    loadState(controller.signal);
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") loadState(controller.signal);
-    }, 3_000);
+      loadState(controller.signal);
+      timer = window.setInterval(() => {
+        if (document.visibilityState === "visible") loadState(controller.signal);
+      }, 3_000);
+    });
     return () => {
       controller.abort();
-      window.clearInterval(timer);
+      window.cancelAnimationFrame(frame);
+      if (timer !== null) window.clearInterval(timer);
     };
-  }, [executionId]);
+  }, [executionId, loadState]);
 
   useEffect(() => {
     if (!control?.displayStatus) return;
@@ -88,12 +90,18 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
     setActionLoading(kind);
     setActionError("");
     try {
-      const endpoint = kind === "pause" ? "stop" : kind === "resume" ? "resume" : "cancel";
+      const endpoint = kind === "pause"
+        ? "stop"
+        : kind === "resume"
+          ? "resume"
+          : kind === "restart"
+            ? "restart-environment"
+            : "cancel";
       const response = await fetch(`/api/executions/${encodeURIComponent(executionId)}/${endpoint}`, { method: "POST" });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir a operação");
       await loadState();
-      window.location.reload();
+      if (kind !== "restart") window.location.reload();
     } catch (error) {
       setActionError(error.message);
     } finally {
@@ -103,7 +111,7 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
 
   if (!executionId) return null;
   const view = presentation(shortcut, control);
-  const shouldRenderControls = Boolean(control?.canPause || control?.canResume || control?.canCancel);
+  const shouldRenderControls = Boolean(control?.canPause || control?.canResume || control?.canRestartEnvironment || control?.canCancel);
   if (!view && !shouldRenderControls) return null;
   const Icon = view?.icon ?? ServerCog;
   const tone = view?.tone ?? "processing";
@@ -118,6 +126,7 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
       </div>
       <div className={styles.actions}>
         {shortcut?.state === "READY" && shortcut.url && <a className={styles.action} href={shortcut.url} target="_blank" rel="noreferrer">Abrir<ExternalLink size={12} /></a>}
+        {control?.canRestartEnvironment && <button className={styles.action} type="button" disabled={Boolean(actionLoading)} onClick={() => runAction("restart")}>{actionLoading === "restart" ? <LoaderCircle className={styles.spin} size={12} /> : <RefreshCw size={12} />}Subir ambiente novamente</button>}
         {control?.canPause && <button className={styles.secondary} type="button" disabled={Boolean(actionLoading)} onClick={() => runAction("pause")}>{actionLoading === "pause" ? <LoaderCircle className={styles.spin} size={12} /> : <PauseCircle size={12} />}Parar</button>}
         {control?.canResume && <button className={styles.action} type="button" disabled={Boolean(actionLoading)} onClick={() => runAction("resume")}>{actionLoading === "resume" ? <LoaderCircle className={styles.spin} size={12} /> : <PlayCircle size={12} />}Reexecutar</button>}
         {control?.canCancel && <button className={styles.danger} type="button" disabled={Boolean(actionLoading)} onClick={() => runAction("cancel")}>{actionLoading === "cancel" ? <LoaderCircle className={styles.spin} size={12} /> : <XCircle size={12} />}Cancelar</button>}

@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { lstat } from "node:fs/promises";
+import { copyFile, lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -85,6 +85,32 @@ async function assertNoSymlinkEscape(workspace, relativePath = ".") {
     const information = await lstat(current);
     if (information.isSymbolicLink()) throw new ReadCommandBlockedError(`Link simbólico não permitido: ${relativePath}`);
   }
+}
+
+async function resolveSafeImportTarget(workspace, relativePath) {
+  const normalized = String(relativePath ?? "").replaceAll("\\", "/");
+  assertSafeRepositoryValue(normalized);
+  if (normalized === "." || normalized.endsWith("/")) {
+    throw new ReadCommandBlockedError("Informe o caminho completo do arquivo de destino");
+  }
+
+  const resolved = path.resolve(workspace, normalized);
+  const segments = normalized.split("/").filter((value) => value && value !== ".");
+  let current = path.resolve(workspace);
+  for (const [index, segment] of segments.entries()) {
+    current = path.join(current, segment);
+    try {
+      const information = await lstat(current);
+      if (information.isSymbolicLink()) throw new ReadCommandBlockedError(`Link simbólico não permitido: ${relativePath}`);
+      if (index < segments.length - 1 && !information.isDirectory()) {
+        throw new ReadCommandBlockedError(`Destino inválido: ${relativePath}`);
+      }
+    } catch (error) {
+      if (error?.code === "ENOENT") break;
+      throw error;
+    }
+  }
+  return resolved;
 }
 
 function validateLs(args) {
@@ -289,8 +315,26 @@ function executableFor(tokens) {
 }
 
 export class RepositoryReadShell {
-  constructor(workspace) {
+  constructor(workspace, { attachments = [] } = {}) {
     this.workspace = path.resolve(workspace);
+    this.attachments = new Map(attachments.map((attachment) => [attachment.id, attachment]));
+  }
+
+  async importAttachment(tokens) {
+    if (tokens.length !== 3) {
+      throw new ReadCommandBlockedError("Use: dashboardia-import-attachment <identificador> <caminho-relativo-de-destino>");
+    }
+    const [, attachmentId, relativeTarget] = tokens;
+    const attachment = this.attachments.get(attachmentId);
+    if (!attachment) throw new ReadCommandBlockedError(`Anexo não autorizado: ${attachmentId}`);
+    const sourceInformation = await lstat(attachment.sourcePath);
+    if (!sourceInformation.isFile() || sourceInformation.isSymbolicLink()) {
+      throw new ReadCommandBlockedError(`Anexo indisponível: ${attachmentId}`);
+    }
+    const target = await resolveSafeImportTarget(this.workspace, relativeTarget);
+    await mkdir(path.dirname(target), { recursive: true });
+    await copyFile(attachment.sourcePath, target);
+    return `Anexo ${attachment.name} importado para ${relativeTarget}\n`;
   }
 
   async run(action) {
@@ -300,7 +344,13 @@ export class RepositoryReadShell {
 
     for (const rawCommand of action.commands) {
       try {
-        const executable = executableFor(tokenizeRepositoryReadCommand(rawCommand));
+        const tokens = tokenizeRepositoryReadCommand(rawCommand);
+        if (tokens[0] === "dashboardia-import-attachment") {
+          const stdout = await this.importAttachment(tokens);
+          output.push({ stdout, stderr: "", outcome: { type: "exit", exitCode: 0 } });
+          continue;
+        }
+        const executable = executableFor(tokens);
         if (executable.internal === "pwd") {
           output.push({ stdout: `${this.workspace}\n`, stderr: "", outcome: { type: "exit", exitCode: 0 } });
           continue;

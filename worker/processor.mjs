@@ -3,7 +3,6 @@ import { mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { attachmentInputItem } from "../lib/attachment-input.js";
 import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
 import { createGitHubPullRequest, findOpenGitHubPullRequest, getProjectGitHubAccessToken } from "../lib/github.js";
@@ -319,7 +318,11 @@ export async function processExecution(executionId, workerId) {
       ? await Promise.all(latestUserMessage.attachments.map(async (attachment) => {
           const object = await getPrivateObject(attachment.storageKey);
           const data = await object.Body.transformToByteArray();
-          return attachmentInputItem({ name: attachment.name, mimeType: attachment.mimeType, data });
+          return {
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            dataBase64: Buffer.from(data).toString("base64"),
+          };
         }))
       : [];
     const agentPrompt = isFollowUp

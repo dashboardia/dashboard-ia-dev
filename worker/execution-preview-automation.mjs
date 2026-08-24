@@ -246,11 +246,15 @@ export async function requestExecutionPreviewAutomation(executionId, database = 
     where: { id: executionId },
     include: { demand: { include: { project: true } } },
   });
+  const manualRestart = Boolean(options.manualRestart);
+  const allowedStatus = manualRestart
+    ? ["AWAITING_CLIENT", "STOPPED"].includes(execution?.status)
+    : execution?.status === "AWAITING_CLIENT";
   if (!execution
-    || execution.status !== "AWAITING_CLIENT"
+    || !allowedStatus
     || execution.closedAt
     || execution.cancelRequestedAt
-    || execution.stopRequestedAt
+    || (!manualRestart && execution.stopRequestedAt)
     || execution.demand.type === "DOCUMENTATION"
     || !execution.branchName
     || !execution.headSha) {
@@ -320,10 +324,14 @@ export async function requestExecutionPreviewAutomation(executionId, database = 
         port: configuration.previewPort,
       },
     });
-    await executionLog(database, execution.id, options.infrastructureRetry
-      ? "Retentativa interna do ambiente navegável iniciada sem acionar a IA."
-      : "Ambiente navegável iniciado automaticamente para esta execução.", "info", {
-      automatic: true,
+    await executionLog(database, execution.id, manualRestart
+      ? "Ambiente navegável solicitado novamente pelo cliente diretamente da branch, sem acionar a IA."
+      : options.infrastructureRetry
+        ? "Retentativa interna do ambiente navegável iniciada sem acionar a IA."
+        : "Ambiente navegável iniciado automaticamente para esta execução.", "info", {
+      automatic: !manualRestart,
+      manualRestart,
+      aiInvoked: false,
       infrastructureRetry: Boolean(options.infrastructureRetry),
       previewEnvironmentId: environment.id,
       branchName: execution.branchName,
@@ -362,10 +370,9 @@ export async function syncExecutionPreviewAutomations(database = db, options = {
     where: {
       status: { in: WATCHED_PREVIEW_STATUSES },
       execution: {
-        status: "AWAITING_CLIENT",
+        status: { in: ["AWAITING_CLIENT", "STOPPED"] },
         closedAt: null,
         cancelRequestedAt: null,
-        stopRequestedAt: null,
         demand: { type: { not: "DOCUMENTATION" } },
       },
     },

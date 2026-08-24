@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, CircleDotDashed, CircleX, ExternalLink, ServerCog, Wrench } from "lucide-react";
+import { CheckCircle2, CircleAlert, CircleDotDashed, CircleX, ExternalLink, ServerCog, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import styles from "./execution-environment-activity.module.css";
@@ -12,7 +12,7 @@ const stateLabel = {
   REPAIRING: "IA corrigindo o ambiente",
   READY: "Ambiente pronto",
   FAILED: "Ambiente com falha",
-  EXPIRED: "Ambiente expirado",
+  EXPIRED: "Ambiente encerrado",
 };
 
 function genericActivity(state) {
@@ -23,12 +23,18 @@ function genericActivity(state) {
     REPAIRING: "A falha foi enviada automaticamente para a IA e a mesma execução está sendo corrigida.",
     READY: "O ambiente está pronto para navegação.",
     FAILED: "A publicação não pôde ser concluída automaticamente.",
-    EXPIRED: "O ambiente temporário expirou.",
+    EXPIRED: "O ambiente temporário foi encerrado.",
   };
-  return [{ key: state, message: messages[state] ?? "Atualizando ambiente.", status: state === "FAILED" ? "FAILED" : state === "READY" ? "COMPLETED" : "RUNNING" }];
+  return [{
+    key: state,
+    message: messages[state] ?? "Atualizando ambiente.",
+    status: state === "FAILED" ? "FAILED" : ["READY", "EXPIRED"].includes(state) ? "COMPLETED" : "RUNNING",
+    terminal: state === "EXPIRED",
+  }];
 }
 
-function StepIcon({ status }) {
+function StepIcon({ status, terminal }) {
+  if (terminal) return <CircleAlert size={14} />;
   if (status === "FAILED") return <CircleX size={14} />;
   if (status === "COMPLETED") return <CheckCircle2 size={14} />;
   return <CircleDotDashed className="spin-slow" size={14} />;
@@ -39,6 +45,7 @@ function stateBadge(state) {
   if (state === "WAITING_IMPLEMENTATION") return "AGUARDANDO IA";
   if (state === "REPAIRING") return "CORRIGINDO";
   if (state === "FAILED") return "FALHOU";
+  if (state === "EXPIRED") return "ENCERRADO";
   return "AUTOMÁTICO";
 }
 
@@ -76,7 +83,7 @@ export default function ExecutionEnvironmentActivity({ executionId }) {
     </header>
     <ol className={styles.timeline}>
       {latest.map((item) => <li className={item.status === "FAILED" ? styles.failed : item.status === "COMPLETED" ? styles.completed : styles.running} key={`${item.key}-${item.at ?? ""}`}>
-        <StepIcon status={item.status} />
+        <StepIcon status={item.status} terminal={item.terminal} />
         <span><strong>{item.message}</strong>{item.at && <small>{new Date(item.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</small>}</span>
       </li>)}
     </ol>
@@ -84,5 +91,6 @@ export default function ExecutionEnvironmentActivity({ executionId }) {
     {data.state === "WAITING_IMPLEMENTATION" && <p className={styles.note}>A versão anterior não representa mais o último pedido. Aguarde a IA concluir: o Dashboard IA publicará e validará novamente o ambiente automaticamente.</p>}
     {data.state === "REPAIRING" && <p className={styles.note}>Você não precisa fazer nada agora. O erro do ambiente já foi enviado para a IA nesta mesma execução.</p>}
     {data.state === "FAILED" && <p className={styles.note}>A correção automática não conseguiu concluir a publicação. Os detalhes permanecem disponíveis no histórico da execução.</p>}
+    {data.state === "EXPIRED" && <p className={styles.note}>O ambiente foi encerrado, mas o chat, a branch e todo o histórico continuam disponíveis.</p>}
   </section>;
 }

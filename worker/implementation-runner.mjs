@@ -1,10 +1,12 @@
 import { Agent, applyPatchTool, run, shellTool } from "@openai/agents";
 import OpenAI from "openai";
 
+import { attachmentInputItem } from "../lib/attachment-input.js";
 import { calculateLiveUsageCredits } from "../lib/financial-shadow.js";
 import { RepositoryReadShell } from "./repository-read-shell.mjs";
 import { WorkspaceEditor } from "./sandbox.mjs";
 import { continuationPrompt, isAgentTurnLimitError, maxTurnSegmentsForPolicy } from "./agent-turn-continuation.mjs";
+import { prepareWorkspaceAttachments, workspaceAttachmentInstructions } from "./workspace-attachments.mjs";
 
 let controller;
 let running = false;
@@ -97,10 +99,20 @@ process.on("message", async (message) => {
 
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let preparedWorkspaceAttachments = null;
 
   try {
+    const rawAttachments = Array.isArray(message.attachments) ? message.attachments : [];
+    preparedWorkspaceAttachments = await prepareWorkspaceAttachments(rawAttachments);
+    const agentAttachments = rawAttachments.map((attachment) => attachmentInputItem({
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      data: Buffer.from(attachment.dataBase64, "base64"),
+    }));
     const editor = new WorkspaceEditor(message.projectDirectory);
-    const readOnlyShell = new RepositoryReadShell(message.projectDirectory);
+    const readOnlyShell = new RepositoryReadShell(message.projectDirectory, {
+      attachments: preparedWorkspaceAttachments.items,
+    });
     const agent = new Agent({
       name: "Forgeboard Coding Agent",
       model: message.model,
@@ -117,7 +129,7 @@ process.on("message", async (message) => {
     });
 
     const groundedInput = await groundImageAttachments(
-      Array.isArray(message.attachments) ? message.attachments : [],
+      agentAttachments,
       message.model,
       controller.signal,
     );
@@ -143,13 +155,14 @@ process.on("message", async (message) => {
     const visualContext = groundedInput.visualContext
       ? `\n\n## Leitura visual dos anexos do cliente\n${groundedInput.visualContext}\n\nUse esta leitura como evidência da solicitação do cliente. Confirme no código o que precisa ser alterado antes de editar.`
       : "";
+    const attachmentContext = workspaceAttachmentInstructions(preparedWorkspaceAttachments.items);
 
     const maxSegments = maxTurnSegmentsForPolicy(message.policy);
     for (let segment = 1; segment <= maxSegments; segment += 1) {
       const basePrompt = segment === 1
         ? message.prompt
         : continuationPrompt(message.prompt, segment, maxSegments);
-      const prompt = `${basePrompt}${visualContext}`;
+      const prompt = `${basePrompt}${visualContext}${attachmentContext ? `\n\n${attachmentContext}` : ""}`;
       let result;
       let budgetExceeded = false;
       let usageRecorded = false;
@@ -186,6 +199,8 @@ process.on("message", async (message) => {
         usageRecorded = true;
 
         if (budgetExceeded) {
+          await preparedWorkspaceAttachments.cleanup().catch(() => null);
+          preparedWorkspaceAttachments = null;
           finish({
             type: "error",
             error: {
@@ -199,6 +214,8 @@ process.on("message", async (message) => {
           return;
         }
 
+        await preparedWorkspaceAttachments.cleanup().catch(() => null);
+        preparedWorkspaceAttachments = null;
         finish({
           type: "result",
           result: {
@@ -236,6 +253,7 @@ process.on("message", async (message) => {
       }
     }
   } catch (error) {
+    await preparedWorkspaceAttachments?.cleanup().catch(() => null);
     finish({
       type: "error",
       error: {

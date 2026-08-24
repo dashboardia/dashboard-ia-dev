@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -86,5 +86,45 @@ describe("repository read shell", () => {
     const result = await shell.run({ commands: ["git status --short", "git branch --show-current"] });
 
     expect(result.output.every((item) => item.outcome.exitCode === 0)).toBe(true);
+  });
+
+  it("importa somente anexos autorizados para um destino relativo seguro", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "dashboardia-reader-"));
+    const attachmentDirectory = await mkdtemp(path.join(os.tmpdir(), "dashboardia-attachment-"));
+    directories.push(workspace, attachmentDirectory);
+    const sourcePath = path.join(attachmentDirectory, "foto.png");
+    await writeFile(sourcePath, Buffer.from("imagem-real"));
+    const shell = new RepositoryReadShell(workspace, {
+      attachments: [{ id: "arquivo-1", name: "foto.png", sourcePath }],
+    });
+
+    const result = await shell.run({
+      commands: ['dashboardia-import-attachment arquivo-1 "public/images/foto.png"'],
+    });
+
+    expect(result.output[0].outcome.exitCode).toBe(0);
+    await expect(readFile(path.join(workspace, "public/images/foto.png"), "utf8")).resolves.toBe("imagem-real");
+  });
+
+  it("bloqueia anexos desconhecidos e destinos por link simbólico", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "dashboardia-reader-"));
+    const attachmentDirectory = await mkdtemp(path.join(os.tmpdir(), "dashboardia-attachment-"));
+    const outside = await mkdtemp(path.join(os.tmpdir(), "dashboardia-outside-"));
+    directories.push(workspace, attachmentDirectory, outside);
+    const sourcePath = path.join(attachmentDirectory, "foto.png");
+    await writeFile(sourcePath, Buffer.from("imagem-real"));
+    await symlink(outside, path.join(workspace, "escape"));
+    const shell = new RepositoryReadShell(workspace, {
+      attachments: [{ id: "arquivo-1", name: "foto.png", sourcePath }],
+    });
+
+    const result = await shell.run({
+      commands: [
+        "dashboardia-import-attachment arquivo-2 public/foto.png",
+        "dashboardia-import-attachment arquivo-1 escape/foto.png",
+      ],
+    });
+
+    expect(result.output.every((item) => item.outcome.exitCode === 126)).toBe(true);
   });
 });
