@@ -326,7 +326,7 @@ html[data-theme="gray"] :is(.metric,.panel,.resource-card,.form-card,.detail-car
 .execution-message-list,.support-message-list { background: color-mix(in srgb,var(--soft) 94%,transparent); }
 .execution-message,.support-message { border-color: color-mix(in srgb,var(--purple) 14%,var(--line)); background: color-mix(in srgb,#fff 84%,var(--soft)); }
 html[data-theme="dark"] :is(.execution-message,.support-message),html[data-theme="gray"] :is(.execution-message,.support-message) { background: #171b28; }
-.execution-message.user,.support-message.user { border-color: rgb(124 77 255 / 38%); background: linear-gradient(135deg,rgb(124 77 255 / 15%),rgb(66 107 255 / 9%)); }
+.execution-message.role-user,.support-message.user { border-color: rgb(124 77 255 / 38%); background: linear-gradient(135deg,rgb(124 77 255 / 15%),rgb(66 107 255 / 9%)); }
 
 .execution-message-image,.support-message-image {
   border-color: color-mix(in srgb,var(--purple) 24%,var(--line));
@@ -509,7 +509,7 @@ html[data-theme="dark"] .resource-card:nth-child(3n+1),html[data-theme="gray"] .
 .execution-workbench .execution-chat-header { min-height: 78px; padding: 16px 19px; }
 .execution-workbench .execution-message-list { padding: 20px; }
 .execution-workbench .execution-message { border-radius: 15px 15px 15px 5px; }
-.execution-workbench .execution-message.user { border-radius: 15px 15px 5px 15px; }
+.execution-workbench .execution-message.role-user { border-radius: 15px 15px 5px 15px; }
 .execution-workbench .execution-reply-form { padding: 17px 20px 20px; }
 .execution-workbench .execution-reply-form textarea { min-height: 112px; border-radius: 13px; }
 .execution-modern-reply { padding: 14px 16px 16px; border-top: 1px solid var(--line); background: color-mix(in srgb,var(--soft) 20%,transparent); }

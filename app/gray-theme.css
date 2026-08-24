@@ -125,8 +125,8 @@ html[data-theme="gray"] {
 [data-theme="gray"] .execution-screenshot small { color:#bbc0c9; }
 
 [data-theme="gray"] .execution-message { color:#eef0f3; background:#3a3f47; border-color:#555c66; }
-[data-theme="gray"] .execution-message.user { background:#463b5d; border-color:#6b578e; }
-[data-theme="gray"] .execution-message.system { background:#3e434c; }
+[data-theme="gray"] .execution-message.role-user { background:#463b5d; border-color:#6b578e; }
+[data-theme="gray"] .execution-message.role-system { background:#3e434c; }
 [data-theme="gray"] .execution-chat-processing { background:#343941; border-color:#4e5560; }
 [data-theme="gray"] .execution-reply-form textarea { color:#f3f4f6; background:#393e46; border-color:#565d68; caret-color:#b49aff; }
 [data-theme="gray"] .execution-reply-form textarea:focus { background:#40464f; border-color:#9b82ff; box-shadow:0 0 0 3px rgba(155,130,255,.16); }

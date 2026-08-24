@@ -1,13 +1,13 @@
-.execution-message.user.automatic {
+.execution-message.role-user.automatic {
   align-self: stretch;
   border: 1px solid color-mix(in srgb, var(--purple) 24%, var(--line));
   background: color-mix(in srgb, var(--purple) 7%, var(--soft));
 }
 
-.execution-message.user.automatic header strong {
+.execution-message.role-user.automatic header strong {
   color: var(--purple);
 }
 
-.execution-message.user.automatic p {
+.execution-message.role-user.automatic p {
   color: var(--ink);
 }
