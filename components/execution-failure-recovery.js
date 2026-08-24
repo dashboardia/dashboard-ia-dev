@@ -65,14 +65,14 @@ export default function ExecutionFailureRecovery({ pathname }) {
     }
   }
 
-  async function submit(event) {
-    event.preventDefault();
-    if (!executionId || !content.trim()) return;
+  async function sendRecoveryMessage(message) {
+    const normalizedMessage = String(message ?? "").trim();
+    if (!executionId || !normalizedMessage) return;
     setLoading(true);
     setError("");
     try {
       const formData = new FormData();
-      formData.set("content", content.trim());
+      formData.set("content", normalizedMessage);
       const response = await fetch(`/api/executions/${encodeURIComponent(executionId)}/messages`, { method: "POST", body: formData });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? "Não foi possível reprocessar a execução");
@@ -82,6 +82,11 @@ export default function ExecutionFailureRecovery({ pathname }) {
       setError(submitError.message);
       setLoading(false);
     }
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    await sendRecoveryMessage(content);
   }
 
   if (!executionId || !recovery) return null;
@@ -99,6 +104,26 @@ export default function ExecutionFailureRecovery({ pathname }) {
           ? <button type="button" disabled={loading} onClick={resumeAfterCredits}>{loading ? <LoaderCircle className="spin" size={16} /> : <PlayCircle size={16} />}{loading ? "Retomando..." : "Continuar esta demanda"}</button>
           : <Link href={recovery.billingUrl}><CreditCard size={16} />Adicionar créditos</Link>}
         <small>{recovery.canResume ? "Saldo identificado. Continue do ponto em que parou." : "Recarregue e retome esta mesma demanda."}</small>
+        {error && <small className={styles.error}>{error}</small>}
+      </div>
+    </aside>;
+  }
+
+  if (recovery.kind === "PREVIEW_REPAIR_CONSENT") {
+    return <aside className={`${styles.banner} ${styles.previewConsent}`} aria-live="polite">
+      <div className={styles.icon}><Sparkles size={20} /></div>
+      <div className={styles.copy}>
+        <strong>{recovery.title}</strong>
+        <span>{recovery.message}</span>
+        <small>{recovery.action} A branch, o Pull Request e todo o histórico estão preservados.</small>
+      </div>
+      <div className={styles.creditActions}>
+        {recovery.canContinue
+          ? <button type="button" disabled={loading} onClick={() => sendRecoveryMessage(recovery.continuationPrompt)}>{loading ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}{loading ? "Preparando nova tentativa..." : "Continuar tentando com IA"}</button>
+          : <Link href={recovery.billingUrl}><CreditCard size={16} />Adicionar créditos e continuar</Link>}
+        <small>{recovery.canContinue
+          ? "A próxima tentativa usa uma nova interação e só começa com sua confirmação."
+            : "Após a recarga, volte para esta execução e continue do mesmo ponto."}</small>
         {error && <small className={styles.error}>{error}</small>}
       </div>
     </aside>;

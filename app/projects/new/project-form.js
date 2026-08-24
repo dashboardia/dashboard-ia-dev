@@ -4,7 +4,7 @@ import { Check, Copy, ExternalLink, Github, LoaderCircle, RefreshCw, Save } from
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { rememberReturnPath } from "../../../lib/return-navigation";
+import { clearRememberedReturnPath, rememberReturnPath } from "../../../lib/return-navigation";
 import styles from "./project-form.module.css";
 
 const DRAFT_KEY = "dashboardia:new-project-repository";
@@ -37,12 +37,20 @@ export default function ProjectForm({ installUrl }) {
   const [installLinkCopied, setInstallLinkCopied] = useState(false);
 
   useEffect(() => {
+    clearRememberedReturnPath();
+  }, []);
+
+  useEffect(() => {
+    let frame = null;
     try {
       const stored = window.localStorage.getItem(DRAFT_KEY);
-      if (stored) setRepositoryInput(stored);
+      if (stored) frame = window.requestAnimationFrame(() => setRepositoryInput(stored));
     } catch {
       // localStorage pode estar indisponível em navegação privada.
     }
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
   }, []);
 
   useEffect(() => {
@@ -56,10 +64,6 @@ export default function ProjectForm({ installUrl }) {
 
   useEffect(() => {
     if (!repositoryLooksValid(repositoryInput)) {
-      setConnection(null);
-      setBranches([]);
-      setDefaultBranch("");
-      setChecking(false);
       return undefined;
     }
 
@@ -122,9 +126,13 @@ export default function ProjectForm({ installUrl }) {
       setError("O GitHub App ainda não está configurado no Dashboard IA.");
       return;
     }
+    try {
+      if (repositoryInput.trim()) window.localStorage.setItem(DRAFT_KEY, repositoryInput.trim());
+    } catch {
+      // O retorno também é preservado pelo cookie quando o storage não está disponível.
+    }
     rememberReturnPath("/projects/new");
-    const opened = window.open(target, "_blank", "noopener,noreferrer");
-    if (!opened) setError("O navegador bloqueou a nova aba. Libere pop-ups e tente novamente.");
+    window.location.assign(target);
   }
 
   async function copyClientInstallLink() {

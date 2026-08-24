@@ -5,11 +5,15 @@ import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBra
 import { getGlobalSettings } from "../lib/global-settings.js";
 import { createDashboardiaPreview, dashboardiaPreviewConfigured, deleteDashboardiaPreview, syncDashboardiaPreview } from "../lib/preview-host-client.js";
 import { queuePreviewEnvironment, transitionPreviewEnvironment } from "../lib/preview-environments.js";
+import { previewRepairConsentError, previewRepairConsentRequired } from "../lib/preview-repair-consent.js";
 import { retireProjectEnvironments } from "../lib/project-environment-exclusivity.js";
 import { detectGitHubProjectRuntime, environmentRuntimeConfiguration, mavenBuildCommandInRepository } from "../lib/project-runtime.js";
 import { redactSensitiveData } from "../lib/redaction.js";
 import {
   MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS,
+  MAX_AUTOMATIC_APPLICATION_REPAIRS,
+  applicationRepairDecision,
+  automaticApplicationRepairCount,
   automaticPreviewCorrectionRequeueData,
   classifyPreviewFailure,
   isPreviewCircuitOpen,
@@ -23,11 +27,11 @@ const WATCHED_PREVIEW_STATUSES = [...ACTIVE_PREVIEW_STATUSES, "FAILED"];
 const MINIMUM_CONVERSATION_TIMEOUT_MINUTES = 24 * 60;
 const MAX_TECHNICAL_ERROR_LENGTH = 8_000;
 
-function correctionMessage(preview) {
+function correctionMessage(preview, repairNumber) {
   const technical = redactSensitiveData(String(preview.error || "O ambiente encerrou sem detalhar a causa"))
     .slice(-MAX_TECHNICAL_ERROR_LENGTH);
   return [
-    "## Correção automática do ambiente",
+    `## Correção automática do ambiente ${repairNumber}/${MAX_AUTOMATIC_APPLICATION_REPAIRS}`,
     "A publicação automática do ambiente navegável desta execução falhou por uma causa atribuída ao build ou à inicialização da aplicação.",
     "Corrija a aplicação na mesma branch e no mesmo Pull Request para que ela compile, inicie e responda corretamente pela porta configurada.",
     "Preserve o escopo e todo o trabalho válido já realizado. Não substitua a aplicação por conteúdo estático apenas para mascarar a falha.",
@@ -94,21 +98,67 @@ async function openPreviewCircuit(preview, execution, database, {
   return true;
 }
 
-async function queueAutomaticCorrection(preview, settings, database, execution, failureSignature) {
-  const maxExecutionAttempts = Math.max(1, Number(settings.executionMaxAttempts) || 3);
-  if (Number(execution.attempts || 0) >= maxExecutionAttempts) {
-    await openPreviewCircuit(preview, execution, database, {
-      failureClass: "APPLICATION",
-      failureSignature,
-      message: `Falha de aplicação — IA não acionada. O limite de ${maxExecutionAttempts} tentativas da execução foi atingido e o circuit breaker interrompeu novas cobranças.`,
+async function requestApplicationRepairConsent(preview, execution, database, {
+  automaticRepairCount,
+  failureSignature,
+  reason,
+}) {
+  const technical = redactSensitiveData(String(preview.error || "")).slice(-4_000);
+  const markedError = previewRepairConsentError(preview.error);
+  return database.$transaction(async (transaction) => {
+    const updated = await transaction.previewEnvironment.updateMany({
+      where: { id: preview.id, status: "FAILED", error: preview.error },
+      data: { error: markedError },
     });
-    return false;
-  }
-  if (signatureSeen(execution.logs, failureSignature, (metadata) => metadata.aiInvoked === true)) {
-    await openPreviewCircuit(preview, execution, database, {
-      failureClass: "APPLICATION",
+    if (updated.count !== 1) return false;
+
+    await transaction.executionMessage.create({
+      data: {
+        executionId: execution.id,
+        authorId: null,
+        role: "SYSTEM",
+        content: [
+          "## O ambiente ainda precisa de uma correção",
+          "O ambiente navegável ainda não ficou pronto.",
+          "A falha mais recente foi classificada como um problema de build ou inicialização que pode ser tratado pela IA no código do projeto.",
+          reason === "insufficient-credits"
+            ? "A próxima correção não foi iniciada porque não há créditos disponíveis."
+            : "As correções automáticas previstas para este ciclo terminaram. Uma nova tentativa só será iniciada após sua confirmação.",
+          "A branch, o Pull Request e todo o histórico permanecem preservados.",
+        ].join("\n\n"),
+      },
+    });
+    await transaction.executionLog.create({
+      data: {
+        executionId: execution.id,
+        scope: "preview",
+        level: "warn",
+        message: "A correção do código ainda não deixou o ambiente pronto. A execução aguarda a decisão do cliente antes de usar uma nova interação com a IA.",
+        metadata: {
+          automatic: true,
+          consentRequired: true,
+          aiInvoked: false,
+          failureClass: "APPLICATION",
+          failureSignature,
+          automaticRepairCount,
+          reason,
+          previewEnvironmentId: preview.id,
+          previewAttempts: preview.attempts,
+          technical,
+        },
+      },
+    });
+    return true;
+  });
+}
+
+async function queueAutomaticCorrection(preview, settings, database, execution, failureSignature) {
+  const decision = applicationRepairDecision({ logs: execution.logs });
+  if (decision.action === "REQUEST_CONSENT") {
+    await requestApplicationRepairConsent(preview, execution, database, {
+      automaticRepairCount: decision.automaticRepairCount,
       failureSignature,
-      message: "Falha repetida — IA não acionada. O mesmo erro já foi enviado à IA nesta execução e o circuit breaker interrompeu novas cobranças.",
+      reason: decision.reason,
     });
     return false;
   }
@@ -117,11 +167,19 @@ async function queueAutomaticCorrection(preview, settings, database, execution, 
     executionId: execution.id,
     marginPercent: settings.creditBalanceSafetyMarginPercent,
   });
-  if (creditBudget && creditBudget.hardLimitCredits < 1) return false;
+  if (creditBudget && creditBudget.hardLimitCredits < 1) {
+    await requestApplicationRepairConsent(preview, execution, database, {
+      automaticRepairCount: decision.automaticRepairCount,
+      failureSignature,
+      reason: "insufficient-credits",
+    });
+    return false;
+  }
 
   const now = new Date();
   const timeoutMinutes = Math.max(MINIMUM_CONVERSATION_TIMEOUT_MINUTES, settings.executionConversationTimeoutMinutes);
-  const content = correctionMessage(preview);
+  const repairNumber = decision.repairNumber;
+  const content = correctionMessage(preview, repairNumber);
   return database.$transaction(async (transaction) => {
     const updated = await transaction.execution.updateMany({
       where: {
@@ -148,12 +206,13 @@ async function queueAutomaticCorrection(preview, settings, database, execution, 
         executionId: execution.id,
         scope: "preview",
         level: "warn",
-        message: "O ambiente falhou por uma causa atribuída à aplicação; o erro foi enviado uma única vez à IA e esta execução retornou à fila para correção.",
+        message: `O ambiente falhou por uma causa atribuída à aplicação; a correção automática ${repairNumber}/${MAX_AUTOMATIC_APPLICATION_REPAIRS} foi enviada à IA e a execução retornou à fila.`,
         metadata: {
           automatic: true,
           aiInvoked: true,
           failureClass: "APPLICATION",
           failureSignature,
+          automaticRepairNumber: repairNumber,
           previewEnvironmentId: preview.id,
           technical: redactSensitiveData(String(preview.error || "")).slice(-4_000),
         },
@@ -224,7 +283,7 @@ async function retryInfrastructurePreview(preview, settings, database, execution
 }
 
 async function handleFailedPreview(preview, settings, database) {
-  if (!preview?.error || isPreviewCircuitOpen(preview.error)) return false;
+  if (!preview?.error || previewRepairConsentRequired(preview.error)) return false;
 
   const execution = await loadExecutionForRecovery(preview, database);
   if (!execution || execution.status !== "AWAITING_CLIENT" || execution.closedAt || execution.cancelRequestedAt || execution.stopRequestedAt) return false;
@@ -233,8 +292,18 @@ async function handleFailedPreview(preview, settings, database) {
   const failureSignature = previewFailureSignature(preview.error);
 
   if (failureClass === "APPLICATION") {
+    if (isPreviewCircuitOpen(preview.error)) {
+      await requestApplicationRepairConsent(preview, execution, database, {
+        automaticRepairCount: automaticApplicationRepairCount(execution.logs),
+        failureSignature,
+        reason: "legacy-application-circuit",
+      });
+      return false;
+    }
     return queueAutomaticCorrection(preview, settings, database, execution, failureSignature);
   }
+
+  if (isPreviewCircuitOpen(preview.error)) return false;
 
   return retryInfrastructurePreview(preview, settings, database, execution, failureClass, failureSignature);
 }

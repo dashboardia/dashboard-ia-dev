@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import { authOptions } from "../../lib/auth";
 import { env, getConfigurationStatus } from "../../lib/env";
-import { loginReturnPath, RETURN_PATH_COOKIE } from "../../lib/return-navigation";
+import { decodeRememberedReturnPath, loginReturnPath, RETURN_PATH_COOKIE } from "../../lib/return-navigation";
 import LoginCard from "./login-card";
 
 export const metadata = {
@@ -31,11 +31,6 @@ function copySearchParams(target, params) {
   }
 }
 
-function decodeRememberedPath(value) {
-  if (!value) return null;
-  try { return decodeURIComponent(value); } catch { return value; }
-}
-
 export default async function LoginPage({ searchParams }) {
   const configuration = getConfigurationStatus();
   const params = await searchParams;
@@ -56,7 +51,7 @@ export default async function LoginPage({ searchParams }) {
     const session = await getServerSession(authOptions);
     if (session?.user) {
       const cookieStore = await cookies();
-      const rememberedPath = decodeRememberedPath(cookieStore.get(RETURN_PATH_COOKIE)?.value);
+      const rememberedPath = decodeRememberedReturnPath(cookieStore.get(RETURN_PATH_COOKIE)?.value);
       redirect(loginReturnPath(params, rememberedPath));
     }
   }

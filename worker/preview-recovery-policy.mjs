@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
+import { automaticApplicationRepairCount } from "../lib/preview-repair-consent.js";
+
+export { automaticApplicationRepairCount } from "../lib/preview-repair-consent.js";
 
 export const MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS = 3;
+export const MAX_AUTOMATIC_APPLICATION_REPAIRS = 2;
 const MINIMUM_CONVERSATION_TIMEOUT_MINUTES = 24 * 60;
 
 const CIRCUIT_PREFIX = "[PREVIEW_CIRCUIT_OPEN]";
@@ -84,7 +88,7 @@ const APPLICATION_FAILURES = [
 ];
 
 function rawFailure(error) {
-  return String(error ?? "").replace(/^\[(?:PREVIEW_CIRCUIT_OPEN|INFRASTRUCTURE|UNSUPPORTED)\]\s*/i, "").trim();
+  return String(error ?? "").replace(/^\[(?:PREVIEW_REPAIR_CONSENT|PREVIEW_CIRCUIT_OPEN|INFRASTRUCTURE|UNSUPPORTED)\]\s*/i, "").trim();
 }
 
 export function normalizePreviewFailure(error) {
@@ -102,6 +106,9 @@ export function previewFailureSignature(error) {
 }
 
 export function classifyPreviewFailure(error) {
+  const tagged = String(error ?? "").trim();
+  if (/^\[INFRASTRUCTURE\]/i.test(tagged)) return "INFRASTRUCTURE";
+  if (/^\[UNSUPPORTED\]/i.test(tagged)) return "UNKNOWN";
   const value = rawFailure(error);
   if (INFRASTRUCTURE_FAILURES.some((pattern) => pattern.test(value))) return "INFRASTRUCTURE";
   if (APPLICATION_FAILURES.some((pattern) => pattern.test(value))) return "APPLICATION";
@@ -122,6 +129,19 @@ export function previewCircuitOpenError(error) {
   return `${CIRCUIT_PREFIX} ${rawFailure(error)}`;
 }
 
+export function applicationRepairDecision({ logs = [] } = {}) {
+  const automaticRepairCount = automaticApplicationRepairCount(logs);
+  const automaticRepairLimitReached = automaticRepairCount >= MAX_AUTOMATIC_APPLICATION_REPAIRS;
+  return {
+    action: automaticRepairLimitReached ? "REQUEST_CONSENT" : "AUTO_REPAIR",
+    automaticRepairCount,
+    repairNumber: automaticRepairCount + 1,
+    reason: automaticRepairLimitReached
+      ? "automatic-repair-limit"
+      : "within-automatic-limit",
+  };
+}
+
 export function automaticPreviewCorrectionRequeueData({ now = new Date(), timeoutMinutes }) {
   const safeTimeoutMinutes = Math.max(MINIMUM_CONVERSATION_TIMEOUT_MINUTES, Number(timeoutMinutes) || 0);
   return {
@@ -129,6 +149,7 @@ export function automaticPreviewCorrectionRequeueData({ now = new Date(), timeou
     stage: "IMPLEMENTATION",
     lockedAt: null,
     lockedBy: null,
+    attempts: 0,
     startedAt: null,
     finishedAt: null,
     lastInteractionAt: now,
