@@ -3,7 +3,7 @@
 import { ArrowRight, ArrowUpRight, CalendarClock, LoaderCircle, ShoppingCart, XCircle } from "lucide-react";
 import { useState } from "react";
 
-export function CheckoutButton({ kind, value, children, disabled = false }) {
+export function CheckoutButton({ kind, value, children, disabled = false, returnTo = null }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -17,7 +17,7 @@ export function CheckoutButton({ kind, value, children, disabled = false }) {
     checkoutWindow.opener = null;
     setLoading(true);
     try {
-      const body = kind === "PLAN" ? { kind, plan: value } : { kind, pack: value };
+      const body = kind === "PLAN" ? { kind, plan: value, returnTo } : { kind, pack: value, returnTo };
       const response = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -18,7 +18,7 @@ function hasProtectedUserInput() {
   });
 }
 
-export default function AutoRefresh({ active, interval = 5000, revisionUrl = null, revision = null, showIndicator = true }) {
+export default function AutoRefresh({ active, interval = 5000, revisionUrl = null, revision = null, showIndicator = true, pauseWhileEditing = true }) {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const lastRefreshAt = useRef(0);
@@ -27,12 +27,12 @@ export default function AutoRefresh({ active, interval = 5000, revisionUrl = nul
   const currentRevision = useRef(revision);
 
   const softRefresh = useCallback(() => {
-    if (hasProtectedUserInput()) return;
+    if (pauseWhileEditing && hasProtectedUserInput()) return;
     router.refresh();
-  }, [router]);
+  }, [pauseWhileEditing, router]);
 
   const refresh = useCallback(async () => {
-    if (!active || document.visibilityState === "hidden" || inFlight.current || hasProtectedUserInput()) return;
+    if (!active || document.visibilityState === "hidden" || inFlight.current || (pauseWhileEditing && hasProtectedUserInput())) return;
     inFlight.current = true;
     lastRefreshAt.current = Date.now();
     if (showIndicator) setRefreshing(true);
@@ -59,7 +59,7 @@ export default function AutoRefresh({ active, interval = 5000, revisionUrl = nul
       window.clearTimeout(indicatorTimer.current);
       if (showIndicator) indicatorTimer.current = window.setTimeout(() => setRefreshing(false), 700);
     }
-  }, [active, revisionUrl, showIndicator, softRefresh]);
+  }, [active, pauseWhileEditing, revisionUrl, showIndicator, softRefresh]);
 
   useEffect(() => {
     currentRevision.current = revision;

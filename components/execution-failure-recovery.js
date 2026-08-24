@@ -1,7 +1,9 @@
 "use client";
 
-import { LoaderCircle, Send, Sparkles, Wrench } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Coins, CreditCard, LoaderCircle, PlayCircle, Send, Sparkles, Wrench } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "./execution-failure-recovery.module.css";
 
@@ -13,29 +15,55 @@ function executionIdFromPath(pathname) {
 const DEFAULT_RECOVERY_REQUEST = "Analise a falha desta execução, corrija a causa e continue a demanda preservando tudo que já estiver correto.";
 
 export default function ExecutionFailureRecovery({ pathname }) {
+  const router = useRouter();
   const executionId = useMemo(() => executionIdFromPath(pathname), [pathname]);
   const [recovery, setRecovery] = useState(null);
   const [content, setContent] = useState(DEFAULT_RECOVERY_REQUEST);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!executionId) {
-      setRecovery(null);
-      return undefined;
+  const loadRecovery = useCallback(async (signal) => {
+    if (!executionId) return;
+    try {
+      const response = await fetch(`/api/executions/${encodeURIComponent(executionId)}/failure-recovery`, { cache: "no-store", signal });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível verificar a recuperação da execução");
+      setRecovery(result.required ? result : null);
+    } catch (fetchError) {
+      if (fetchError.name !== "AbortError") setRecovery(null);
     }
-    const controller = new AbortController();
-    fetch(`/api/executions/${encodeURIComponent(executionId)}/failure-recovery`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error ?? "Não foi possível verificar a recuperação da execução");
-        setRecovery(result.required ? result : null);
-      })
-      .catch((fetchError) => {
-        if (fetchError.name !== "AbortError") setRecovery(null);
-      });
-    return () => controller.abort();
   }, [executionId]);
+
+  useEffect(() => {
+    if (!executionId) return undefined;
+    const controller = new AbortController();
+    const frame = window.requestAnimationFrame(() => loadRecovery(controller.signal));
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") loadRecovery(controller.signal);
+    }, 3_000);
+    return () => {
+      controller.abort();
+      window.cancelAnimationFrame(frame);
+      window.clearInterval(timer);
+    };
+  }, [executionId, loadRecovery]);
+
+  async function resumeAfterCredits() {
+    if (!executionId) return;
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/executions/${encodeURIComponent(executionId)}/resume-after-credits`, { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível continuar a execução");
+      setRecovery(null);
+      router.refresh();
+    } catch (resumeError) {
+      setError(resumeError.message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -56,6 +84,24 @@ export default function ExecutionFailureRecovery({ pathname }) {
   }
 
   if (!executionId || !recovery) return null;
+
+  if (recovery.kind === "CREDITS") {
+    return <aside className={`${styles.banner} ${styles.credits}`} aria-live="polite">
+      <div className={styles.icon}><Coins size={20} /></div>
+      <div className={styles.copy}>
+        <strong>{recovery.title}</strong>
+        <span>{recovery.message}</span>
+        <small>{recovery.action} A branch, o ambiente e todo o histórico foram preservados.</small>
+      </div>
+      <div className={styles.creditActions}>
+        {recovery.canResume
+          ? <button type="button" disabled={loading} onClick={resumeAfterCredits}>{loading ? <LoaderCircle className="spin" size={16} /> : <PlayCircle size={16} />}{loading ? "Retomando..." : "Continuar esta demanda"}</button>
+          : <Link href={recovery.billingUrl}><CreditCard size={16} />Adicionar créditos</Link>}
+        <small>{recovery.canResume ? "O saldo já foi identificado. A IA continuará do ponto em que parou." : "Após a recarga, volte para esta execução e continue sem criar uma nova demanda."}</small>
+        {error && <small className={styles.error}>{error}</small>}
+      </div>
+    </aside>;
+  }
 
   return <aside className={styles.banner} aria-live="polite">
     <div className={styles.icon}><Wrench size={20} /></div>

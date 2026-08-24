@@ -3,10 +3,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import AppShell from "../../../components/app-shell";
+import AutoRefresh from "../../../components/auto-refresh";
 import SectionHeader from "../../../components/section-header";
 import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
 import { executionLivePresentation, executionProgressLogs, executionStageLabel, executionStatusLabel } from "../../../lib/execution-presentation";
+import { executionRevision, shouldPollExecutionDetail } from "../../../lib/execution-refresh";
+import { isExecutionCreditBlocked } from "../../../lib/execution-credit-state";
 import { requirePageUser } from "../../../lib/page-access";
 import { redactSensitiveData } from "../../../lib/redaction";
 import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error-messages";
@@ -78,6 +81,9 @@ export default async function ExecutionPage({ params }) {
   const showConversation = execution.demand.type !== "DOCUMENTATION";
   const conversationReady = Boolean(execution.pullRequest || execution.messages.length > 0 || execution.status === "AWAITING_CLIENT");
   const conversationMessages = execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
+  const creditBlocked = isExecutionCreditBlocked(execution.error);
+  const liveRevision = executionRevision(execution);
+  const shouldLiveRefresh = shouldPollExecutionDetail(execution);
   const livePresentation = executionLivePresentation(execution);
   const liveIcon = livePresentation.icon === "failed"
     ? <CircleX size={18} />
@@ -90,6 +96,7 @@ export default async function ExecutionPage({ params }) {
   return (
     <AppShell user={user}>
       <div className="section-page execution-detail-page">
+        <AutoRefresh active={shouldLiveRefresh} interval={2_000} pauseWhileEditing={false} revision={liveRevision} revisionUrl={`/api/executions/${encodeURIComponent(execution.id)}/refresh`} showIndicator={false} />
         <SectionHeader
           backHref="/executions"
           eyebrow={`${execution.demand.project.name} · ${executionStageLabel(execution.stage)}`}
@@ -114,7 +121,7 @@ export default async function ExecutionPage({ params }) {
             {showConversation && <ExecutionEnvironmentActivity executionId={execution.id} />}
           </div>
 
-          {showConversation && <ExecutionConversation executionId={execution.id} status={execution.status} messages={conversationMessages} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} conversationReady={conversationReady} />}
+          {showConversation && <ExecutionConversation executionId={execution.id} status={execution.status} messages={conversationMessages} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} conversationReady={conversationReady} creditBlocked={creditBlocked} />}
         </div>
 
         <div className="execution-review-grid">

@@ -27,7 +27,7 @@ function messageAuthor(message) {
   return message.authorId ? "Você" : "Dashboard IA";
 }
 
-export default function ExecutionConversation({ executionId, status, messages, expiresAt, adjustmentCount, conversationReady = false }) {
+export default function ExecutionConversation({ executionId, status, messages, expiresAt, adjustmentCount, conversationReady = false, creditBlocked = false }) {
   const router = useRouter();
   const [content, setContent] = useState("");
   const [attachments, setAttachments] = useState([]);
@@ -58,15 +58,20 @@ export default function ExecutionConversation({ executionId, status, messages, e
   }, [executionId]);
 
   const effectiveStatus = controlState?.status ?? status;
+  const effectiveCreditBlocked = controlState?.creditBlocked ?? creditBlocked;
   const paused = effectiveStatus === "STOPPED";
-  const available = Boolean(controlState?.interactionAvailable ?? (paused || ["FAILED", "AWAITING_CLIENT"].includes(effectiveStatus)));
-  const processing = ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"].includes(effectiveStatus);
-  const chatTitle = available
+  const available = !effectiveCreditBlocked && Boolean(controlState?.interactionAvailable ?? (paused || ["FAILED", "AWAITING_CLIENT"].includes(effectiveStatus)));
+  const processing = !effectiveCreditBlocked && ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"].includes(effectiveStatus);
+  const chatTitle = effectiveCreditBlocked
+    ? "Histórico preservado"
+    : available
     ? paused ? "Processos pausados · converse com a IA" : "Converse com a IA"
     : processing
         ? (conversationReady ? "A IA está aplicando seu ajuste" : "A IA está executando a demanda")
         : "Histórico da conversa";
-  const chatDescription = available
+  const chatDescription = effectiveCreditBlocked
+    ? "Adicione créditos para retomar a IA nesta mesma branch e neste mesmo Pull Request."
+    : available
     ? paused
       ? "Você pode pedir um novo ajuste agora ou reexecutar a execução sem perder este histórico."
       : "Escreva o que deseja mudar. A IA aplica na mesma branch e no mesmo Pull Request."
@@ -189,7 +194,7 @@ export default function ExecutionConversation({ executionId, status, messages, e
   }
 
   return <section className="form-card detail-card execution-conversation">
-    <header className="execution-chat-header"><span className="execution-chat-icon"><MessageSquareText size={19} /></span><div><h2>{chatTitle}</h2><p>{chatDescription}</p></div><em className={`execution-chat-status ${available ? "available" : processing ? "processing" : "closed"}`}>{available ? paused ? "Pausada · escreva aqui" : "Escreva aqui" : processing ? "IA trabalhando" : "Concluída"}</em></header>
+    <header className="execution-chat-header"><span className="execution-chat-icon"><MessageSquareText size={19} /></span><div><h2>{chatTitle}</h2><p>{chatDescription}</p></div><em className={`execution-chat-status ${available ? "available" : processing ? "processing" : "closed"}`}>{effectiveCreditBlocked ? "Aguardando créditos" : available ? paused ? "Pausada · escreva aqui" : "Escreva aqui" : processing ? "IA trabalhando" : "Concluída"}</em></header>
     {available && <div className="execution-chat-guidance"><Sparkles size={16} /><span><strong>{paused ? "Processos pausados — você pode decidir o próximo passo" : "Peça mudanças em linguagem natural"}</strong><small>{paused ? "Envie um ajuste para a IA e a execução será retomada automaticamente, ou use Reexecutar de onde parou para continuar sem um novo pedido." : "Você pode pedir para corrigir um erro, mudar uma tela, adicionar uma função ou colar um print. A IA continua exatamente deste ponto."}</small></span></div>}
     <div className="execution-message-list" ref={messageListRef}>{messages.map((message) => <article className={`execution-message ${message.role.toLowerCase()}${message.role === "USER" && !message.authorId ? " automatic" : ""}`} key={message.id}><header><strong>{messageAuthor(message)}</strong><time>{new Date(message.createdAt).toLocaleString("pt-BR")}</time></header><p>{message.content}</p>{message.attachments?.length > 0 && <div className="execution-message-attachments">{message.attachments.map((attachment) => <StoredAttachment attachment={attachment} key={attachment.id} />)}</div>}</article>)}{!messages.length && <div className="list-empty">{conversationReady ? "O histórico dos seus ajustes aparecerá aqui." : "A conversa ficará disponível assim que a primeira implementação e o ambiente terminarem."}</div>}</div>
     {processing && <div className="execution-chat-processing"><LoaderCircle className="spin" size={16} /><span><strong>{conversationReady ? "A IA está aplicando seu ajuste" : "A IA está trabalhando na implementação"}</strong><small>Acompanhe as etapas ao lado. A tela atualiza automaticamente.</small></span></div>}

@@ -3,25 +3,7 @@ import { NextResponse } from "next/server";
 import { requireProjectRole } from "../../../../../lib/access";
 import { apiError } from "../../../../../lib/api";
 import { db } from "../../../../../lib/db";
-
-function executionRevision(execution) {
-  return [
-    execution.updatedAt,
-    execution.status,
-    execution.stage,
-    execution.branchName,
-    execution.baseSha,
-    execution.headSha,
-    execution.inputTokens,
-    execution.outputTokens,
-    execution.adjustmentCount,
-    execution.logs[0]?.id,
-    execution.artifacts[0]?.id,
-    execution.messages[0]?.id,
-    execution.pullRequest?.updatedAt,
-    execution.creditReservation?.updatedAt,
-  ].map((value) => value instanceof Date ? value.toISOString() : String(value ?? "")).join("|");
-}
+import { executionRevision } from "../../../../../lib/execution-refresh";
 
 export async function GET(_request, context) {
   try {
@@ -47,7 +29,13 @@ export async function GET(_request, context) {
       },
     });
     await requireProjectRole(execution.demand.projectId, "VIEWER");
-    return NextResponse.json({ revision: executionRevision(execution) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({
+      revision: executionRevision(execution, {
+        logId: execution.logs[0]?.id,
+        artifactId: execution.artifacts[0]?.id,
+        messageId: execution.messages[0]?.id,
+      }),
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return apiError(error);
   }

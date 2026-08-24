@@ -89,8 +89,8 @@ export async function POST(request) {
     });
     try {
       const checkout = plan
-        ? await createPlanCheckout({ orderId: order.id, plan, customerId: resolvedCustomerId })
-        : await createCreditPackCheckout({ orderId: order.id, pack, customerId: resolvedCustomerId });
+        ? await createPlanCheckout({ orderId: order.id, plan, customerId: resolvedCustomerId, returnTo: input.returnTo })
+        : await createCreditPackCheckout({ orderId: order.id, pack, customerId: resolvedCustomerId, returnTo: input.returnTo });
       await db.$transaction([
         db.billingCheckout.update({ where: { id: order.id }, data: { providerCheckoutId: checkout.id, providerLink: checkout.link } }),
         db.auditLog.create({ data: auditData({ actorId: user.id, action: "billing.checkout.create", entityType: "BillingCheckout", entityId: order.id, metadata: input, request }) }),
