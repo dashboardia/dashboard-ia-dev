@@ -17,7 +17,8 @@ export function CheckoutButton({ kind, value, children, disabled = false, return
     checkoutWindow.opener = null;
     setLoading(true);
     try {
-      const body = kind === "PLAN" ? { kind, plan: value, returnTo } : { kind, pack: value, returnTo };
+      const returnState = returnTo ? { returnTo } : {};
+      const body = kind === "PLAN" ? { kind, plan: value, ...returnState } : { kind, pack: value, ...returnState };
       const response = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
