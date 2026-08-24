@@ -76,7 +76,8 @@ export default function ExecutionFailureRecovery({ pathname }) {
       const response = await fetch(`/api/executions/${encodeURIComponent(executionId)}/messages`, { method: "POST", body: formData });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? "Não foi possível reprocessar a execução");
-      window.location.reload();
+      setRecovery(null);
+      router.refresh();
     } catch (submitError) {
       setError(submitError.message);
       setLoading(false);
@@ -91,13 +92,13 @@ export default function ExecutionFailureRecovery({ pathname }) {
       <div className={styles.copy}>
         <strong>{recovery.title}</strong>
         <span>{recovery.message}</span>
-        <small>{recovery.action} A branch, o ambiente e todo o histórico foram preservados.</small>
+        <small>A branch, o ambiente e todo o histórico foram preservados.</small>
       </div>
       <div className={styles.creditActions}>
         {recovery.canResume
           ? <button type="button" disabled={loading} onClick={resumeAfterCredits}>{loading ? <LoaderCircle className="spin" size={16} /> : <PlayCircle size={16} />}{loading ? "Retomando..." : "Continuar esta demanda"}</button>
           : <Link href={recovery.billingUrl}><CreditCard size={16} />Adicionar créditos</Link>}
-        <small>{recovery.canResume ? "O saldo já foi identificado. A IA continuará do ponto em que parou." : "Após a recarga, volte para esta execução e continue sem criar uma nova demanda."}</small>
+        <small>{recovery.canResume ? "Saldo identificado. Continue do ponto em que parou." : "Recarregue e retome esta mesma demanda."}</small>
         {error && <small className={styles.error}>{error}</small>}
       </div>
     </aside>;

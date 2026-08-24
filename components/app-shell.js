@@ -31,8 +31,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import ActionCenter from "./action-center";
-import ExecutionEnvironmentShortcut from "./execution-environment-shortcut";
-import ExecutionFailureRecovery from "./execution-failure-recovery";
 import ExecutionGitHubRecovery from "./execution-github-recovery";
 import GlobalSearch from "./global-search";
 import { PreferencesProvider, usePreferences } from "./preferences-provider";
@@ -128,8 +126,6 @@ function AppShellContent({ children, user = null, setupMode = false }) {
           <button className="github-status" onClick={() => notify(setupMode ? "GitHub OAuth aguardando configuração" : "GitHub conectado e operacional")}><Github size={18} /><span>{setupMode ? "Configurar GitHub" : t("githubConnected")}</span><CheckCircle2 size={15} /></button>
         </header>
         {!setupMode && <ExecutionGitHubRecovery pathname={pathname} />}
-        {!setupMode && <ExecutionFailureRecovery pathname={pathname} />}
-        {!setupMode && <ExecutionEnvironmentShortcut pathname={pathname} />}
         <LocalizedContent>{children}</LocalizedContent>
       </section>
       {sidebarOpen && <button className="overlay" onClick={() => setSidebarOpen(false)} aria-label="Fechar menu" />}

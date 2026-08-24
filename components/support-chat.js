@@ -1,7 +1,8 @@
 "use client";
 
-import { Bot, FileText, MessageCircle, Paperclip, Send, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Bot, FileText, FolderKanban, ListTodo, MessageCircle, Paperclip, Send, Trash2, X } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -22,6 +23,27 @@ function AttachmentPreview({ attachment, compact = false }) {
     return <Image unoptimized src={attachment.previewUrl} alt={file.name} width={compact ? 42 : 92} height={compact ? 42 : 64} />;
   }
   return <span className="support-file-preview"><FileText size={compact ? 18 : 22} /></span>;
+}
+
+const projectStatusLabels = { ACTIVE: "Ativo", ARCHIVED: "Arquivado", DISCONNECTED: "Desconectado" };
+const healthLabels = { HEALTHY: "Saudável", DEGRADED: "Atenção", DOWN: "Indisponível", UNKNOWN: "Sem verificação" };
+const executionStatusLabels = {
+  QUEUED: "Na fila", PREPARING: "Preparando", RUNNING: "Em execução", VALIDATING: "Validando",
+  WAITING_APPROVAL: "Aguardando aprovação", AWAITING_CLIENT: "Aguardando você", SUCCEEDED: "Concluída",
+  FAILED: "Com falha", STOPPED: "Pausada", CANCELLED: "Cancelada",
+};
+
+function SupportNavigation({ links = [], projects = [] }) {
+  if (!links.length && !projects.length) return null;
+  return <div className="support-context-navigation">
+    {projects.length > 0 && <div className="support-project-cards">{projects.map((project) => <article key={project.id}>
+      <header><span><FolderKanban size={14} /><strong>{project.name}</strong></span><em className={project.health.toLowerCase()}>{healthLabels[project.health] ?? project.health}</em></header>
+      <small>{project.repository}</small>
+      <div><span>{projectStatusLabels[project.status] ?? project.status}</span><span>{project.demandCount} demanda{project.demandCount === 1 ? "" : "s"}</span>{project.latestExecution && <span>{executionStatusLabels[project.latestExecution.status] ?? project.latestExecution.status}</span>}</div>
+      <div className="support-project-actions"><Link href={project.href}>Abrir projeto<ArrowUpRight size={12} /></Link>{project.demandHref && <Link href={project.demandHref}>Última demanda<ArrowUpRight size={12} /></Link>}{project.executionHref && <Link href={project.executionHref}>Execução<ArrowUpRight size={12} /></Link>}</div>
+    </article>)}</div>}
+    {links.length > 0 && <div className="support-quick-links">{links.map((link) => <Link href={link.href} key={link.href}>{link.label}<ArrowUpRight size={12} /></Link>)}</div>}
+  </div>;
 }
 
 function SupportChatSession({ locale, pathname, t }) {
@@ -110,7 +132,13 @@ function SupportChatSession({ locale, pathname, t }) {
     try {
       const response = await fetch("/api/support/chat", { method: "POST", signal: controller.signal, body: formData });
       const payload = await response.json();
-      setMessages((current) => [...current, { role: "assistant", content: payload.answer ?? t("supportUnavailable"), demandReference: payload.demandReference }]);
+      setMessages((current) => [...current, {
+        role: "assistant",
+        content: payload.answer ?? t("supportUnavailable"),
+        demandReference: payload.demandReference,
+        links: payload.links ?? [],
+        projects: payload.projects ?? [],
+      }]);
     } catch (error) {
       if (error?.name !== "AbortError") setMessages((current) => [...current, { role: "assistant", content: `${t("supportUnavailable")} Para atendimento humano, envie um e-mail para suportdashboardia@gmail.com.` }]);
     } finally {
@@ -121,17 +149,16 @@ function SupportChatSession({ locale, pathname, t }) {
 
   return <div className={`support-chat ${open ? "open" : ""}`}>
     {open && <aside className="support-panel" role="dialog" aria-label={t("support")}>
-      <header className="support-panel-header"><span><Bot size={18} /><strong>{t("support")}</strong></span><button onClick={() => setOpen(false)} aria-label={t("close")}><X size={17} /></button></header>
+      <header className="support-panel-header"><span className="support-panel-brand"><i><Bot size={18} /></i><span><strong>Assistente Dashboard IA</strong><small>Projetos, demandas e suporte</small></span></span><button onClick={() => setOpen(false)} aria-label={t("close")}><X size={17} /></button></header>
       <div className="support-messages" ref={messageList}>
-        {!messages.length && <div className="assistant-message">Sou o agente de suporte do Dashboardia. Explique o problema, cole um print ou anexe um arquivo pequeno para eu analisar.</div>}
-        {messages.map((message, index) => <div className={`${message.role}-message`} key={`${message.role}-${index}`}>{message.demandReference && <small className="support-demand-reference">Demanda {message.demandReference}</small>}<span>{message.content}</span>{message.attachments?.length > 0 && <div className="support-message-attachments">{message.attachments.map((attachment, attachmentIndex) => <span key={`${attachment.name}-${attachmentIndex}`}><AttachmentPreview attachment={attachment} /><small>{attachment.name}</small></span>)}</div>}</div>)}
+        {!messages.length && <div className="support-welcome"><span><ListTodo size={18} /></span><strong>Como posso ajudar?</strong><p>Posso analisar um print, explicar uma tela ou mostrar como estão seus projetos, demandas e execuções.</p><button type="button" onClick={() => setText("Como estão meus projetos e demandas?")}>Ver meu panorama</button></div>}
+        {messages.map((message, index) => <div className={`${message.role}-message${message.attachments?.length ? " has-attachments" : ""}`} key={`${message.role}-${index}`}>{message.demandReference && <small className="support-demand-reference">Demanda {message.demandReference}</small>}<span>{message.content}</span>{message.attachments?.length > 0 && <div className="support-message-attachments">{message.attachments.map((attachment, attachmentIndex) => <span className={isImageAttachment(attachment.mimeType) ? "image" : "file"} title={attachment.name} key={`${attachment.name}-${attachmentIndex}`}><AttachmentPreview attachment={attachment} />{!isImageAttachment(attachment.mimeType) && <small>{attachment.name}</small>}</span>)}</div>}<SupportNavigation links={message.links} projects={message.projects} /></div>)}
         {loading && <div className="assistant-message typing">Analisando contexto e arquivos…</div>}
       </div>
       <form className="support-panel-form" onSubmit={send}>
-        {attachments.length > 0 && <div className="support-attachment-list">{attachments.map((attachment, index) => <span key={attachmentKey(attachment.file)}><AttachmentPreview attachment={attachment} compact /><small>{attachment.file.name}</small><button type="button" onClick={() => removeAttachment(index)} aria-label={`Remover ${attachment.file.name}`}><Trash2 size={12} /></button></span>)}</div>}
+        {attachments.length > 0 && <div className="support-attachment-list">{attachments.map((attachment, index) => <span className={isImageAttachment(attachment.mimeType) ? "image" : "file"} key={attachmentKey(attachment.file)}><AttachmentPreview attachment={attachment} compact /><small>{attachment.file.name}</small><button type="button" onClick={() => removeAttachment(index)} aria-label={`Remover ${attachment.file.name}`}><Trash2 size={12} /></button></span>)}</div>}
         {attachmentError && <small className="support-attachment-error">{attachmentError}</small>}
-        <div className="support-composer"><input ref={fileInput} hidden type="file" accept={ATTACHMENT_ACCEPT} multiple onChange={selectAttachments} /><button className="support-attach" type="button" onClick={() => fileInput.current?.click()} disabled={loading || attachments.length >= MAX_MESSAGE_ATTACHMENTS} aria-label="Anexar arquivos"><Paperclip size={17} /></button><textarea maxLength={4000} rows={2} value={text} onPaste={pasteAttachments} onChange={(event) => setText(event.target.value)} placeholder="Descreva o problema, cole um print ou anexe arquivos…" /><button className="support-send" disabled={loading || (!text.trim() && !attachments.length)} aria-label={t("send")}><Send size={16} /></button></div>
-        <small className="support-attachment-hint">Até 4 arquivos · 5 MB cada · imagens, PDF, Word, Excel, CSV ou TXT</small>
+        <div className="support-composer"><textarea maxLength={4000} rows={2} value={text} onPaste={pasteAttachments} onChange={(event) => setText(event.target.value)} placeholder="Pergunte ou cole uma imagem…" /><div className="support-composer-actions"><input ref={fileInput} hidden type="file" accept={ATTACHMENT_ACCEPT} multiple onChange={selectAttachments} /><button className="support-attach" type="button" onClick={() => fileInput.current?.click()} disabled={loading || attachments.length >= MAX_MESSAGE_ATTACHMENTS} aria-label="Anexar arquivos"><Paperclip size={17} /></button><small>Até 4 arquivos</small><button className="support-send" disabled={loading || (!text.trim() && !attachments.length)} aria-label={t("send")}><Send size={16} /></button></div></div>
       </form>
     </aside>}
     <button className="support-launcher" onClick={() => setOpen((value) => !value)} aria-label={t("support")}><MessageCircle size={21} /></button>

@@ -1,5 +1,6 @@
 .banner {
-  margin: 16px 36px 0;
+  width: 100%;
+  margin: 0;
   padding: 14px 16px;
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) minmax(320px, 520px);
@@ -107,13 +108,13 @@
 }
 
 .credits {
-  border-color: color-mix(in srgb, #d99a19 42%, var(--line));
-  background: color-mix(in srgb, #fff4d6 58%, var(--soft));
+  border-color: color-mix(in srgb, var(--warning) 38%, var(--line));
+  background: color-mix(in srgb, var(--warning) 8%, var(--soft));
 }
 
 .credits .icon {
-  color: #95630b;
-  background: #fff0c5;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 14%, var(--soft));
 }
 
 .creditActions {
@@ -170,7 +171,6 @@
 
 @media (max-width: 760px) {
   .banner {
-    margin: 12px 16px 0;
     grid-template-columns: 36px minmax(0, 1fr);
   }
 

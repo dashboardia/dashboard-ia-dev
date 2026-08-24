@@ -110,6 +110,7 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
   }
 
   if (!executionId) return null;
+  if (control?.creditBlocked) return null;
   const view = presentation(shortcut, control);
   const shouldRenderControls = Boolean(control?.canPause || control?.canResume || control?.canRestartEnvironment || control?.canCancel);
   if (!view && !shouldRenderControls) return null;

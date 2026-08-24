@@ -13,6 +13,7 @@ import "./execution-status.css";
 import "./execution-cycle-focus.css";
 import "./action-center-toast.css";
 import "./readability.css";
+import "./experience-polish.css";
 
 export const metadata = {
   title: "Dashboard IA",

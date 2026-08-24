@@ -4,6 +4,8 @@ import { notFound, redirect } from "next/navigation";
 
 import AppShell from "../../../components/app-shell";
 import AutoRefresh from "../../../components/auto-refresh";
+import ExecutionEnvironmentShortcut from "../../../components/execution-environment-shortcut";
+import ExecutionFailureRecovery from "../../../components/execution-failure-recovery";
 import SectionHeader from "../../../components/section-header";
 import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
@@ -104,6 +106,11 @@ export default async function ExecutionPage({ params }) {
           description={`Execução ${execution.id.slice(-10)} · solicitada por ${execution.requestedBy.name ?? execution.requestedBy.githubLogin}`}
           action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : interrupted ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar a demanda</Link></div> : null}{canResume && <ResumeExecutionButton executionId={execution.id} processingEnabled={settings.executionProcessingEnabled} />}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
         />
+
+        <div className="execution-primary-state">
+          <ExecutionFailureRecovery pathname={`/executions/${execution.id}`} />
+          <ExecutionEnvironmentShortcut pathname={`/executions/${execution.id}`} />
+        </div>
 
         <section className="execution-metrics">
           <div><Activity size={17} /><span><small>Status</small><strong>{executionStatusLabel(execution)}</strong></span></div>
