@@ -14,7 +14,10 @@ import {
   Lightbulb,
   ListChecks,
   Plus,
+  Rocket,
   ServerCog,
+  ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -55,35 +58,52 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
   return (
     <AppShell user={user} setupMode={setupMode}>
       <div className={`page ${styles.dashboardPage}`}>
-        <div className={styles.heading}>
-          <div><p className="eyebrow">{dateLabel}</p><h1>Visão geral</h1><p>Continue de onde parou ou escolha rapidamente o próximo passo.</p></div>
-          <Link className="primary" href={baseHref("/demands/new")}><Plus size={18} />Nova demanda</Link>
-        </div>
-
-        <section className={styles.flowRail} aria-label="Fluxo de trabalho da Dashboard IA">
-          <FlowStep icon={Github} label="Conecte" text="Repositório" tone="purple" />
-          <FlowStep icon={Lightbulb} label="Descreva" text="Sua demanda" tone="blue" />
-          <FlowStep icon={Code2} label="A IA implementa" text="Código e testes" tone="cyan" />
-          <FlowStep icon={CheckCircle2} label="Valide" text="Versão navegável" tone="success" />
+        <section className={styles.hero}>
+          <div className={styles.heroGlow} aria-hidden="true" />
+          <div className={styles.heroCopy}>
+            <p className={styles.heroEyebrow}><Sparkles size={13} />{dateLabel}</p>
+            <h1>Transforme a próxima ideia em <span>software funcionando.</span></h1>
+            <p>Descreva o que precisa. A Dashboard IA implementa, valida e entrega uma versão navegável para você decidir com segurança.</p>
+            <div className={styles.heroActions}>
+              <Link className={styles.heroPrimary} href={baseHref("/demands/new")}><Plus size={18} />Criar nova demanda <ArrowRight size={16} /></Link>
+              <Link className={styles.heroSecondary} href={baseHref("/projects")}><Boxes size={17} />Ver meus projetos</Link>
+            </div>
+            <div className={styles.heroSignals}>
+              <span><i className={styles.liveDot} />Operação em tempo real</span>
+              <span><ShieldCheck size={14} />Branch e histórico preservados</span>
+              <span><HeartPulse size={14} />{dashboard.health.title}</span>
+            </div>
+          </div>
+          <div className={styles.heroVisual} aria-label="Fluxo de trabalho da Dashboard IA">
+            <header><span><Rocket size={17} /></span><div><small>FLUXO INTELIGENTE</small><strong>Da ideia à versão navegável</strong></div><em>4 etapas</em></header>
+            <div className={styles.heroFlow}>
+              <FlowStep icon={Github} label="Repositório conectado" text="Contexto real do projeto" tone="purple" />
+              <FlowStep icon={Lightbulb} label="Demanda compreendida" text="Escopo e impacto analisados" tone="blue" />
+              <FlowStep icon={Code2} label="IA implementando" text="Código, build e validações" tone="cyan" />
+              <FlowStep icon={CheckCircle2} label="Pronto para validar" text="Preview, evidências e PR" tone="success" />
+            </div>
+          </div>
         </section>
 
-        <section className={styles.focusPanel}>
-          <header className={styles.focusHeader}>
-            <div className={styles.focusTitle}><span><Activity size={19} /></span><div><h2>{focusItems.length ? "Continue de onde parou" : "Tudo organizado por aqui"}</h2><p>{focusItems.length ? "As tarefas que precisam da sua atenção aparecem primeiro." : "Não há execuções aguardando ação agora. Escolha um próximo passo abaixo."}</p></div></div>
-            {activeWork.length > 0 && <Link href={baseHref("/executions")}>Ver todas <ArrowRight size={14} /></Link>}
-          </header>
-          {focusItems.length ? <div className={styles.focusGrid}>{focusItems.map((item) => <WorkCard item={item} setupMode={setupMode} key={item.id} />)}</div> : <div className={styles.focusEmpty}><CheckCircle2 size={20} /><span><strong>Nenhuma pendência imediata</strong><small>Você pode criar uma nova demanda ou conectar outro projeto.</small></span></div>}
-        </section>
+        <div className={styles.commandGrid}>
+          <section className={styles.focusPanel}>
+            <header className={styles.focusHeader}>
+              <div className={styles.focusTitle}><span><Activity size={20} /></span><div><small>AGORA</small><h2>{focusItems.length ? "Seu trabalho em andamento" : "Sua operação está livre"}</h2><p>{focusItems.length ? "O que exige sua atenção aparece primeiro, sem você precisar procurar." : "Nenhuma pendência bloqueando você. Este é um bom momento para começar algo novo."}</p></div></div>
+              {activeWork.length > 0 && <Link href={baseHref("/executions")}>Central de execuções <ArrowRight size={14} /></Link>}
+            </header>
+            {focusItems.length ? <div className={styles.focusGrid}>{focusItems.map((item) => <WorkCard item={item} setupMode={setupMode} key={item.id} />)}</div> : <div className={styles.focusEmpty}><span><CheckCircle2 size={26} /></span><div><strong>Tudo certo por aqui</strong><small>Crie uma demanda e acompanhe a implementação ao vivo.</small><Link href={baseHref("/demands/new")}>Começar agora <ArrowRight size={13} /></Link></div></div>}
+          </section>
 
-        <section className={styles.quickSection}>
-          <div className={styles.sectionTitle}><div><h2>O que você quer fazer?</h2><p>Atalhos para as ações mais comuns da Dashboard IA.</p></div></div>
-          <div className={styles.quickGrid}>
+          <section className={styles.quickSection}>
+            <div className={styles.sectionTitle}><div><small>ATALHOS</small><h2>Próximo passo</h2><p>Acesse o que importa em um clique.</p></div></div>
+            <div className={styles.quickGrid}>
             <QuickAction href={baseHref("/demands/new")} icon={Plus} title="Criar uma demanda" text="Peça uma alteração, correção ou nova funcionalidade." primary />
             <QuickAction href={baseHref("/projects/new")} icon={Boxes} title="Conectar um projeto" text="Adicione um repositório GitHub e escolha a branch padrão." />
             <QuickAction href={baseHref("/executions")} icon={Activity} title="Acompanhar execuções" text="Veja o que a IA está fazendo e continue pelo chat." />
             <QuickAction href={baseHref("/environments")} icon={ServerCog} title="Testar ambientes" text="Abra ou acompanhe versões navegáveis das branches." />
-          </div>
-        </section>
+            </div>
+          </section>
+        </div>
 
         <section className={styles.summaryGrid}>
           <Summary icon={Clock3} label="Aguardando você" value={String(waiting.length)} note={waiting.length ? "Abra uma execução e continue no chat" : "Nada pendente"} tone="attention" />
@@ -137,7 +157,7 @@ function QuickAction({ href, icon: Icon, title, text, primary = false }) {
 }
 
 function FlowStep({ icon: Icon, label, text, tone }) {
-  return <article className={`${styles.flowStep} ${styles[tone] ?? ""}`}><span><Icon size={19} /></span><div><strong>{label}</strong><small>{text}</small></div><i aria-hidden="true" /></article>;
+  return <article className={`${styles.flowStep} ${styles[tone] ?? ""}`}><span><Icon size={18} /></span><div><strong>{label}</strong><small>{text}</small></div><i aria-hidden="true" /></article>;
 }
 
 function Summary({ icon: Icon, label, value, note, tone }) {

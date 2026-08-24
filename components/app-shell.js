@@ -58,7 +58,7 @@ function AppShellContent({ children, user = null, setupMode = false }) {
   const { t } = usePreferences();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [sidebarPinned, setSidebarPinned] = useState(true);
   const [toast, setToast] = useState("");
   const displayName = user?.name ?? "Admin Demo";
   const displayEmail = user?.email ?? "configuração pendente";
@@ -71,7 +71,7 @@ function AppShellContent({ children, user = null, setupMode = false }) {
 
   useEffect(() => {
     try {
-      setSidebarPinned(window.localStorage.getItem(SIDEBAR_PIN_KEY) === "1");
+      setSidebarPinned(window.localStorage.getItem(SIDEBAR_PIN_KEY) !== "0");
     } catch {
       // A preferência é apenas visual; a navegação continua funcionando sem storage.
     }
@@ -89,6 +89,21 @@ function AppShellContent({ children, user = null, setupMode = false }) {
       return next;
     });
   }
+
+  const allNavigation = [
+    ...navigation,
+    { href: "/users", label: "users", icon: Users },
+    { href: "/audit", label: "audit", icon: History },
+    { href: "/financial", label: "financial", icon: BadgeDollarSign },
+    { href: "/catalog", label: "catalog", icon: PackageOpen },
+    { href: "/billing", label: "billing", icon: WalletCards },
+    { href: "/faq", label: "faq", icon: HelpCircle },
+    { href: "/settings", label: "settings", icon: Settings },
+  ];
+  const currentNavigation = allNavigation
+    .filter((item) => isActive(pathname, item.href))
+    .sort((a, b) => b.href.length - a.href.length)[0] ?? navigation[0];
+  const CurrentNavigationIcon = currentNavigation.icon;
 
   return (
     <main className={`shell ${sidebarPinned ? "sidebar-pinned" : ""}`}>
@@ -124,6 +139,10 @@ function AppShellContent({ children, user = null, setupMode = false }) {
       <section className="content">
         <header className="topbar">
           <button className="menu" onClick={() => setSidebarOpen(true)} aria-label={t("openMenu")}><Menu /></button>
+          <div className="topbar-context">
+            <i><CurrentNavigationIcon size={18} /></i>
+            <span><small>Dashboard IA</small><strong>{t(currentNavigation.label)}</strong></span>
+          </div>
           <GlobalSearch disabled={setupMode} />
           <ActionCenter disabled={setupMode} />
           <button className="github-status" onClick={() => notify(setupMode ? "GitHub OAuth aguardando configuração" : "GitHub conectado e operacional")}><Github size={18} /><span>{setupMode ? "Configurar GitHub" : t("githubConnected")}</span><CheckCircle2 size={15} /></button>
