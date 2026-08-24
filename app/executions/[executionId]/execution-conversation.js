@@ -115,7 +115,9 @@ export default function ExecutionConversation({ executionId, status, messages, e
     setError("");
     try {
       const existing = new Set(attachments.map(({ file }) => fileKey(file)));
-      const candidates = Array.from(files ?? []).filter((file) => !existing.has(fileKey(file)));
+      const availableSlots = Math.max(0, MAX_MESSAGE_ATTACHMENTS - attachments.length);
+      const candidates = Array.from(files ?? []).filter((file) => !existing.has(fileKey(file))).slice(0, availableSlots);
+      if (!candidates.length) return;
       validateAttachmentFiles([...attachments.map(({ file }) => file), ...candidates]);
       const validated = validateAttachmentFiles(candidates).map(({ file, mimeType }) => {
         const previewUrl = isImageAttachment(mimeType) ? URL.createObjectURL(file) : null;
@@ -227,7 +229,6 @@ export default function ExecutionConversation({ executionId, status, messages, e
       accept={ATTACHMENT_ACCEPT}
       onFilesSelected={selectAttachments}
       attachmentDisabled={attachments.length >= MAX_MESSAGE_ATTACHMENTS}
-      attachmentHint={`${attachments.length}/${MAX_MESSAGE_ATTACHMENTS} arquivos`}
       compact
       error={error}
       footer={<><span>{adjustmentCount} ajuste{adjustmentCount === 1 ? "" : "s"} · disponível enquanto houver créditos{expiresAt ? ` · expira após 24h sem interação` : ""}</span><button className="execution-complete-button" type="button" onClick={completeExecution} disabled={loading || paused}><CheckCircle2 size={16} />Concluir execução</button></>}

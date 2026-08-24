@@ -70,7 +70,9 @@ function SupportChatSession({ locale, pathname, t }) {
     setAttachmentError("");
     try {
       const existingKeys = new Set(attachments.map(({ file }) => attachmentKey(file)));
-      const candidates = Array.from(files ?? []).filter((file) => !existingKeys.has(attachmentKey(file)));
+      const availableSlots = Math.max(0, MAX_MESSAGE_ATTACHMENTS - attachments.length);
+      const candidates = Array.from(files ?? []).filter((file) => !existingKeys.has(attachmentKey(file))).slice(0, availableSlots);
+      if (!candidates.length) return;
       validateAttachmentFiles([...attachments.map(({ file }) => file), ...candidates]);
       const accepted = validateAttachmentFiles(candidates).map(({ file, mimeType }) => {
         const previewUrl = isImageAttachment(mimeType) ? URL.createObjectURL(file) : null;
@@ -175,7 +177,6 @@ function SupportChatSession({ locale, pathname, t }) {
         accept={ATTACHMENT_ACCEPT}
         onFilesSelected={selectAttachments}
         attachmentDisabled={attachments.length >= MAX_MESSAGE_ATTACHMENTS}
-        attachmentHint={`${attachments.length}/${MAX_MESSAGE_ATTACHMENTS}`}
         error={attachmentError}
         compact
       /></div>
