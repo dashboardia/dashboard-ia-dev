@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, ChevronDown, CircleCheck, CircleDotDashed, CircleX, Clock3, Code2, Coins, Download, FileText, GitBranch, TerminalSquare, Zap } from "lucide-react";
+import { Activity, ArrowLeft, ChevronDown, CircleCheck, CircleDotDashed, CircleX, Clock3, Code2, Coins, Download, FileText, GitBranch, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -87,6 +87,12 @@ export default async function ExecutionPage({ params }) {
   const liveRevision = executionRevision(execution);
   const shouldLiveRefresh = shouldPollExecutionDetail(execution);
   const livePresentation = executionLivePresentation(execution);
+  const consumedCredits = Math.max(0, Number(
+    execution.creditReservation?.consumedCredits
+      ?? execution.financialSnapshot?.simulatedConsumedCredits
+      ?? 0,
+  ) || 0);
+  const measuredTokens = Math.max(0, Number(execution.inputTokens) || 0) + Math.max(0, Number(execution.outputTokens) || 0);
   const liveIcon = livePresentation.icon === "failed"
     ? <CircleX size={18} />
     : livePresentation.icon === "running"
@@ -116,7 +122,7 @@ export default async function ExecutionPage({ params }) {
           <div><Activity size={17} /><span><small>Status</small><strong>{executionStatusLabel(execution)}</strong></span></div>
           <div><GitBranch size={17} /><span><small>Branch</small><span className="execution-branch-value"><strong>{execution.branchName ?? "Aguardando worker"}</strong><CopyBranchButton branchName={execution.branchName} /></span></span></div>
           <div><Clock3 size={17} /><span><small>Duração</small><strong>{duration(execution)}</strong></span></div>
-          <div><Zap size={17} /><span><small>Tokens</small><strong>{(execution.inputTokens ?? 0) + (execution.outputTokens ?? 0) || "—"}</strong></span></div>
+          <div><Coins size={17} /><span><small>Créditos usados</small><strong>{consumedCredits.toLocaleString("pt-BR")} créditos</strong>{user.globalRole === "ADMIN" && <em className="execution-admin-token-usage">{measuredTokens.toLocaleString("pt-BR")} tokens medidos</em>}</span></div>
         </section>
 
         <div className={`execution-workbench ${showConversation ? "with-chat" : "single"}`}>
