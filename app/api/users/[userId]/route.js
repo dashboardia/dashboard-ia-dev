@@ -103,7 +103,7 @@ export async function DELETE(request, context) {
       select: { id: true, previewEnvironment: { select: { id: true, externalId: true } } },
     });
     const executionIds = executions.map((execution) => execution.id);
-    const [attachments, environments] = await Promise.all([
+    const [attachments, supportAttachments, environments] = await Promise.all([
       db.executionMessageAttachment.findMany({
         where: {
           OR: [
@@ -111,6 +111,10 @@ export async function DELETE(request, context) {
             ...(executionIds.length ? [{ message: { executionId: { in: executionIds } } }] : []),
           ],
         },
+        select: { storageKey: true },
+      }),
+      db.supportMessageAttachment.findMany({
+        where: { message: { conversation: { userId } } },
         select: { storageKey: true },
       }),
       db.devEnvironment.findMany({
@@ -149,6 +153,7 @@ export async function DELETE(request, context) {
     await Promise.allSettled([
       ...remoteIds.map((remoteId) => deleteDashboardiaPreview(remoteId)),
       ...attachments.map((attachment) => deletePrivateObject(attachment.storageKey)),
+      ...supportAttachments.map((attachment) => deletePrivateObject(attachment.storageKey)),
     ]);
     await db.auditLog.create({
       data: auditData({

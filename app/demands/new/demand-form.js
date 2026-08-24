@@ -1,13 +1,15 @@
 "use client";
 
-import { FolderGit2, GitBranch, LoaderCircle, Plus, Sparkles } from "lucide-react";
+import { FileText, FolderGit2, GitBranch, LoaderCircle, Plus, Sparkles } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import ChatComposer from "../../../components/chat-composer";
 import { usePreferences } from "../../../components/preferences-provider";
 import { AI_MODELS, DEFAULT_AI_MODEL, FREE_PLAN_AI_MODEL } from "../../../lib/ai-models";
+import { ATTACHMENT_ACCEPT, isImageAttachment, MAX_MESSAGE_ATTACHMENTS, validateAttachmentFiles } from "../../../lib/attachments";
 import { getDemandCopy } from "../../../lib/demand-copy";
 import styles from "./demand-form.module.css";
 
@@ -18,6 +20,10 @@ function demandTitle(prompt) {
   const normalized = prompt.replace(/\s+/g, " ").trim();
   const firstThought = normalized.split(/(?<=[.!?])\s/)[0] || normalized;
   return (firstThought.length >= 5 ? firstThought : normalized).slice(0, 140);
+}
+
+function fileKey(file) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
 }
 
 export default function DemandForm({ projects, initialProjectId }) {
@@ -32,6 +38,7 @@ export default function DemandForm({ projects, initialProjectId }) {
     aiModel: initialProject?.lunaOnly ? FREE_PLAN_AI_MODEL : DEFAULT_AI_MODEL,
   });
   const [prompt, setPrompt] = useState("");
+  const [attachments, setAttachments] = useState([]);
   const [error, setError] = useState("");
   const [billingUrl, setBillingUrl] = useState("");
   const [saving, setSaving] = useState(false);
@@ -39,8 +46,15 @@ export default function DemandForm({ projects, initialProjectId }) {
   const [branchesLoading, setBranchesLoading] = useState(Boolean(initialProject));
   const [branchError, setBranchError] = useState("");
   const [recoveryNotice, setRecoveryNotice] = useState("");
+  const fileInputRef = useRef(null);
+  const previewUrlsRef = useRef(new Set());
   const selectedProject = projects.find((project) => project.id === context.projectId);
   const lunaOnly = Boolean(selectedProject?.lunaOnly);
+
+  useEffect(() => () => {
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrlsRef.current.clear();
+  }, []);
 
   useEffect(() => {
     try {
@@ -123,6 +137,48 @@ export default function DemandForm({ projects, initialProjectId }) {
     setContext((current) => ({ ...current, type, aiModel: type === "DOCUMENTATION" ? FREE_PLAN_AI_MODEL : current.aiModel }));
   }
 
+  function addAttachments(files) {
+    setError("");
+    try {
+      const existing = new Set(attachments.map(({ file }) => fileKey(file)));
+      const availableSlots = Math.max(0, MAX_MESSAGE_ATTACHMENTS - attachments.length);
+      const candidates = Array.from(files ?? []).filter((file) => !existing.has(fileKey(file))).slice(0, availableSlots);
+      if (!candidates.length) return;
+      validateAttachmentFiles([...attachments.map(({ file }) => file), ...candidates]);
+      const validated = validateAttachmentFiles(candidates).map(({ file, mimeType }) => {
+        const previewUrl = isImageAttachment(mimeType) ? URL.createObjectURL(file) : null;
+        if (previewUrl) previewUrlsRef.current.add(previewUrl);
+        return { file, mimeType, previewUrl };
+      });
+      setAttachments((current) => [...current, ...validated]);
+    } catch (attachmentError) {
+      setError(attachmentError.message);
+    }
+  }
+
+  function selectAttachments(event) {
+    addAttachments(event.target.files);
+    event.target.value = "";
+  }
+
+  function pasteAttachments(event) {
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (!files.length) return;
+    event.preventDefault();
+    addAttachments(files);
+  }
+
+  function removeAttachment(index) {
+    setAttachments((current) => {
+      const selected = current[index];
+      if (selected?.previewUrl) {
+        URL.revokeObjectURL(selected.previewUrl);
+        previewUrlsRef.current.delete(selected.previewUrl);
+      }
+      return current.filter((_, itemIndex) => itemIndex !== index);
+    });
+  }
+
   async function submit(event) {
     event.preventDefault();
     const description = prompt.trim();
@@ -135,7 +191,10 @@ export default function DemandForm({ projects, initialProjectId }) {
     try {
       const visualValidation = context.type !== "DOCUMENTATION";
       const payload = { ...context, title: demandTitle(description), description, acceptanceCriteria: "", priority: "NORMAL", visualValidation, visualPaths: visualValidation ? ["/"] : [] };
-      const response = await fetch("/api/demands", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const formData = new FormData();
+      formData.set("payload", JSON.stringify(payload));
+      attachments.forEach(({ file }) => formData.append("attachments", file, file.name));
+      const response = await fetch("/api/demands", { method: "POST", body: formData });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
         const requestError = new Error(result.error ?? copy.createError);
@@ -175,12 +234,20 @@ export default function DemandForm({ projects, initialProjectId }) {
       label="Descreva a demanda"
       value={prompt}
       onChange={(event) => setPrompt(event.target.value)}
+      onPaste={pasteAttachments}
       onSubmit={submit}
       placeholder={promptPlaceholder}
       loading={saving}
       canSubmit={Boolean(selectedProject && context.baseBranch && prompt.trim().length >= 20)}
       submitLabel="Criar demanda"
       loadingLabel={copy.creating}
+      attachments={attachments.map((attachment) => ({ ...attachment, key: fileKey(attachment.file), name: attachment.file.name }))}
+      renderAttachment={(attachment) => attachment.previewUrl ? <Image unoptimized src={attachment.previewUrl} alt={attachment.file.name} width={112} height={72} /> : <FileText size={20} />}
+      onRemoveAttachment={removeAttachment}
+      fileInputRef={fileInputRef}
+      accept={ATTACHMENT_ACCEPT}
+      onFilesSelected={selectAttachments}
+      attachmentDisabled={attachments.length >= MAX_MESSAGE_ATTACHMENTS}
       error={error && <><span>{error}</span>{billingUrl && <Link href={billingUrl} onClick={() => window.sessionStorage.setItem(BILLING_DRAFT_STORAGE_KEY, JSON.stringify({ context, prompt }))}>Adicionar créditos</Link>}</>}
       controls={<>
         <label aria-label="Tipo de trabalho"><select value={context.type} onChange={selectType}>{copy.typeValues.map((value) => <option value={value} key={value}>{copy.types[value]}</option>)}</select></label>

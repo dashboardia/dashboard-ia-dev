@@ -314,7 +314,7 @@ export async function processExecution(executionId, workerId) {
       ? execution.messages.map((message) => `${message.role === "USER" ? "Cliente" : message.role === "AGENT" ? "Agente" : "Sistema"}: ${message.content}${message.attachments.length ? `\nAnexos: ${message.attachments.map((attachment) => attachment.name).join(", ")}` : ""}`).join("\n\n")
       : "";
     const latestUserMessage = [...execution.messages].reverse().find((message) => message.role === "USER");
-    const agentAttachments = isFollowUp && latestUserMessage?.attachments.length
+    const agentAttachments = latestUserMessage?.attachments.length
       ? await Promise.all(latestUserMessage.attachments.map(async (attachment) => {
           const object = await getPrivateObject(attachment.storageKey);
           const data = await object.Body.transformToByteArray();

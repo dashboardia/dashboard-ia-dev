@@ -10,6 +10,7 @@ import SectionHeader from "../../../components/section-header";
 import { getProjectRole } from "../../../lib/access";
 import { db } from "../../../lib/db";
 import { executionLivePresentation, executionProgressLogs, executionStageLabel, executionStatusLabel } from "../../../lib/execution-presentation";
+import { executionControlState } from "../../../lib/execution-control-state";
 import { executionRevision, shouldPollExecutionDetail } from "../../../lib/execution-refresh";
 import { isExecutionCreditBlocked } from "../../../lib/execution-credit-state";
 import { requirePageUser } from "../../../lib/page-access";
@@ -17,7 +18,6 @@ import { redactSensitiveData } from "../../../lib/redaction";
 import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error-messages";
 import { formatBrlCents } from "../../../lib/financial-shadow";
 import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings";
-import CancelExecutionButton from "../../demands/[demandId]/cancel-execution-button";
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
 import AutoOpenPullRequest from "./auto-open-pull-request";
 import EvidenceCard from "./evidence-card";
@@ -25,9 +25,6 @@ import DiffViewer from "./diff-viewer";
 import ExecutionConversation from "./execution-conversation";
 import ExecutionEnvironmentActivity from "./execution-environment-activity";
 import CopyBranchButton from "./copy-branch-button";
-import ResumeExecutionButton from "./resume-execution-button";
-
-const cancellableStatuses = ["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"];
 const activeExecutionStatuses = new Set(["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"]);
 
 function duration(execution) {
@@ -73,17 +70,16 @@ export default async function ExecutionPage({ params }) {
   const role = await getProjectRole(user, execution.demand.projectId);
   if (!role) redirect("/executions");
   const diff = execution.artifacts.find((artifact) => artifact.type === "diff");
-  const canCancel = role === "MANAGER" && cancellableStatuses.includes(execution.status) && !execution.cancelRequestedAt;
-  const canResume = role === "MANAGER" && execution.status === "STOPPED" && !execution.cancelRequestedAt;
   const shouldAutoOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.pullRequest && !execution.cancelRequestedAt;
   const interrupted = execution.status === "CANCELLED" || Boolean(execution.cancelRequestedAt);
   const explainedError = execution.error ? explainError(execution.error) : null;
   const progressLogs = executionProgressLogs(execution);
   const executionActive = activeExecutionStatuses.has(execution.status) && !execution.cancelRequestedAt;
   const showConversation = execution.demand.type !== "DOCUMENTATION";
-  const conversationReady = Boolean(execution.pullRequest || execution.messages.length > 0 || execution.status === "AWAITING_CLIENT");
+  const conversationReady = Boolean(execution.pullRequest || execution.adjustmentCount > 0 || execution.status === "AWAITING_CLIENT");
   const conversationMessages = execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
   const creditBlocked = isExecutionCreditBlocked(execution.error);
+  const initialControlState = executionControlState(execution);
   const liveRevision = executionRevision(execution);
   const shouldLiveRefresh = shouldPollExecutionDetail(execution);
   const livePresentation = executionLivePresentation(execution);
@@ -110,7 +106,7 @@ export default async function ExecutionPage({ params }) {
           eyebrow={`${execution.demand.project.name} · ${executionStageLabel(execution.stage)}`}
           title={execution.demand.title}
           description={`Execução ${execution.id.slice(-10)} · solicitada por ${execution.requestedBy.name ?? execution.requestedBy.githubLogin}`}
-          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : interrupted ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar a demanda</Link></div> : null}{canResume && <ResumeExecutionButton executionId={execution.id} processingEnabled={settings.executionProcessingEnabled} />}{canCancel && <CancelExecutionButton executionId={execution.id} />}</div>}
+          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : interrupted ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar a demanda</Link></div> : null}</div>}
         />
 
         <div className="execution-primary-state">
@@ -134,7 +130,7 @@ export default async function ExecutionPage({ params }) {
             {showConversation && <ExecutionEnvironmentActivity executionId={execution.id} />}
           </div>
 
-          {showConversation && <ExecutionConversation executionId={execution.id} status={execution.status} messages={conversationMessages} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} conversationReady={conversationReady} creditBlocked={creditBlocked} />}
+          {showConversation && <ExecutionConversation executionId={execution.id} status={execution.status} messages={conversationMessages} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} conversationReady={conversationReady} creditBlocked={creditBlocked} canManage={role === "MANAGER"} initialControlState={initialControlState} />}
         </div>
 
         <details className="form-card detail-card full-card execution-detail-disclosure">

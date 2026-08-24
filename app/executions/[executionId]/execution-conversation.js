@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, FileText, LoaderCircle, MessageSquareText, Sparkles } from "lucide-react";
+import { CheckCircle2, FileText, LoaderCircle, MessageSquareText, PauseCircle, PlayCircle, Sparkles, XCircle } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -28,13 +28,14 @@ function messageAuthor(message) {
   return message.authorId ? "Você" : "Dashboard IA";
 }
 
-export default function ExecutionConversation({ executionId, status, messages, expiresAt, adjustmentCount, conversationReady = false, creditBlocked = false }) {
+export default function ExecutionConversation({ executionId, status, messages, expiresAt, adjustmentCount, conversationReady = false, creditBlocked = false, canManage = false, initialControlState = null }) {
   const router = useRouter();
   const [content, setContent] = useState("");
   const [attachments, setAttachments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [controlState, setControlState] = useState(null);
+  const [controlState, setControlState] = useState(initialControlState);
+  const [controlAction, setControlAction] = useState("");
   const messageListRef = useRef(null);
   const fileInputRef = useRef(null);
   const previewUrlsRef = useRef(new Set());
@@ -196,8 +197,27 @@ export default function ExecutionConversation({ executionId, status, messages, e
     }
   }
 
+  async function runControlAction(kind) {
+    if (kind === "cancel" && !window.confirm("Cancelar esta execução? O ambiente e os processos ativos também serão encerrados.")) return;
+    setControlAction(kind);
+    setError("");
+    try {
+      const endpoint = kind === "pause" ? "stop" : kind === "resume" ? "resume" : "cancel";
+      const response = await fetch(`/api/executions/${encodeURIComponent(executionId)}/${endpoint}`, { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir a operação");
+      router.refresh();
+    } catch (actionError) {
+      setError(actionError.message);
+    } finally {
+      setControlAction("");
+    }
+  }
+
+  const showControlActions = canManage && Boolean(controlState?.canPause || controlState?.canResume || controlState?.canCancel);
+
   return <section className="form-card detail-card execution-conversation">
-    <header className="execution-chat-header"><span className="execution-chat-icon"><MessageSquareText size={19} /></span><div><h2>{chatTitle}</h2><p>{chatDescription}</p></div><em className={`execution-chat-status ${available ? "available" : processing ? "processing" : "closed"}`}>{effectiveCreditBlocked ? "Aguardando créditos" : available ? paused ? "Pausada · escreva aqui" : "Escreva aqui" : processing ? "IA trabalhando" : "Concluída"}</em></header>
+    <header className="execution-chat-header"><span className="execution-chat-icon"><MessageSquareText size={19} /></span><div><h2>{chatTitle}</h2><p>{chatDescription}</p></div><div className="execution-chat-control-group"><em className={`execution-chat-status ${available ? "available" : processing ? "processing" : "closed"}`}>{effectiveCreditBlocked ? "Aguardando créditos" : available ? paused ? "Pausada · escreva aqui" : "Escreva aqui" : processing ? "IA trabalhando" : "Concluída"}</em>{showControlActions && <div className="execution-chat-controls">{controlState?.canPause && <button type="button" onClick={() => runControlAction("pause")} disabled={Boolean(controlAction) || loading}>{controlAction === "pause" ? <LoaderCircle className="spin" size={14} /> : <PauseCircle size={14} />}Parar</button>}{controlState?.canResume && <button className="resume" type="button" onClick={() => runControlAction("resume")} disabled={Boolean(controlAction) || loading}>{controlAction === "resume" ? <LoaderCircle className="spin" size={14} /> : <PlayCircle size={14} />}Retomar</button>}{controlState?.canCancel && <button className="danger" type="button" onClick={() => runControlAction("cancel")} disabled={Boolean(controlAction) || loading}>{controlAction === "cancel" ? <LoaderCircle className="spin" size={14} /> : <XCircle size={14} />}Cancelar</button>}</div>}</div></header>
     {available && <div className="execution-chat-guidance"><Sparkles size={16} /><span><strong>{paused ? "Processos pausados — você pode decidir o próximo passo" : "Peça mudanças em linguagem natural"}</strong><small>{paused ? "Envie um ajuste para a IA e a execução será retomada automaticamente, ou use Reexecutar de onde parou para continuar sem um novo pedido." : "Você pode pedir para corrigir um erro, mudar uma tela, adicionar uma função ou colar um print. A IA continua exatamente deste ponto."}</small></span></div>}
     <div className="execution-message-list" ref={messageListRef}>{messages.map((message) => {
       const hasAttachments = message.attachments?.length > 0;

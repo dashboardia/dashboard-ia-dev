@@ -1,18 +1,80 @@
+import { randomUUID } from "node:crypto";
+
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
 import { AccessDeniedError, requireUser } from "../../../../lib/access";
+import { assertSameOrigin } from "../../../../lib/api";
 import { attachmentInputItem } from "../../../../lib/attachment-input";
 import { validateAttachmentFiles } from "../../../../lib/attachments";
 import { db } from "../../../../lib/db";
 import { env } from "../../../../lib/env";
 import { explainError } from "../../../../lib/error-messages";
 import { projectAccessWhere } from "../../../../lib/projects";
+import { supportConversationDeadline, supportMessageToClient } from "../../../../lib/support-conversation";
 import { supportReferenceCandidates, wantsAccountOverview, wantsHumanSupport } from "../../../../lib/support-context";
 import { buildSupportFallback, searchSupportArticles, supportArticles } from "../../../../lib/support-knowledge";
+import { deletePrivateObject, putPrivateObject } from "../../../../lib/visual-storage";
 
 const windows = new Map();
 const SUPPORT_EMAIL = "suportdashboardia@gmail.com";
+
+const conversationMessagesInclude = {
+  messages: {
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    include: { attachments: { orderBy: { createdAt: "asc" } } },
+  },
+};
+
+async function activeSupportConversation(userId, { create = false, includeMessages = false } = {}) {
+  const now = new Date();
+  let conversation = await db.supportConversation.findUnique({
+    where: { activeKey: userId },
+    ...(includeMessages ? { include: conversationMessagesInclude } : {}),
+  });
+  if (conversation && conversation.expiresAt <= now) {
+    await db.supportConversation.update({
+      where: { id: conversation.id },
+      data: { activeKey: null, closedAt: now, closeReason: "INACTIVITY" },
+    });
+    conversation = null;
+  }
+  if (conversation || !create) return conversation;
+  try {
+    return await db.supportConversation.create({
+      data: { userId, activeKey: userId, expiresAt: supportConversationDeadline(now), lastMessageAt: now },
+    });
+  } catch (error) {
+    if (error?.code !== "P2002") throw error;
+    return db.supportConversation.findUniqueOrThrow({ where: { activeKey: userId } });
+  }
+}
+
+async function persistAssistantMessage(conversationId, payload) {
+  const now = new Date();
+  return db.$transaction(async (transaction) => {
+    const message = await transaction.supportMessage.create({
+      data: {
+        conversationId,
+        role: "ASSISTANT",
+        content: payload.answer,
+        metadata: {
+          source: payload.source,
+          demandReference: payload.demandReference ?? null,
+          links: payload.links ?? [],
+          projects: payload.projects ?? [],
+        },
+      },
+      include: { attachments: true },
+    });
+    await transaction.supportConversation.update({
+      where: { id: conversationId },
+      data: { lastMessageAt: now, expiresAt: supportConversationDeadline(now) },
+    });
+    return message;
+  });
+}
 
 function withHumanSupportGuidance(answer) {
   return `${answer}\n\nSe preferir atendimento humano, envie um e-mail para ${SUPPORT_EMAIL}. Inclua o número da demanda, uma descrição do problema e os prints relevantes.`;
@@ -202,8 +264,43 @@ async function loadOperationalContext(user, question, currentPath) {
   };
 }
 
-export async function POST(request) {
+export async function GET() {
   try {
+    const user = await requireUser();
+    const conversation = await activeSupportConversation(user.id, { includeMessages: true });
+    return NextResponse.json({
+      conversationId: conversation?.id ?? null,
+      expiresAt: conversation?.expiresAt?.toISOString() ?? null,
+      messages: [...(conversation?.messages ?? [])].reverse().map(supportMessageToClient),
+    }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    console.error("[support-chat:get]", error);
+    const knownStatus = Number.isInteger(error?.status) && error.status >= 400 && error.status < 500;
+    return NextResponse.json({ error: knownStatus ? error.message : "Não foi possível carregar a conversa." }, { status: knownStatus ? error.status : 500 });
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    assertSameOrigin(request);
+    const user = await requireUser();
+    const now = new Date();
+    await db.supportConversation.updateMany({
+      where: { activeKey: user.id, closedAt: null },
+      data: { activeKey: null, closedAt: now, closeReason: "CLIENT" },
+    });
+    return NextResponse.json({ closed: true });
+  } catch (error) {
+    console.error("[support-chat:delete]", error);
+    const knownStatus = Number.isInteger(error?.status) && error.status >= 400 && error.status < 500;
+    return NextResponse.json({ error: knownStatus ? error.message : "Não foi possível encerrar a conversa." }, { status: knownStatus ? error.status : 500 });
+  }
+}
+
+export async function POST(request) {
+  const uploadedKeys = [];
+  try {
+    assertSameOrigin(request);
     const user = await requireUser();
     if (rateLimited(user.id)) return NextResponse.json({ answer: "Aguarde um minuto antes de enviar novas perguntas." }, { status: 429 });
     const formData = await request.formData();
@@ -211,19 +308,52 @@ export async function POST(request) {
     const currentPathValue = formData.get("currentPath");
     const locale = ["pt-BR", "en", "es"].includes(localeValue) ? localeValue : "pt-BR";
     const currentPath = typeof currentPathValue === "string" && currentPathValue.startsWith("/") ? currentPathValue.slice(0, 160) : "/";
-    let messagePayload = [];
+    let legacyMessagePayload = [];
     try {
-      messagePayload = JSON.parse(String(formData.get("messages") ?? "[]"));
-    } catch {
-      return NextResponse.json({ answer: "O histórico da conversa é inválido." }, { status: 400 });
-    }
-    const messages = Array.isArray(messagePayload) ? messagePayload.slice(-12).filter((item) => ["user", "assistant"].includes(item?.role) && typeof item.content === "string").map((item) => ({ role: item.role, content: item.content.slice(0, 4_000) })) : [];
-    const attachments = await Promise.all(validateAttachmentFiles(formData.getAll("attachments")).map(async (attachment) => ({
-      ...attachment,
-      data: Buffer.from(await attachment.file.arrayBuffer()),
-    })));
-    const question = messages.at(-1)?.content?.trim();
+      legacyMessagePayload = JSON.parse(String(formData.get("messages") ?? "[]"));
+    } catch {}
+    const legacyQuestion = Array.isArray(legacyMessagePayload)
+      ? legacyMessagePayload.findLast((item) => item?.role === "user" && typeof item.content === "string")?.content
+      : "";
+    const preparedAttachments = validateAttachmentFiles(formData.getAll("attachments"));
+    const question = String(formData.get("content") ?? legacyQuestion ?? "").trim().slice(0, 4_000)
+      || (preparedAttachments.length ? "Analise os arquivos anexados." : "");
     if (!question) return NextResponse.json({ answer: "Envie uma pergunta sobre o Dashboardia." }, { status: 400 });
+    const conversation = await activeSupportConversation(user.id, { create: true });
+    const storedAttachments = [];
+    const attachments = [];
+    for (const attachment of preparedAttachments) {
+      const storageKey = `support-conversations/${conversation.id}/${randomUUID()}/${attachment.name}`;
+      const data = Buffer.from(await attachment.file.arrayBuffer());
+      await putPrivateObject(storageKey, data, attachment.mimeType);
+      uploadedKeys.push(storageKey);
+      storedAttachments.push({ name: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.sizeBytes, storageKey });
+      attachments.push({ ...attachment, data });
+    }
+    const interactionAt = new Date();
+    await db.$transaction(async (transaction) => {
+      await transaction.supportMessage.create({
+        data: {
+          conversationId: conversation.id,
+          role: "USER",
+          content: question,
+          metadata: { currentPath },
+          attachments: { create: storedAttachments },
+        },
+      });
+      await transaction.supportConversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: interactionAt, expiresAt: supportConversationDeadline(interactionAt) },
+      });
+    });
+    uploadedKeys.length = 0;
+    const persistedMessages = await db.supportMessage.findMany({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+      select: { role: true, content: true },
+    });
+    const messages = persistedMessages.reverse().map((message) => ({ role: message.role.toLowerCase(), content: message.content.slice(0, 4_000) }));
     const matches = searchSupportArticles(question, 4);
     const fallback = buildSupportFallback(question, locale);
     const operationalContext = await loadOperationalContext(user, question, currentPath);
@@ -236,14 +366,16 @@ export async function POST(request) {
     const humanSupportRequested = wantsHumanSupport(question);
     const baseFallback = accountOverviewRequested ? overviewFallback(operationalContext.projects) : fallback;
     const fallbackAnswer = humanSupportRequested || (!accountOverviewRequested && matches.length === 0) ? withHumanSupportGuidance(baseFallback) : baseFallback;
-    if (!env.OPENAI_API_KEY) return NextResponse.json({ answer: fallbackAnswer, source: "faq", demandReference: operationalContext.demand?.id.slice(-10) ?? null, ...navigation });
-
-    try {
-      const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-      const response = await client.responses.create({
-        model: env.SUPPORT_AI_MODEL,
-        max_output_tokens: 1_000,
-        instructions: `Você é o assistente consultivo de produto do Dashboardia.
+    let responsePayload;
+    if (!env.OPENAI_API_KEY) {
+      responsePayload = { answer: fallbackAnswer, source: "faq", demandReference: operationalContext.demand?.id.slice(-10) ?? null, ...navigation };
+    } else {
+      try {
+        const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+        const response = await client.responses.create({
+          model: env.SUPPORT_AI_MODEL,
+          max_output_tokens: 1_000,
+          instructions: `Você é o assistente consultivo de produto do Dashboardia.
 
 CONTEXTO DA SESSÃO
 - Idioma obrigatório: ${locale}
@@ -277,18 +409,22 @@ ${matches.length ? matches.map((item) => `- ${item.title}: ${item.answer}`).join
 
 DOCUMENTAÇÃO COMPLETA
 ${supportArticles.map((item) => `- ${item.title}: ${item.answer}`).join("\n")}`,
-        input: messages.map((message, index) => index === messages.length - 1 && message.role === "user" && attachments.length
-          ? { ...message, content: [{ type: "input_text", text: message.content }, ...attachments.map(attachmentInputItem)] }
-          : message),
-      });
-      const aiAnswer = response.output_text?.trim() || fallbackAnswer;
-      const answer = humanSupportRequested && !aiAnswer.includes(SUPPORT_EMAIL) ? withHumanSupportGuidance(aiAnswer) : aiAnswer;
-      return NextResponse.json({ answer, source: "ai", demandReference: operationalContext.demand?.id.slice(-10) ?? null, ...navigation });
-    } catch (error) {
-      console.error("[support-chat:ai]", error);
-      return NextResponse.json({ answer: withHumanSupportGuidance(baseFallback), source: "faq", demandReference: operationalContext.demand?.id.slice(-10) ?? null, ...navigation });
+          input: messages.map((message, index) => index === messages.length - 1 && message.role === "user" && attachments.length
+            ? { ...message, content: [{ type: "input_text", text: message.content }, ...attachments.map(attachmentInputItem)] }
+            : message),
+        });
+        const aiAnswer = response.output_text?.trim() || fallbackAnswer;
+        const answer = humanSupportRequested && !aiAnswer.includes(SUPPORT_EMAIL) ? withHumanSupportGuidance(aiAnswer) : aiAnswer;
+        responsePayload = { answer, source: "ai", demandReference: operationalContext.demand?.id.slice(-10) ?? null, ...navigation };
+      } catch (error) {
+        console.error("[support-chat:ai]", error);
+        responsePayload = { answer: withHumanSupportGuidance(baseFallback), source: "faq", demandReference: operationalContext.demand?.id.slice(-10) ?? null, ...navigation };
+      }
     }
+    const assistantMessage = await persistAssistantMessage(conversation.id, responsePayload);
+    return NextResponse.json({ ...responsePayload, message: supportMessageToClient(assistantMessage) });
   } catch (error) {
+    await Promise.allSettled(uploadedKeys.map((key) => deletePrivateObject(key)));
     console.error("[support-chat]", error);
     const knownStatus = Number.isInteger(error?.status) && error.status >= 400 && error.status < 500;
     return NextResponse.json(

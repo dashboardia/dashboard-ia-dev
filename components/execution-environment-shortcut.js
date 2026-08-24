@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleAlert, ExternalLink, LoaderCircle, PauseCircle, PlayCircle, RefreshCw, ServerCog, Sparkles, XCircle } from "lucide-react";
+import { CircleAlert, ExternalLink, LoaderCircle, PauseCircle, RefreshCw, ServerCog, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "./execution-environment-shortcut.module.css";
@@ -19,7 +19,7 @@ function presentation(shortcut, control) {
   if (["STARTING", "PREPARING"].includes(shortcut?.state)) return { tone: "preparing", icon: LoaderCircle, title: "Preparando ambiente", detail: "Build e inicialização do ambiente acontecem automaticamente." };
   if (shortcut?.state === "FAILED") return { tone: "failed", icon: CircleAlert, title: "Ambiente com falha", detail: "A publicação falhou. Quando uma correção começar, o acompanhamento do ambiente será reiniciado automaticamente." };
   if (shortcut?.state === "EXPIRED") return { tone: "expired", icon: CircleAlert, title: "Ambiente encerrado", detail: "A execução e o histórico continuam preservados." };
-  if (control?.canPause) return { tone: "processing", icon: LoaderCircle, title: control.environmentStatus || "Ambiente em processamento", detail: "Você pode pausar os processos sem cancelar a execução." };
+  if (control?.canPause) return { tone: "processing", icon: LoaderCircle, title: control.environmentStatus || "Ambiente em processamento", detail: "Os controles da execução estão disponíveis dentro do chat." };
   if (control?.canCancel) return { tone: "processing", icon: ServerCog, title: control.environmentStatus || "Ambiente da execução", detail: "O estado do ambiente é acompanhado separadamente da execução da IA." };
   return null;
 }
@@ -84,24 +84,15 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
     }
   }, [control]);
 
-  async function runAction(kind) {
+  async function restartEnvironment() {
     if (!executionId) return;
-    if (kind === "cancel" && !window.confirm("Cancelar esta execução? O ambiente e os processos ativos também serão encerrados.")) return;
-    setActionLoading(kind);
+    setActionLoading("restart");
     setActionError("");
     try {
-      const endpoint = kind === "pause"
-        ? "stop"
-        : kind === "resume"
-          ? "resume"
-          : kind === "restart"
-            ? "restart-environment"
-            : "cancel";
-      const response = await fetch(`/api/executions/${encodeURIComponent(executionId)}/${endpoint}`, { method: "POST" });
+      const response = await fetch(`/api/executions/${encodeURIComponent(executionId)}/restart-environment`, { method: "POST" });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir a operação");
       await loadState();
-      if (kind !== "restart") window.location.reload();
     } catch (error) {
       setActionError(error.message);
     } finally {
@@ -112,7 +103,7 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
   if (!executionId) return null;
   if (control?.creditBlocked) return null;
   const view = presentation(shortcut, control);
-  const shouldRenderControls = Boolean(control?.canPause || control?.canResume || control?.canRestartEnvironment || control?.canCancel);
+  const shouldRenderControls = Boolean(control?.canRestartEnvironment);
   if (!view && !shouldRenderControls) return null;
   const Icon = view?.icon ?? ServerCog;
   const tone = view?.tone ?? "processing";
@@ -127,10 +118,7 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
       </div>
       <div className={styles.actions}>
         {shortcut?.state === "READY" && shortcut.url && <a className={styles.action} href={shortcut.url} target="_blank" rel="noreferrer">Abrir<ExternalLink size={12} /></a>}
-        {control?.canRestartEnvironment && <button className={styles.action} type="button" disabled={Boolean(actionLoading)} onClick={() => runAction("restart")}>{actionLoading === "restart" ? <LoaderCircle className={styles.spin} size={12} /> : <RefreshCw size={12} />}Subir ambiente novamente</button>}
-        {control?.canPause && <button className={styles.secondary} type="button" disabled={Boolean(actionLoading)} onClick={() => runAction("pause")}>{actionLoading === "pause" ? <LoaderCircle className={styles.spin} size={12} /> : <PauseCircle size={12} />}Parar</button>}
-        {control?.canResume && <button className={styles.action} type="button" disabled={Boolean(actionLoading)} onClick={() => runAction("resume")}>{actionLoading === "resume" ? <LoaderCircle className={styles.spin} size={12} /> : <PlayCircle size={12} />}Reexecutar</button>}
-        {control?.canCancel && <button className={styles.danger} type="button" disabled={Boolean(actionLoading)} onClick={() => runAction("cancel")}>{actionLoading === "cancel" ? <LoaderCircle className={styles.spin} size={12} /> : <XCircle size={12} />}Cancelar</button>}
+        {control?.canRestartEnvironment && <button className={styles.action} type="button" disabled={Boolean(actionLoading)} onClick={restartEnvironment}>{actionLoading === "restart" ? <LoaderCircle className={styles.spin} size={12} /> : <RefreshCw size={12} />}Subir ambiente novamente</button>}
       </div>
     </aside>
   );

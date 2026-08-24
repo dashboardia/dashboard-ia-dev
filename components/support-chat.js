@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Bot, FileText, FolderKanban, ListTodo, MessageCircle, X } from "lucide-react";
+import { ArrowUpRight, Bot, FileText, FolderKanban, ListTodo, MessageCircle, MessageSquareOff, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -51,6 +51,8 @@ function SupportChatSession({ locale, pathname, t }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [ending, setEnding] = useState(false);
   const [messages, setMessages] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [attachmentError, setAttachmentError] = useState("");
@@ -60,6 +62,23 @@ function SupportChatSession({ locale, pathname, t }) {
   const previewUrls = useRef(new Set());
 
   useEffect(() => () => activeRequest.current?.abort(), []);
+  useEffect(() => {
+    let active = true;
+    async function loadConversation() {
+      try {
+        const response = await fetch("/api/support/chat", { cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? "Não foi possível carregar a conversa.");
+        if (active) setMessages(Array.isArray(payload.messages) ? payload.messages : []);
+      } catch (error) {
+        if (active) setAttachmentError(error.message);
+      } finally {
+        if (active) setHistoryLoading(false);
+      }
+    }
+    loadConversation();
+    return () => { active = false; };
+  }, []);
   useEffect(() => () => {
     previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
     previewUrls.current.clear();
@@ -123,6 +142,7 @@ function SupportChatSession({ locale, pathname, t }) {
     const formData = new FormData();
     formData.set("locale", locale);
     formData.set("currentPath", pathname);
+    formData.set("content", content || "Analise os arquivos anexados.");
     formData.set("messages", JSON.stringify(next.slice(-12).map(({ role, content: value }) => ({ role, content: value }))));
     submittedAttachments.forEach(({ file }) => formData.append("attachments", file, file.name));
     activeRequest.current = controller;
@@ -134,8 +154,9 @@ function SupportChatSession({ locale, pathname, t }) {
 
     try {
       const response = await fetch("/api/support/chat", { method: "POST", signal: controller.signal, body: formData });
-      const payload = await response.json();
-      setMessages((current) => [...current, {
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.answer ?? payload.error ?? t("supportUnavailable"));
+      setMessages((current) => [...current, payload.message ?? {
         role: "assistant",
         content: payload.answer ?? t("supportUnavailable"),
         demandReference: payload.demandReference,
@@ -143,19 +164,41 @@ function SupportChatSession({ locale, pathname, t }) {
         projects: payload.projects ?? [],
       }]);
     } catch (error) {
-      if (error?.name !== "AbortError") setMessages((current) => [...current, { role: "assistant", content: `${t("supportUnavailable")} Para atendimento humano, envie um e-mail para suportdashboardia@gmail.com.` }]);
+      if (error?.name !== "AbortError") setMessages((current) => [...current, { role: "assistant", content: error.message || `${t("supportUnavailable")} Para atendimento humano, envie um e-mail para suportdashboardia@gmail.com.` }]);
     } finally {
       activeRequest.current = null;
       setLoading(false);
     }
   }
 
+  async function endConversation() {
+    if (!messages.length || !window.confirm("Encerrar esta conversa? O histórico atual será fechado e o próximo atendimento começará em uma conversa limpa.")) return;
+    setEnding(true);
+    setAttachmentError("");
+    activeRequest.current?.abort();
+    try {
+      const response = await fetch("/api/support/chat", { method: "DELETE" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível encerrar a conversa.");
+      previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrls.current.clear();
+      setMessages([]);
+      setAttachments([]);
+      setText("");
+    } catch (error) {
+      setAttachmentError(error.message);
+    } finally {
+      setEnding(false);
+    }
+  }
+
   return <div className={`support-chat ${open ? "open" : ""}`}>
     {open && <aside className="support-panel" role="dialog" aria-label={t("support")}>
-      <header className="support-panel-header"><span className="support-panel-brand"><i><Bot size={18} /></i><span><strong>Assistente Dashboard IA</strong><small>Projetos, demandas e suporte</small></span></span><button onClick={() => setOpen(false)} aria-label={t("close")}><X size={17} /></button></header>
+      <header className="support-panel-header"><span className="support-panel-brand"><i><Bot size={18} /></i><span><strong>Assistente Dashboard IA</strong><small>Histórico salvo · expira após 24h</small></span></span><div className="support-panel-header-actions"><button className="support-end-session" type="button" onClick={endConversation} disabled={!messages.length || loading || ending} title="Encerrar e limpar a conversa"><MessageSquareOff size={15} /><span>Encerrar</span></button><button type="button" onClick={() => setOpen(false)} aria-label={t("close")}><X size={17} /></button></div></header>
       <div className="support-messages" ref={messageList}>
-        {!messages.length && <div className="support-welcome"><span><ListTodo size={18} /></span><strong>Como posso ajudar?</strong><p>Posso analisar um print, explicar uma tela ou mostrar como estão seus projetos, demandas e execuções.</p><button type="button" onClick={() => setText("Como estão meus projetos e demandas?")}>Ver meu panorama</button></div>}
-        {messages.map((message, index) => <div className={`${message.role}-message${message.attachments?.length ? " has-attachments" : ""}`} key={`${message.role}-${index}`}>{message.demandReference && <small className="support-demand-reference">Demanda {message.demandReference}</small>}{message.attachments?.length > 0 && <div className="support-message-attachments">{message.attachments.map((attachment, attachmentIndex) => <span className={isImageAttachment(attachment.mimeType) ? "image" : "file"} title={attachment.name} key={`${attachment.name}-${attachmentIndex}`}><AttachmentPreview attachment={attachment} />{!isImageAttachment(attachment.mimeType) && <small>{attachment.name}</small>}</span>)}</div>}<span className="support-message-content">{message.content}</span><SupportNavigation links={message.links} projects={message.projects} /></div>)}
+        {historyLoading && <div className="assistant-message typing">Carregando conversa…</div>}
+        {!historyLoading && !messages.length && <div className="support-welcome"><span><ListTodo size={18} /></span><strong>Como posso ajudar?</strong><p>Posso analisar um print, explicar uma tela ou mostrar como estão seus projetos, demandas e execuções.</p><button type="button" onClick={() => setText("Como estão meus projetos e demandas?")}>Ver meu panorama</button></div>}
+        {messages.map((message, index) => <div className={`${message.role}-message${message.attachments?.length ? " has-attachments" : ""}`} key={message.id ?? `${message.role}-${index}`}>{message.demandReference && <small className="support-demand-reference">Demanda {message.demandReference}</small>}{message.attachments?.length > 0 && <div className="support-message-attachments">{message.attachments.map((attachment, attachmentIndex) => <span className={isImageAttachment(attachment.mimeType) ? "image" : "file"} title={attachment.name} key={attachment.id ?? `${attachment.name}-${attachmentIndex}`}><AttachmentPreview attachment={attachment} />{!isImageAttachment(attachment.mimeType) && <small>{attachment.name}</small>}</span>)}</div>}<span className="support-message-content">{message.content}</span><SupportNavigation links={message.links} projects={message.projects} /></div>)}
         {loading && <div className="assistant-message typing">Analisando contexto e arquivos…</div>}
       </div>
       <div className="support-panel-form"><ChatComposer

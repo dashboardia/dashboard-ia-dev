@@ -82,6 +82,11 @@ enum ExecutionMessageRole {
   SYSTEM
 }
 
+enum SupportMessageRole {
+  USER
+  ASSISTANT
+}
+
 enum ExecutionStage {
   ANALYSIS
   IMPLEMENTATION
@@ -182,33 +187,34 @@ enum BusinessKnowledgeSource {
 }
 
 model User {
-  id                        String              @id @default(cuid())
+  id                        String                @id @default(cuid())
   name                      String?
-  email                     String?             @unique
+  email                     String?               @unique
   emailVerified             DateTime?
   image                     String?
-  githubLogin               String?             @unique
-  globalRole                GlobalRole          @default(USER)
-  status                    UserStatus          @default(ACTIVE)
-  theme                     String              @default("SYSTEM")
-  locale                    String              @default("pt-BR")
+  githubLogin               String?               @unique
+  globalRole                GlobalRole            @default(USER)
+  status                    UserStatus            @default(ACTIVE)
+  theme                     String                @default("SYSTEM")
+  locale                    String                @default("pt-BR")
   accounts                  Account[]
   sessions                  Session[]
   projectMemberships        ProjectMember[]
-  projectsCreated           Project[]           @relation("ProjectCreator")
-  demandsCreated            Demand[]            @relation("DemandCreator")
-  demandsApproved           Demand[]            @relation("DemandApprover")
-  executionsRequested       Execution[]         @relation("ExecutionRequester")
-  executionsApproved        Execution[]         @relation("ExecutionApprover")
+  projectsCreated           Project[]             @relation("ProjectCreator")
+  demandsCreated            Demand[]              @relation("DemandCreator")
+  demandsApproved           Demand[]              @relation("DemandApprover")
+  executionsRequested       Execution[]           @relation("ExecutionRequester")
+  executionsApproved        Execution[]           @relation("ExecutionApprover")
   auditLogs                 AuditLog[]
   billingAccount            BillingAccount?
-  businessKnowledgeOwned    BusinessKnowledge[] @relation("BusinessKnowledgeOwner")
-  businessKnowledgeCreated  BusinessKnowledge[] @relation("BusinessKnowledgeCreator")
-  businessKnowledgeApproved BusinessKnowledge[] @relation("BusinessKnowledgeApprover")
-  devEnvironmentsRequested  DevEnvironment[]    @relation("DevEnvironmentRequester")
+  businessKnowledgeOwned    BusinessKnowledge[]   @relation("BusinessKnowledgeOwner")
+  businessKnowledgeCreated  BusinessKnowledge[]   @relation("BusinessKnowledgeCreator")
+  businessKnowledgeApproved BusinessKnowledge[]   @relation("BusinessKnowledgeApprover")
+  devEnvironmentsRequested  DevEnvironment[]      @relation("DevEnvironmentRequester")
   executionMessages         ExecutionMessage[]
-  createdAt                 DateTime            @default(now())
-  updatedAt                 DateTime            @updatedAt
+  supportConversations      SupportConversation[]
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
 }
 
 model Account {
@@ -403,28 +409,71 @@ model Execution {
 }
 
 model ExecutionMessage {
-  id          String               @id @default(cuid())
+  id          String                       @id @default(cuid())
   executionId String
   authorId    String?
   role        ExecutionMessageRole
-  content     String               @db.Text
-  execution   Execution            @relation(fields: [executionId], references: [id], onDelete: Cascade)
-  author      User?                @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  content     String                       @db.Text
+  execution   Execution                    @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  author      User?                        @relation(fields: [authorId], references: [id], onDelete: SetNull)
   attachments ExecutionMessageAttachment[]
-  createdAt   DateTime             @default(now())
+  createdAt   DateTime                     @default(now())
 
   @@index([executionId, createdAt])
 }
 
 model ExecutionMessageAttachment {
-  id          String           @id @default(cuid())
-  messageId   String
-  name        String
-  mimeType    String
-  sizeBytes   Int
-  storageKey  String           @unique
-  message     ExecutionMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  createdAt   DateTime         @default(now())
+  id         String           @id @default(cuid())
+  messageId  String
+  name       String
+  mimeType   String
+  sizeBytes  Int
+  storageKey String           @unique
+  message    ExecutionMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  createdAt  DateTime         @default(now())
+
+  @@index([messageId])
+}
+
+model SupportConversation {
+  id            String           @id @default(cuid())
+  userId        String
+  activeKey     String?          @unique
+  expiresAt     DateTime
+  lastMessageAt DateTime         @default(now())
+  closedAt      DateTime?
+  closeReason   String?
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages      SupportMessage[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([userId, closedAt, expiresAt])
+  @@index([lastMessageAt])
+}
+
+model SupportMessage {
+  id             String                     @id @default(cuid())
+  conversationId String
+  role           SupportMessageRole
+  content        String                     @db.Text
+  metadata       Json?
+  conversation   SupportConversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  attachments    SupportMessageAttachment[]
+  createdAt      DateTime                   @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model SupportMessageAttachment {
+  id         String         @id @default(cuid())
+  messageId  String
+  name       String
+  mimeType   String
+  sizeBytes  Int
+  storageKey String         @unique
+  message    SupportMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  createdAt  DateTime       @default(now())
 
   @@index([messageId])
 }
@@ -456,17 +505,17 @@ model PreviewEnvironment {
 }
 
 model DevEnvironment {
-  id              String               @id @default(cuid())
-  projectId       String
-  requestedById   String
-  branchName      String
-  status          DevEnvironmentStatus @default(QUEUED)
-  provider        String               @default("DASHBOARDIA")
-  externalId      String?              @unique
-  url             String?
-  runtime         String?
-  imageReference  String?
-  port            Int?
+  id               String               @id @default(cuid())
+  projectId        String
+  requestedById    String
+  branchName       String
+  status           DevEnvironmentStatus @default(QUEUED)
+  provider         String               @default("DASHBOARDIA")
+  externalId       String?              @unique
+  url              String?
+  runtime          String?
+  imageReference   String?
+  port             Int?
   creditCost       Int                  @default(0)
   creditCharge     Json?
   creditChargedAt  DateTime?
@@ -475,16 +524,16 @@ model DevEnvironment {
   credentials      Json?
   activity         Json?
   error            String?              @db.Text
-  requestedAt     DateTime             @default(now())
-  startedAt       DateTime?
-  readyAt         DateTime?
-  expiresAt       DateTime
-  stoppedAt       DateTime?
-  lastHeartbeatAt DateTime?
-  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  requestedBy     User                 @relation("DevEnvironmentRequester", fields: [requestedById], references: [id], onDelete: Restrict)
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  requestedAt      DateTime             @default(now())
+  startedAt        DateTime?
+  readyAt          DateTime?
+  expiresAt        DateTime
+  stoppedAt        DateTime?
+  lastHeartbeatAt  DateTime?
+  project          Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requestedBy      User                 @relation("DevEnvironmentRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@index([projectId, status])
   @@index([status, expiresAt])
@@ -625,22 +674,22 @@ model ExecutionCreditReservation {
 }
 
 model BillingCheckout {
-  id                 String                @id @default(cuid())
-  accountId          String
-  kind               BillingCheckoutKind
-  targetPlan         String?
-  creditAmount       Int?
+  id                   String                @id @default(cuid())
+  accountId            String
+  kind                 BillingCheckoutKind
+  targetPlan           String?
+  creditAmount         Int?
   creditValidityMonths Int?
-  amountCents        Int
-  status             BillingCheckoutStatus @default(PENDING)
-  providerCheckoutId String?               @unique
-  providerLink       String?
-  expiresAt          DateTime?
-  paidAt             DateTime?
-  account            BillingAccount        @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  planDefinition     BillingPlanCatalog?    @relation(fields: [targetPlan], references: [code], onDelete: Restrict)
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  amountCents          Int
+  status               BillingCheckoutStatus @default(PENDING)
+  providerCheckoutId   String?               @unique
+  providerLink         String?
+  expiresAt            DateTime?
+  paidAt               DateTime?
+  account              BillingAccount        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  planDefinition       BillingPlanCatalog?   @relation(fields: [targetPlan], references: [code], onDelete: Restrict)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   @@index([accountId, status])
 }
