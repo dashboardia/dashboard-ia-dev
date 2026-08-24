@@ -1,11 +1,12 @@
 "use client";
 
-import { CheckCircle2, FileText, LoaderCircle, MessageSquareText, Paperclip, Send, Sparkles, Trash2 } from "lucide-react";
+import { CheckCircle2, FileText, LoaderCircle, MessageSquareText, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { ATTACHMENT_ACCEPT, isImageAttachment, MAX_MESSAGE_ATTACHMENTS, validateAttachmentFiles } from "../../../lib/attachments";
+import ChatComposer from "../../../components/chat-composer";
 
 const ENVIRONMENT_RECOVERY_STORAGE_KEY = "dashboardia:environment-recovery";
 
@@ -206,8 +207,30 @@ export default function ExecutionConversation({ executionId, status, messages, e
       </article>;
     })}{!messages.length && <div className="list-empty">{conversationReady ? "O histórico dos seus ajustes aparecerá aqui." : "A conversa ficará disponível assim que a primeira implementação e o ambiente terminarem."}</div>}</div>
     {processing && <div className="execution-chat-processing"><LoaderCircle className="spin" size={16} /><span><strong>{conversationReady ? "A IA está aplicando seu ajuste" : "A IA está trabalhando na implementação"}</strong><small>Acompanhe as etapas ao lado. A tela atualiza automaticamente.</small></span></div>}
-    {available && <form className="execution-reply-form" onSubmit={sendAdjustment}><label htmlFor="execution-adjustment">O que você quer que a IA faça agora?</label><textarea id="execution-adjustment" value={content} onPaste={pasteAttachments} onChange={(event) => setContent(event.target.value)} placeholder="Descreva a alteração ou cole uma imagem aqui…" maxLength={12000} />{attachments.length > 0 && <div className="execution-pending-attachments">{attachments.map((attachment, index) => <span className={attachment.previewUrl ? "image" : "file"} key={fileKey(attachment.file)}>{attachment.previewUrl ? <Image unoptimized src={attachment.previewUrl} alt={attachment.file.name} width={96} height={72} /> : <FileText size={20} />}<small>{attachment.file.name}</small><button type="button" onClick={() => removeAttachment(index)} aria-label={`Remover ${attachment.file.name}`}><Trash2 size={13} /></button></span>)}</div>}<div className="execution-attachment-tools"><input ref={fileInputRef} hidden type="file" accept={ATTACHMENT_ACCEPT} multiple onChange={selectAttachments} /><button type="button" onClick={() => fileInputRef.current?.click()} disabled={loading || attachments.length >= MAX_MESSAGE_ATTACHMENTS}><Paperclip size={15} />Anexar</button><small>Imagens e documentos · até 4 arquivos de 5 MB</small></div><div className="execution-conversation-actions"><small>{adjustmentCount} ajuste{adjustmentCount === 1 ? "" : "s"} enviado{adjustmentCount === 1 ? "" : "s"} · disponível enquanto houver créditos{expiresAt ? ` · expira após 24h sem interação (${new Date(expiresAt).toLocaleString("pt-BR")})` : ""}</small><div><button className="execution-complete-button" type="button" onClick={completeExecution} disabled={loading || paused}><CheckCircle2 size={16} />Concluir</button><button className="primary compact" type="submit" disabled={loading || (!content.trim() && !attachments.length)}>{loading ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}{loading ? "Enviando..." : paused ? "Enviar e retomar" : "Enviar"}</button></div></div></form>}
+    {available && <div className="execution-modern-reply"><ChatComposer
+      id="execution-adjustment"
+      label="O que você quer que a IA faça agora?"
+      value={content}
+      onChange={(event) => setContent(event.target.value)}
+      onPaste={pasteAttachments}
+      onSubmit={sendAdjustment}
+      placeholder="Descreva a alteração ou cole uma imagem aqui…"
+      loading={loading}
+      canSubmit={Boolean(content.trim() || attachments.length)}
+      submitLabel={paused ? "Enviar e retomar" : "Enviar ajuste"}
+      attachments={attachments.map((attachment) => ({ ...attachment, key: fileKey(attachment.file), name: attachment.file.name }))}
+      renderAttachment={(attachment) => attachment.previewUrl ? <Image unoptimized src={attachment.previewUrl} alt={attachment.file.name} width={112} height={72} /> : <FileText size={20} />}
+      onRemoveAttachment={removeAttachment}
+      fileInputRef={fileInputRef}
+      accept={ATTACHMENT_ACCEPT}
+      onFilesSelected={selectAttachments}
+      attachmentDisabled={attachments.length >= MAX_MESSAGE_ATTACHMENTS}
+      attachmentHint={`${attachments.length}/${MAX_MESSAGE_ATTACHMENTS} arquivos`}
+      compact
+      error={error}
+      footer={<><span>{adjustmentCount} ajuste{adjustmentCount === 1 ? "" : "s"} · disponível enquanto houver créditos{expiresAt ? ` · expira após 24h sem interação` : ""}</span><button className="execution-complete-button" type="button" onClick={completeExecution} disabled={loading || paused}><CheckCircle2 size={16} />Concluir execução</button></>}
+    /></div>}
     {!available && effectiveStatus === "SUCCEEDED" && <div className="form-success"><CheckCircle2 size={15} />Execução concluída. O histórico foi preservado.</div>}
-    {error && <div className="form-error">{error}</div>}
+    {error && !available && <div className="form-error">{error}</div>}
   </section>;
 }

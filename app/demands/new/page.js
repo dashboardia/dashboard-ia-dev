@@ -1,5 +1,5 @@
 import AppShell from "../../../components/app-shell";
-import SectionHeader from "../../../components/section-header";
+import Link from "next/link";
 import { getDemandCopy } from "../../../lib/demand-copy";
 import { planIsPaid } from "../../../lib/billing-plans";
 import { db } from "../../../lib/db";
@@ -32,8 +32,13 @@ export default async function NewDemandPage({ searchParams }) {
 
   return (
     <AppShell user={user}>
-      <div className="section-page narrow-page">
-        <SectionHeader backHref="/demands" backLabel={copy.page.back} eyebrow={copy.page.eyebrow} title={copy.page.title} description={copy.page.description} />
+      <div className="section-page demand-compose-page">
+        <header className="demand-compose-header">
+          <Link href="/demands">← {copy.page.back}</Link>
+          <span>{copy.page.eyebrow}</span>
+          <h1>Comece pela ideia</h1>
+          <p>Escolha onde a IA deve trabalhar e descreva o resultado em linguagem natural.</p>
+        </header>
         <DemandForm projects={projectsWithModelAccess} initialProjectId={params?.projectId ?? ""} />
       </div>
     </AppShell>

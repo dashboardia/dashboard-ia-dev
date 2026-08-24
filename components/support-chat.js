@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Bot, FileText, FolderKanban, ListTodo, MessageCircle, Paperclip, Send, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Bot, FileText, FolderKanban, ListTodo, MessageCircle, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ATTACHMENT_ACCEPT, isImageAttachment, MAX_MESSAGE_ATTACHMENTS, validateAttachmentFiles } from "../lib/attachments";
+import ChatComposer from "./chat-composer";
 import { usePreferences } from "./preferences-provider";
 
 const subscribeToClient = () => () => {};
@@ -155,11 +156,29 @@ function SupportChatSession({ locale, pathname, t }) {
         {messages.map((message, index) => <div className={`${message.role}-message${message.attachments?.length ? " has-attachments" : ""}`} key={`${message.role}-${index}`}>{message.demandReference && <small className="support-demand-reference">Demanda {message.demandReference}</small>}<span>{message.content}</span>{message.attachments?.length > 0 && <div className="support-message-attachments">{message.attachments.map((attachment, attachmentIndex) => <span className={isImageAttachment(attachment.mimeType) ? "image" : "file"} title={attachment.name} key={`${attachment.name}-${attachmentIndex}`}><AttachmentPreview attachment={attachment} />{!isImageAttachment(attachment.mimeType) && <small>{attachment.name}</small>}</span>)}</div>}<SupportNavigation links={message.links} projects={message.projects} /></div>)}
         {loading && <div className="assistant-message typing">Analisando contexto e arquivos…</div>}
       </div>
-      <form className="support-panel-form" onSubmit={send}>
-        {attachments.length > 0 && <div className="support-attachment-list">{attachments.map((attachment, index) => <span className={isImageAttachment(attachment.mimeType) ? "image" : "file"} key={attachmentKey(attachment.file)}><AttachmentPreview attachment={attachment} compact /><small>{attachment.file.name}</small><button type="button" onClick={() => removeAttachment(index)} aria-label={`Remover ${attachment.file.name}`}><Trash2 size={12} /></button></span>)}</div>}
-        {attachmentError && <small className="support-attachment-error">{attachmentError}</small>}
-        <div className="support-composer"><textarea maxLength={4000} rows={2} value={text} onPaste={pasteAttachments} onChange={(event) => setText(event.target.value)} placeholder="Pergunte ou cole uma imagem…" /><div className="support-composer-actions"><input ref={fileInput} hidden type="file" accept={ATTACHMENT_ACCEPT} multiple onChange={selectAttachments} /><button className="support-attach" type="button" onClick={() => fileInput.current?.click()} disabled={loading || attachments.length >= MAX_MESSAGE_ATTACHMENTS} aria-label="Anexar arquivos"><Paperclip size={17} /></button><small>Até 4 arquivos</small><button className="support-send" disabled={loading || (!text.trim() && !attachments.length)} aria-label={t("send")}><Send size={16} /></button></div></div>
-      </form>
+      <div className="support-panel-form"><ChatComposer
+        id="support-message"
+        label="Mensagem para o assistente"
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        onPaste={pasteAttachments}
+        onSubmit={send}
+        placeholder="Pergunte ou cole uma imagem…"
+        maxLength={4000}
+        loading={loading}
+        canSubmit={Boolean(text.trim() || attachments.length)}
+        submitLabel={t("send")}
+        attachments={attachments.map((attachment) => ({ ...attachment, key: attachmentKey(attachment.file), name: attachment.file.name }))}
+        renderAttachment={(attachment) => <AttachmentPreview attachment={attachment} />}
+        onRemoveAttachment={removeAttachment}
+        fileInputRef={fileInput}
+        accept={ATTACHMENT_ACCEPT}
+        onFilesSelected={selectAttachments}
+        attachmentDisabled={attachments.length >= MAX_MESSAGE_ATTACHMENTS}
+        attachmentHint={`${attachments.length}/${MAX_MESSAGE_ATTACHMENTS}`}
+        error={attachmentError}
+        compact
+      /></div>
     </aside>}
     <button className="support-launcher" onClick={() => setOpen((value) => !value)} aria-label={t("support")}><MessageCircle size={21} /></button>
   </div>;

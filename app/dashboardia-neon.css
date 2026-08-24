@@ -469,6 +469,14 @@ html[data-theme="dark"] .resource-card:nth-child(3n+1),html[data-theme="gray"] .
 
 /* Forms read as guided tasks with comfortable spacing. */
 .narrow-page { max-width: 1040px; }
+.demand-compose-page { max-width: 1180px; min-height: calc(100vh - 118px); align-content: start; }
+.demand-compose-header { max-width: 920px; width: 100%; margin: 0 auto 8px; display: grid; justify-items: center; text-align: center; }
+.demand-compose-header > a { justify-self: start; margin-bottom: 26px; color: var(--muted); font-size: 9px; font-weight: 800; }
+.demand-compose-header > a:hover { color: var(--purple); }
+.demand-compose-header > span { margin-bottom: 7px; color: var(--neo-cyan); font-size: 8px; font-weight: 900; letter-spacing: 1.3px; }
+.demand-compose-header h1 { margin: 0; color: var(--ink); font: 850 clamp(25px,3vw,38px)/1.1 Manrope,sans-serif; letter-spacing: -1.3px; }
+.demand-compose-header p { max-width: 620px; margin: 9px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+@media (max-width:700px) { .demand-compose-header { justify-items:start; text-align:left; }.demand-compose-header > a { margin-bottom:16px; }.demand-compose-header h1 { font-size:25px; } }
 .form-card { padding: 26px; border-radius: 17px; }
 .form-grid { gap: 18px; }
 .form-card label { gap: 8px; font-size: 10px; }
@@ -491,6 +499,10 @@ html[data-theme="dark"] .resource-card:nth-child(3n+1),html[data-theme="gray"] .
 .execution-workbench .execution-message.user { border-radius: 15px 15px 5px 15px; }
 .execution-workbench .execution-reply-form { padding: 17px 20px 20px; }
 .execution-workbench .execution-reply-form textarea { min-height: 112px; border-radius: 13px; }
+.execution-modern-reply { padding: 14px 16px 16px; border-top: 1px solid var(--line); background: color-mix(in srgb,var(--soft) 20%,transparent); }
+.execution-modern-reply .execution-complete-button { min-height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: transparent; font-size: 8px; font-weight: 850; cursor: pointer; }
+.execution-modern-reply .execution-complete-button:hover:not(:disabled) { color: var(--ink); background: color-mix(in srgb,var(--line) 45%,transparent); }
+@media (max-width:700px) { .execution-modern-reply { padding: 11px; } }
 .execution-detail-disclosure { margin-top:14px; padding:0; overflow:hidden; }
 .execution-detail-disclosure > summary { min-height:62px; }
 .execution-detail-disclosure-content { padding:14px; display:grid; gap:12px; border-top:1px solid var(--line); }
