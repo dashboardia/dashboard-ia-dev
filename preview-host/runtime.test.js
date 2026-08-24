@@ -10,6 +10,7 @@ import {
   railpackPrepareArguments,
   previewUpstreamHeaders,
   previewUpstreamPath,
+  previewResponseHeaders,
   previewContainerName,
   previewNetworkName,
   rewriteOpenApiDocument,
@@ -278,6 +279,29 @@ test("usa o loopback numérico no upstream e remove hosts encaminhados que frame
   assert.equal(result["x-forwarded-host"], undefined);
   assert.equal(result.forwarded, undefined);
   assert.equal(result["x-original-host"], undefined);
+});
+
+test("mantém Origin e Referer coerentes com o Host interno em qualquer método", () => {
+  const result = previewUpstreamHeaders({
+    host: "cmt123.preview.dashboardia.app",
+    origin: "https://cmt123.preview.dashboardia.app",
+    referer: "https://cmt123.preview.dashboardia.app/projects/new?from=home",
+    "x-forwarded-proto": "https",
+  }, 8080);
+
+  assert.equal(result.host, "127.0.0.1:8080");
+  assert.equal(result.origin, "https://127.0.0.1:8080");
+  assert.equal(result.referer, "https://127.0.0.1:8080/projects/new?from=home");
+});
+
+test("reescreve redirects e cookies locais antes de responder ao navegador", () => {
+  const result = previewResponseHeaders({
+    location: "http://127.0.0.1:8080/projects",
+    "set-cookie": ["session=abc; Path=/; Domain=127.0.0.1; HttpOnly"],
+  }, "https://cmt123.preview.dashboardia.app");
+
+  assert.equal(result.location, "https://cmt123.preview.dashboardia.app/projects");
+  assert.deepEqual(result["set-cookie"], ["session=abc; Path=/; HttpOnly"]);
 });
 
 test("reconhece documentos Swagger/OpenAPI sem confundir a interface HTML", () => {

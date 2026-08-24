@@ -63,6 +63,7 @@ export function previewUpstreamHeaders(headers = {}, port) {
   const originalHost = headers.host;
   const forwardedProto = String(headers["x-forwarded-proto"] || "https").split(",")[0].trim().toLowerCase();
   const publicProto = ["http", "https"].includes(forwardedProto) ? forwardedProto : "https";
+  const upstreamOrigin = `${publicProto}://127.0.0.1:${port}`;
   const upstreamHeaders = { ...headers };
 
   // O domínio público identifica o container apenas no gateway. Frameworks de
@@ -75,6 +76,21 @@ export function previewUpstreamHeaders(headers = {}, port) {
   delete upstreamHeaders["x-original-host"];
   delete upstreamHeaders["x-forwarded-server"];
 
+  // Em requisições de escrita, Rails/Rack, Django, Laravel e outros também
+  // comparam Origin/Referer com o Host recebido. Se apenas o Host for trocado,
+  // o GET funciona, mas POST/PUT/PATCH/DELETE continuam parecendo cross-site e
+  // são recusados com 403. O gateway precisa apresentar uma origem interna
+  // coerente em todos os métodos, sem exigir ajustes no projeto do cliente.
+  if (headers.origin) upstreamHeaders.origin = upstreamOrigin;
+  if (headers.referer) {
+    try {
+      const referer = new URL(String(headers.referer));
+      upstreamHeaders.referer = `${upstreamOrigin}${referer.pathname}${referer.search}${referer.hash}`;
+    } catch {
+      delete upstreamHeaders.referer;
+    }
+  }
+
   return {
     ...upstreamHeaders,
     ...(originalHost ? { "x-dashboardia-public-host": originalHost } : {}),
@@ -82,6 +98,18 @@ export function previewUpstreamHeaders(headers = {}, port) {
     "x-forwarded-port": publicProto === "https" ? "443" : "80",
     host: `127.0.0.1:${port}`,
   };
+}
+
+function stripLocalCookieDomain(cookie) {
+  return String(cookie).replace(/;\s*domain=(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[?::1\]?)(?=;|$)/ig, "");
+}
+
+export function previewResponseHeaders(headers = {}, publicOrigin) {
+  const rewritten = { ...headers };
+  if (typeof rewritten.location === "string") rewritten.location = rewriteLocalPreviewUrl(rewritten.location, publicOrigin);
+  if (Array.isArray(rewritten["set-cookie"])) rewritten["set-cookie"] = rewritten["set-cookie"].map(stripLocalCookieDomain);
+  else if (typeof rewritten["set-cookie"] === "string") rewritten["set-cookie"] = stripLocalCookieDomain(rewritten["set-cookie"]);
+  return rewritten;
 }
 
 export function isOpenApiDocumentPath(requestUrl = "/") {
