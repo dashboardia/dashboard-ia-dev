@@ -11,6 +11,7 @@ import { db } from "../../../../../lib/db";
 import { executionControlState } from "../../../../../lib/execution-control-state";
 import { clientInteractionRequeueData } from "../../../../../lib/executions";
 import { getGlobalSettings } from "../../../../../lib/global-settings";
+import { previewRepairConsentRequired, rawPreviewRepairError } from "../../../../../lib/preview-repair-consent";
 import { redactSensitiveData } from "../../../../../lib/redaction";
 import { executionMessageInputSchema } from "../../../../../lib/validation";
 import { deletePrivateObject, putPrivateObject } from "../../../../../lib/visual-storage";
@@ -71,6 +72,9 @@ export async function POST(request, context) {
     }
 
     const continuationDescription = recoveryDemandDescription(execution, input.content);
+    const grantsPreviewRepairConsent = execution.status === "AWAITING_CLIENT"
+      && execution.previewEnvironment?.status === "FAILED"
+      && previewRepairConsentRequired(execution.previewEnvironment.error);
     const result = await db.$transaction(async (transaction) => {
       const interactionAt = new Date();
       const message = await transaction.executionMessage.create({
@@ -98,6 +102,24 @@ export async function POST(request, context) {
         where: { id: execution.demandId },
         data: { status: "QUEUED", ...(continuationDescription ? { description: continuationDescription } : {}) },
       });
+      if (grantsPreviewRepairConsent) {
+        await transaction.executionLog.create({
+          data: {
+            executionId,
+            scope: "preview",
+            level: "info",
+            message: "O cliente autorizou um novo ciclo de até três tentativas de correção do ambiente com IA.",
+            metadata: {
+              automatic: false,
+              aiInvoked: true,
+              failureClass: "APPLICATION",
+              previewRepairConsentGranted: true,
+              repairCycleAttempt: 1,
+              technical: redactSensitiveData(rawPreviewRepairError(execution.previewEnvironment.error)).slice(-4_000),
+            },
+          },
+        });
+      }
       await transaction.auditLog.create({
         data: auditData({
           actorId: user.id,

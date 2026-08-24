@@ -23,19 +23,10 @@ import AutoOpenPullRequest from "./auto-open-pull-request";
 import EvidenceCard from "./evidence-card";
 import DiffViewer from "./diff-viewer";
 import ExecutionConversation from "./execution-conversation";
+import ExecutionDuration from "./execution-duration";
 import ExecutionEnvironmentActivity from "./execution-environment-activity";
 import CopyBranchButton from "./copy-branch-button";
 const activeExecutionStatuses = new Set(["QUEUED", "PREPARING", "RUNNING", "VALIDATING", "WAITING_APPROVAL"]);
-
-function duration(execution) {
-  if (!execution.startedAt) return "Não iniciada";
-  const end = execution.finishedAt ?? new Date();
-  const seconds = Math.max(0, Math.round((end.getTime() - execution.startedAt.getTime()) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remaining = seconds % 60;
-  return `${minutes}min ${remaining}s`;
-}
 
 function creditEstimateExplanation(reservation) {
   if (!reservation.estimateMetadata) return "Esta execução começou com a regra anterior de reserva fixa. Novas execuções usam uma estimativa calculada pelo pedido.";
@@ -120,7 +111,7 @@ export default async function ExecutionPage({ params }) {
         <section className="execution-metrics">
           <div><Activity size={17} /><span><small>Status</small><strong>{executionStatusLabel(execution)}</strong></span></div>
           <div><GitBranch size={17} /><span><small>Branch</small><span className="execution-branch-value"><strong>{execution.branchName ?? "Aguardando worker"}</strong><CopyBranchButton branchName={execution.branchName} /></span></span></div>
-          <div><Clock3 size={17} /><span><small>Duração</small><strong>{duration(execution)}</strong></span></div>
+          <div><Clock3 size={17} /><span><small>Duração</small><strong><ExecutionDuration startedAt={execution.startedAt?.toISOString() ?? null} finishedAt={execution.finishedAt?.toISOString() ?? null} initialNow={execution.updatedAt.getTime()} /></strong></span></div>
           <div><Coins size={17} /><span><small>Créditos usados</small><strong>{consumedCredits.toLocaleString("pt-BR")} créditos</strong>{user.globalRole === "ADMIN" && <em className="execution-admin-token-usage">{measuredTokens.toLocaleString("pt-BR")} tokens medidos</em>}</span></div>
         </section>
 

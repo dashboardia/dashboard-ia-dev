@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSecurityHeaders } from "./next.config.mjs";
+import nextConfig, { buildSecurityHeaders } from "./next.config.mjs";
 
 describe("security headers", () => {
   it("publica CSP e HSTS em produção", () => {
@@ -9,5 +9,11 @@ describe("security headers", () => {
     expect(headers.get("Content-Security-Policy")).toContain("upgrade-insecure-requests");
     expect(headers.get("Strict-Transport-Security")).toContain("max-age=31536000");
     expect(headers.get("X-Content-Type-Options")).toBe("nosniff");
+  });
+});
+
+describe("upload proxy", () => {
+  it("mantém margem para dez anexos e arquivos individuais de 20 MB", () => {
+    expect(nextConfig.experimental.proxyClientMaxBodySize).toBe("64mb");
   });
 });

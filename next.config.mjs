@@ -40,6 +40,12 @@ export function buildSecurityHeaders(isProduction = production) {
 const nextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  experimental: {
+    // Os chats aceitam até 50 MB no conjunto de anexos. O proxy do Next usa
+    // 10 MB por padrão e, sem este ajuste, interrompe o multipart antes que a
+    // validação compartilhada das rotas consiga aplicar o limite de 20 MB/arquivo.
+    proxyClientMaxBodySize: "64mb",
+  },
   async headers() {
     return [
       {

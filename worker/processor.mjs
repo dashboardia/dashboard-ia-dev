@@ -29,6 +29,7 @@ import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
 import { remoteFetchRefspec, remoteTrackingRef } from "./git-refs.mjs";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
+const MAX_AUTOMATIC_VALIDATION_REPAIRS = 3;
 
 class ExecutionCancelledError extends Error {
   constructor() {
@@ -470,15 +471,24 @@ export async function processExecution(executionId, workerId) {
     execution.demand.project = { ...savedProject, ...detectedConfiguration };
     let validationResult = await runValidations(execution, projectDirectory, settings);
     if (!validationResult.passed) {
-      const consumedBeforeRepair = creditCostPolicy
-        ? calculateLiveUsageCredits({ ...creditCostPolicy, inputTokens: runInputTokens, outputTokens: runOutputTokens })
-        : 0;
-      const remainingCreditBudget = creditBudget == null ? null : Math.max(0, creditBudget - consumedBeforeRepair);
-      if (remainingCreditBudget == null || remainingCreditBudget > 0) {
+      for (let repairAttempt = 1; repairAttempt <= MAX_AUTOMATIC_VALIDATION_REPAIRS && !validationResult.passed; repairAttempt += 1) {
+        const consumedBeforeRepair = creditCostPolicy
+          ? calculateLiveUsageCredits({ ...creditCostPolicy, inputTokens: runInputTokens, outputTokens: runOutputTokens })
+          : 0;
+        const remainingCreditBudget = creditBudget == null ? null : Math.max(0, creditBudget - consumedBeforeRepair);
+        if (remainingCreditBudget != null && remainingCreditBudget <= 0) {
+          await log(executionId, "validation", "As correções automáticas foram pausadas porque não há créditos disponíveis.", "warn", {
+            repairAttempt,
+            maxRepairAttempts: MAX_AUTOMATIC_VALIDATION_REPAIRS,
+          });
+          break;
+        }
         await cleanValidationArtifacts(projectDirectory);
         await restoreImplementationSnapshot(workspace, implementationHead);
-        await log(executionId, "validation", "Agente de correção automática iniciado com o erro real da validação", "warn", {
+        await log(executionId, "validation", `Correção automática ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS} iniciada com o erro real da validação`, "warn", {
           failedScope: validationResult.failedScope,
+          repairAttempt,
+          maxRepairAttempts: MAX_AUTOMATIC_VALIDATION_REPAIRS,
         });
         const repairPolicy = {
           ...agentPolicy,
@@ -489,7 +499,7 @@ export async function processExecution(executionId, workerId) {
         const repairAgent = startImplementationAgent({
           projectDirectory,
           prompt: [
-            "A implementação abaixo já foi realizada, mas a validação automática falhou.",
+            `Esta é a tentativa automática ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS}. A implementação abaixo já foi realizada, mas a validação automática falhou.`,
             "Inspecione os arquivos relacionados ao erro e aplique somente as correções necessárias para a validação passar, sem remover funcionalidades nem alterar o escopo aprovado.",
             "Use exclusivamente apply_patch. Não execute build, lint, instalação ou testes; o worker validará novamente.",
             `Etapa que falhou: ${validationResult.failedScope}`,
@@ -513,7 +523,8 @@ export async function processExecution(executionId, workerId) {
           if (repairError?.inputTokens != null && repairError?.outputTokens != null) addMeasuredUsage(repairError);
           await cleanValidationArtifacts(projectDirectory);
           await restoreImplementationSnapshot(workspace, implementationHead);
-          await log(executionId, "validation", "A correção automática não foi concluída; a implementação original continuará disponível para revisão", "warn", {
+          await log(executionId, "validation", `A correção automática ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS} não foi concluída; o worker seguirá com o último estado válido`, "warn", {
+            repairAttempt,
             technical: repairError instanceof Error ? repairError.message : String(repairError),
           });
         } finally {
@@ -527,10 +538,10 @@ export async function processExecution(executionId, workerId) {
           await runProcess("git", ["add", "-A"], { cwd: workspace });
           await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "--amend", "--no-edit"], { cwd: workspace });
           implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
-          await log(executionId, "validation", "Correção automática aplicada; executando a validação novamente");
+          await log(executionId, "validation", `Correção automática ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS} aplicada; executando a validação novamente`);
           validationResult = await runValidations(execution, projectDirectory, settings);
         } else if (repairCompleted) {
-          await log(executionId, "validation", "O agente não encontrou uma correção aplicável para a falha", "warn");
+          await log(executionId, "validation", `A tentativa ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS} não encontrou uma alteração aplicável; o erro será reenviado no próximo ciclo`, "warn");
         }
       }
     }

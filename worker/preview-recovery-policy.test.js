@@ -45,7 +45,7 @@ test("correção automática inicia um novo ciclo sem herdar falhas do worker an
   assert.equal(data.status, "QUEUED");
   assert.equal(data.stage, "IMPLEMENTATION");
   assert.equal(MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS, 3);
-  assert.equal(MAX_AUTOMATIC_APPLICATION_REPAIRS, 2);
+  assert.equal(MAX_AUTOMATIC_APPLICATION_REPAIRS, 3);
 });
 
 test("conta somente correções automáticas de falhas atribuídas à aplicação", () => {
@@ -62,14 +62,23 @@ test("mantém falha de aplicação classificável quando aguarda consentimento",
   assert.equal(classifyPreviewFailure("[PREVIEW_REPAIR_CONSENT] Cannot find module 'express'"), "APPLICATION");
 });
 
-test("faz duas correções de código automaticamente e pede consentimento a partir da terceira", () => {
+test("faz três correções de código por ciclo e pede consentimento antes do próximo bloco", () => {
   const repairLog = { metadata: { automatic: true, aiInvoked: true, failureClass: "APPLICATION" } };
   assert.deepEqual(applicationRepairDecision({ logs: [] }), {
     action: "AUTO_REPAIR",
     automaticRepairCount: 0,
+    repairCycleCount: 0,
     repairNumber: 1,
     reason: "within-automatic-limit",
   });
   assert.equal(applicationRepairDecision({ logs: [repairLog] }).action, "AUTO_REPAIR");
-  assert.equal(applicationRepairDecision({ logs: [repairLog, repairLog] }).action, "REQUEST_CONSENT");
+  assert.equal(applicationRepairDecision({ logs: [repairLog, repairLog] }).action, "AUTO_REPAIR");
+  assert.equal(applicationRepairDecision({ logs: [repairLog, repairLog, repairLog] }).action, "REQUEST_CONSENT");
+  const consent = { createdAt: "2026-08-24T12:03:00.000Z", metadata: { aiInvoked: true, failureClass: "APPLICATION", previewRepairConsentGranted: true } };
+  const oldRepairs = [
+    { ...repairLog, createdAt: "2026-08-24T12:00:00.000Z" },
+    { ...repairLog, createdAt: "2026-08-24T12:01:00.000Z" },
+    { ...repairLog, createdAt: "2026-08-24T12:02:00.000Z" },
+  ];
+  assert.equal(applicationRepairDecision({ logs: [...oldRepairs, consent] }).repairNumber, 2);
 });

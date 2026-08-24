@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { automaticApplicationRepairCount } from "../lib/preview-repair-consent.js";
+import { applicationRepairCycleCount, automaticApplicationRepairCount } from "../lib/preview-repair-consent.js";
 
 export { automaticApplicationRepairCount } from "../lib/preview-repair-consent.js";
 
 export const MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS = 3;
-export const MAX_AUTOMATIC_APPLICATION_REPAIRS = 2;
+export const MAX_AUTOMATIC_APPLICATION_REPAIRS = 3;
 const MINIMUM_CONVERSATION_TIMEOUT_MINUTES = 24 * 60;
 
 const CIRCUIT_PREFIX = "[PREVIEW_CIRCUIT_OPEN]";
@@ -131,11 +131,13 @@ export function previewCircuitOpenError(error) {
 
 export function applicationRepairDecision({ logs = [] } = {}) {
   const automaticRepairCount = automaticApplicationRepairCount(logs);
-  const automaticRepairLimitReached = automaticRepairCount >= MAX_AUTOMATIC_APPLICATION_REPAIRS;
+  const repairCycleCount = applicationRepairCycleCount(logs);
+  const automaticRepairLimitReached = repairCycleCount >= MAX_AUTOMATIC_APPLICATION_REPAIRS;
   return {
     action: automaticRepairLimitReached ? "REQUEST_CONSENT" : "AUTO_REPAIR",
     automaticRepairCount,
-    repairNumber: automaticRepairCount + 1,
+    repairCycleCount,
+    repairNumber: repairCycleCount + 1,
     reason: automaticRepairLimitReached
       ? "automatic-repair-limit"
       : "within-automatic-limit",

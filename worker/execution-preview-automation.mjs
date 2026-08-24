@@ -123,7 +123,7 @@ async function requestApplicationRepairConsent(preview, execution, database, {
           "A falha mais recente foi classificada como um problema de build ou inicialização que pode ser tratado pela IA no código do projeto.",
           reason === "insufficient-credits"
             ? "A próxima correção não foi iniciada porque não há créditos disponíveis."
-            : "As correções automáticas previstas para este ciclo terminaram. Uma nova tentativa só será iniciada após sua confirmação.",
+            : `As ${MAX_AUTOMATIC_APPLICATION_REPAIRS} tentativas automáticas deste ciclo terminaram. Um novo ciclo de até ${MAX_AUTOMATIC_APPLICATION_REPAIRS} tentativas só será iniciado após sua confirmação.`,
           "A branch, o Pull Request e todo o histórico permanecem preservados.",
         ].join("\n\n"),
       },
