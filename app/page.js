@@ -7,7 +7,6 @@ import { authOptions } from "../lib/auth";
 import { getDashboardData } from "../lib/dashboard";
 import { getConfigurationStatus } from "../lib/env";
 import { getBillingOverview } from "../lib/billing";
-import { db } from "../lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +29,7 @@ export default async function Home() {
 
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
-  const existingBillingAccount = await db.billingAccount.findUnique({ where: { ownerUserId: session.user.id }, select: { id: true } });
-  const billing = await getBillingOverview(session.user);
-  const newTrial = !existingBillingAccount && billing.account.plan === "TRIAL";
-  if (newTrial) redirect("/billing?welcome=1");
+  await getBillingOverview(session.user);
   const data = await getDashboardData(session.user);
   const hasLiveWork = Boolean(data.activeWork?.length);
 

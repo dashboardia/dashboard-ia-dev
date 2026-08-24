@@ -55,7 +55,8 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
   const processing = activeWork.filter((item) => !attentionWork(item));
   const focusItems = [...waiting, ...processing].slice(0, 4);
   const baseHref = (href) => setupMode ? "/login" : href;
-  const [activityTab, setActivityTab] = useState("demands");
+  const hasProjects = setupMode || Number(dashboard.metrics.projects) > 0;
+  const [activityTab, setActivityTab] = useState(hasProjects ? "demands" : "projects");
 
   return (
     <AppShell user={user} setupMode={setupMode}>
@@ -63,17 +64,22 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
         <section className={styles.hero}>
           <div className={styles.heroGlow} aria-hidden="true" />
           <div className={styles.heroCopy}>
-            <p className={styles.heroEyebrow}><Sparkles size={13} />{dateLabel}</p>
-            <h1>Transforme a próxima ideia em <span>software funcionando.</span></h1>
-            <p>Descreva o que precisa. A Dashboard IA implementa, valida e entrega uma versão navegável para você decidir com segurança.</p>
+            <p className={styles.heroEyebrow}><Sparkles size={13} />{hasProjects ? dateLabel : "PRIMEIRO PASSO"}</p>
+            <h1>{hasProjects ? <>Transforme a próxima ideia em <span>software funcionando.</span></> : <>Conecte seu projeto e <span>comece com contexto real.</span></>}</h1>
+            <p>{hasProjects ? "Descreva o que precisa. A Dashboard IA implementa, valida e entrega uma versão navegável para você decidir com segurança." : "Escolha um repositório GitHub e a branch principal. Depois disso, você poderá pedir alterações em linguagem natural."}</p>
             <div className={styles.heroActions}>
-              <Link className={styles.heroPrimary} href={baseHref("/demands/new")}><Plus size={18} />Criar nova demanda <ArrowRight size={16} /></Link>
-              <Link className={styles.heroSecondary} href={baseHref("/projects")}><Boxes size={17} />Ver meus projetos</Link>
+              {hasProjects ? <>
+                <Link className={styles.heroPrimary} href={baseHref("/demands/new")}><Plus size={18} />Criar nova demanda <ArrowRight size={16} /></Link>
+                <Link className={styles.heroSecondary} href={baseHref("/projects")}><Boxes size={17} />Ver meus projetos</Link>
+              </> : <>
+                <Link className={styles.heroPrimary} href={baseHref("/projects/new")}><Github size={18} />Conectar meu projeto <ArrowRight size={16} /></Link>
+                <Link className={styles.heroSecondary} href={baseHref("/faq")}><Lightbulb size={17} />Como funciona</Link>
+              </>}
             </div>
             <div className={styles.heroSignals}>
-              <span><i className={styles.liveDot} />Operação em tempo real</span>
+              <span><i className={styles.liveDot} />{hasProjects ? "Operação em tempo real" : "Conexão segura com GitHub"}</span>
               <span><ShieldCheck size={14} />Branch e histórico preservados</span>
-              <span><HeartPulse size={14} />{dashboard.health.title}</span>
+              <span><HeartPulse size={14} />{hasProjects ? dashboard.health.title : "Você controla cada mudança"}</span>
             </div>
           </div>
           <div className={styles.heroVisual} aria-label="Fluxo de trabalho da Dashboard IA">
@@ -91,23 +97,28 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
           <section className={styles.focusPanel}>
             <header className={styles.focusHeader}>
               <div className={styles.focusTitle}><span><Activity size={20} /></span><div><small>AGORA</small><h2>{focusItems.length ? "Seu trabalho em andamento" : "Sua operação está livre"}</h2><p>{focusItems.length ? "O que exige sua atenção aparece primeiro, sem você precisar procurar." : "Nenhuma pendência bloqueando você. Este é um bom momento para começar algo novo."}</p></div></div>
-              {activeWork.length > 0 && <Link href={baseHref("/executions")}>Central de execuções <ArrowRight size={14} /></Link>}
+              {hasProjects && activeWork.length > 0 && <Link href={baseHref("/executions")}>Central de execuções <ArrowRight size={14} /></Link>}
             </header>
-            {focusItems.length ? <div className={styles.focusGrid}>{focusItems.map((item) => <WorkCard item={item} setupMode={setupMode} key={item.id} />)}</div> : <div className={styles.focusEmpty}><span><CheckCircle2 size={26} /></span><div><strong>Tudo certo por aqui</strong><small>Crie uma demanda e acompanhe a implementação ao vivo.</small><Link href={baseHref("/demands/new")}>Começar agora <ArrowRight size={13} /></Link></div></div>}
+            {!hasProjects ? <div className={`${styles.focusEmpty} ${styles.onboardingEmpty}`}><span><Github size={26} /></span><div><strong>Seu primeiro repositório é o ponto de partida</strong><small>A Dashboard IA usa o código e a branch para entender o projeto antes de executar qualquer alteração.</small><Link href={baseHref("/projects/new")}>Conectar projeto <ArrowRight size={13} /></Link></div></div> : focusItems.length ? <div className={styles.focusGrid}>{focusItems.map((item) => <WorkCard item={item} setupMode={setupMode} key={item.id} />)}</div> : <div className={styles.focusEmpty}><span><CheckCircle2 size={26} /></span><div><strong>Tudo certo por aqui</strong><small>Crie uma demanda e acompanhe a implementação ao vivo.</small><Link href={baseHref("/demands/new")}>Começar agora <ArrowRight size={13} /></Link></div></div>}
           </section>
 
           <section className={styles.quickSection}>
             <div className={styles.sectionTitle}><div><small>ATALHOS</small><h2>Próximo passo</h2><p>Acesse o que importa em um clique.</p></div></div>
             <div className={styles.quickGrid}>
-            <QuickAction href={baseHref("/demands/new")} icon={Plus} title="Criar uma demanda" text="Peça uma alteração, correção ou nova funcionalidade." primary />
-            <QuickAction href={baseHref("/projects/new")} icon={Boxes} title="Conectar um projeto" text="Adicione um repositório GitHub e escolha a branch padrão." />
-            <QuickAction href={baseHref("/executions")} icon={Activity} title="Acompanhar execuções" text="Veja o que a IA está fazendo e continue pelo chat." />
-            <QuickAction href={baseHref("/environments")} icon={ServerCog} title="Testar ambientes" text="Abra ou acompanhe versões navegáveis das branches." />
+            {hasProjects ? <>
+              <QuickAction href={baseHref("/demands/new")} icon={Plus} title="Criar uma demanda" text="Peça uma alteração, correção ou nova funcionalidade." primary />
+              <QuickAction href={baseHref("/projects/new")} icon={Boxes} title="Conectar um projeto" text="Adicione um repositório GitHub e escolha a branch padrão." />
+              <QuickAction href={baseHref("/executions")} icon={Activity} title="Acompanhar execuções" text="Veja o que a IA está fazendo e continue pelo chat." />
+              <QuickAction href={baseHref("/environments")} icon={ServerCog} title="Testar ambientes" text="Abra ou acompanhe versões navegáveis das branches." />
+            </> : <>
+              <QuickAction href={baseHref("/projects/new")} icon={Github} title="Conectar um projeto" text="Selecione o repositório e defina a branch padrão." primary />
+              <QuickAction href={baseHref("/faq")} icon={Lightbulb} title="Entender o fluxo" text="Veja como a IA implementa, valida e publica alterações." />
+            </>}
             </div>
           </section>
         </div>
 
-        <section className={styles.signalBar} aria-label="Resumo da operação">
+        {hasProjects && <><section className={styles.signalBar} aria-label="Resumo da operação">
           <Summary icon={Clock3} label="Aguardando você" value={String(waiting.length)} tone="attention" />
           <Summary icon={Activity} label="Em processamento" value={String(processing.length)} tone="running" />
           <Summary icon={Boxes} label="Projetos" value={String(dashboard.metrics.projects)} tone="neutral" />
@@ -131,7 +142,7 @@ export default function Dashboard({ user = null, setupMode = false, data = null,
               <Link className={styles.activityMore} href={baseHref("/projects")}>Ver todos os projetos <ArrowRight size={13} /></Link>
             </>}
           </div>
-        </section>
+        </section></>}
       </div>
     </AppShell>
   );
