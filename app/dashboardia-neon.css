@@ -459,6 +459,19 @@ html[data-theme="dark"] :is(.execution-message,.support-message),html[data-theme
 .list-filters { margin-bottom:12px; padding:13px; border:1px solid color-mix(in srgb,var(--purple) 13%,var(--line)); border-radius:14px; background:color-mix(in srgb,#fff 84%,var(--soft)); box-shadow:0 8px 24px rgb(24 26 48 / 4%); }
 html[data-theme="dark"] .filter-disclosure,html[data-theme="gray"] .filter-disclosure { background:#121621; }
 
+/* Native menus must inherit the active palette too, including the OS popup. */
+html[data-theme="dark"] select,html[data-theme="gray"] select {
+  color-scheme: dark;
+  color: #f4f6ff;
+  background-color: #171b27;
+}
+html[data-theme="dark"] select option,html[data-theme="gray"] select option {
+  color: #f4f6ff;
+  background: #171b27;
+}
+html[data-theme="dark"] select option:disabled,html[data-theme="gray"] select option:disabled { color:#858da2; }
+html[data-theme="light"] select { color-scheme:light; }
+
 /* Resource screens become a bento grid instead of identical boxes. */
 .resource-grid { gap: 14px; grid-template-columns: repeat(auto-fit,minmax(270px,1fr)); }
 .resource-card { min-height: 210px; padding: 22px; border-radius: 17px; }

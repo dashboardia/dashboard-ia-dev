@@ -12,6 +12,7 @@ import { getDemandCopy } from "../../../lib/demand-copy";
 import styles from "./demand-form.module.css";
 
 const ENVIRONMENT_RECOVERY_STORAGE_KEY = "dashboardia:environment-recovery";
+const BILLING_DRAFT_STORAGE_KEY = "dashboardia:demand-billing-draft";
 
 function demandTitle(prompt) {
   const normalized = prompt.replace(/\s+/g, " ").trim();
@@ -32,6 +33,7 @@ export default function DemandForm({ projects, initialProjectId }) {
   });
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState("");
+  const [billingUrl, setBillingUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [branches, setBranches] = useState(initialProject ? [{ name: initialProject.defaultBranch }] : []);
   const [branchesLoading, setBranchesLoading] = useState(Boolean(initialProject));
@@ -57,6 +59,23 @@ export default function DemandForm({ projects, initialProjectId }) {
       return () => window.clearTimeout(timer);
     } catch {
       window.sessionStorage.removeItem(ENVIRONMENT_RECOVERY_STORAGE_KEY);
+    }
+  }, [projects]);
+
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem(BILLING_DRAFT_STORAGE_KEY);
+      if (!stored) return;
+      const draft = JSON.parse(stored);
+      if (!draft?.context?.projectId || !projects.some((project) => project.id === draft.context.projectId)) return;
+      window.sessionStorage.removeItem(BILLING_DRAFT_STORAGE_KEY);
+      const timer = window.setTimeout(() => {
+        setContext(draft.context);
+        setPrompt(draft.prompt ?? "");
+      }, 0);
+      return () => window.clearTimeout(timer);
+    } catch {
+      window.sessionStorage.removeItem(BILLING_DRAFT_STORAGE_KEY);
     }
   }, [projects]);
 
@@ -112,16 +131,23 @@ export default function DemandForm({ projects, initialProjectId }) {
     if (description.length < 20) return setError("Conte um pouco mais sobre o que você precisa. Use pelo menos 20 caracteres.");
     setSaving(true);
     setError("");
+    setBillingUrl("");
     try {
       const visualValidation = context.type !== "DOCUMENTATION";
       const payload = { ...context, title: demandTitle(description), description, acceptanceCriteria: "", priority: "NORMAL", visualValidation, visualPaths: visualValidation ? ["/"] : [] };
       const response = await fetch("/api/demands", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error ?? copy.createError);
-      router.push(`/demands/${result.demand.id}`);
+      if (!response.ok) {
+        const requestError = new Error(result.error ?? copy.createError);
+        requestError.billingUrl = result.billingUrl ?? "";
+        throw requestError;
+      }
+      window.sessionStorage.removeItem(BILLING_DRAFT_STORAGE_KEY);
+      router.push(`/executions/${result.execution.id}`);
       router.refresh();
     } catch (submitError) {
       setError(submitError.message);
+      setBillingUrl(submitError.billingUrl ?? "");
       setSaving(false);
     }
   }
@@ -155,7 +181,7 @@ export default function DemandForm({ projects, initialProjectId }) {
       canSubmit={Boolean(selectedProject && context.baseBranch && prompt.trim().length >= 20)}
       submitLabel="Criar demanda"
       loadingLabel={copy.creating}
-      error={error}
+      error={error && <><span>{error}</span>{billingUrl && <Link href={billingUrl} onClick={() => window.sessionStorage.setItem(BILLING_DRAFT_STORAGE_KEY, JSON.stringify({ context, prompt }))}>Adicionar créditos</Link>}</>}
       controls={<>
         <label aria-label="Tipo de trabalho"><select value={context.type} onChange={selectType}>{copy.typeValues.map((value) => <option value={value} key={value}>{copy.types[value]}</option>)}</select></label>
         <label aria-label="Agente"><select value={context.aiModel} onChange={(event) => setContext((current) => ({ ...current, aiModel: event.target.value }))}>{AI_MODELS.map((option) => <option value={option.value} key={option.value} disabled={(lunaOnly && option.value !== FREE_PLAN_AI_MODEL) || (context.type === "DOCUMENTATION" && option.value !== FREE_PLAN_AI_MODEL)}>{option.model.replace("GPT-5.6 ", "")} · {copy.models[option.value][0]}</option>)}</select></label>

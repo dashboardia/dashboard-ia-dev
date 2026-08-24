@@ -14,7 +14,6 @@ import { syncExecutionPreviewForPresentation } from "../../../lib/preview-host-c
 import CancelExecutionButton from "./cancel-execution-button";
 import DemandEditCard from "./demand-edit-card";
 import OpenPullRequestButton from "./open-pull-request-button";
-import StartAnalysisButton from "./start-analysis-button";
 
 const typeLabels = { BUG: "Correção", FEATURE: "Nova funcionalidade", REFACTOR: "Refatoração", TEST: "Testes", INVESTIGATION: "Investigação", DOCUMENTATION: "Documentação de negócio" };
 const statusLabels = { DRAFT: "Rascunho", PENDING_APPROVAL: "Pronta para iniciar", APPROVED: "Pronta para iniciar", QUEUED: "Na fila", RUNNING: "Em execução", REVIEW: "Em revisão", SUCCEEDED: "Concluída", FAILED: "Falha aguardando correção", CANCELLED: "Cancelada", STOPPED: "Parada" };
@@ -39,7 +38,6 @@ export default async function DemandPage({ params }) {
   if (!role) redirect("/demands");
   const canEdit = ["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(demand.status) && !demand.executions.length && (demand.createdBy.id === user.id || role === "MANAGER");
   const lunaOnly = user.globalRole !== "ADMIN" && demand.project.createdBy.globalRole !== "ADMIN" && demand.project.createdBy.billingAccount?.plan !== "CUSTOM" && !planIsPaid(demand.project.createdBy.billingAccount?.planDefinition);
-  const canStart = role === "MANAGER" && ["PENDING_APPROVAL", "APPROVED", "FAILED", "STOPPED"].includes(demand.status);
   const executions = await Promise.all(
     demand.executions.map((execution) => syncExecutionPreviewForPresentation(db, { ...execution, demand: { type: demand.type } })),
   );
@@ -47,7 +45,7 @@ export default async function DemandPage({ params }) {
   return (
     <AppShell user={user}>
       <div className="section-page">
-        <SectionHeader backHref="/demands" eyebrow={`${demand.project.name} · ${typeLabels[demand.type]}`} title={demand.title} description={`Demanda ${demand.id.slice(-10)} · criada por ${demand.createdBy.name ?? demand.createdBy.githubLogin}`} action={canStart ? <StartAnalysisButton demandId={demand.id} /> : null} />
+        <SectionHeader backHref="/demands" eyebrow={`${demand.project.name} · ${typeLabels[demand.type]}`} title={demand.title} description={`Demanda ${demand.id.slice(-10)} · criada por ${demand.createdBy.name ?? demand.createdBy.githubLogin}`} />
         <div className="detail-grid demand-detail-grid">
           <DemandEditCard demand={{ id: demand.id, projectId: demand.projectId, baseBranch: demand.baseBranch, title: demand.title, description: demand.description, acceptanceCriteria: demand.acceptanceCriteria, type: demand.type, priority: demand.priority, visualValidation: demand.visualValidation, visualPaths: demand.visualPaths, aiModel: demand.aiModel }} canEdit={canEdit} lunaOnly={lunaOnly} />
           <section className="form-card detail-card"><h2>Informações</h2><div className="detail-list"><span><Clock3 size={17} /><strong>Status</strong><em>{statusLabels[demand.status]}</em></span><span><GitBranch size={17} /><strong>Branch base</strong><em>{demand.baseBranch}</em></span><span><CheckCircle2 size={17} /><strong>Prioridade</strong><em>{demand.priority}</em></span></div></section>
@@ -83,7 +81,7 @@ export default async function DemandPage({ params }) {
                 </article>
               );
             })}
-            {!executions.length && <div className="list-empty">Clique em “Iniciar execução” para começar e acompanhar o processamento ao vivo.</div>}
+            {!executions.length && <div className="list-empty">Esta demanda é anterior ao fluxo automático e ainda não possui execução.</div>}
           </div>
         </section>
       </div>

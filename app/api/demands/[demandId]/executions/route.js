@@ -14,8 +14,6 @@ import { assertPlatformProcessingEnabled } from "../../../../../lib/platform-pro
 export async function POST(request, context) {
   try {
     assertSameOrigin(request);
-    const input = await request.json().catch(() => ({}));
-    const emptyRepositoryConfirmed = input?.allowEmptyRepository === true;
     let allowEmptyRepository = false;
     if (!env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "Configure OPENAI_API_KEY antes de executar" }, { status: 503 });
@@ -27,7 +25,7 @@ export async function POST(request, context) {
       where: { id: demandId },
       include: { project: { select: { repositoryFullName: true, defaultBranch: true, githubInstallationId: true } } },
     });
-    const { user } = await requireProjectRole(demand.projectId, "MANAGER");
+    const { user } = await requireProjectRole(demand.projectId, "DEVELOPER");
     await assertOperationalAccess(user);
     if (!["PENDING_APPROVAL", "APPROVED", "FAILED", "STOPPED"].includes(demand.status)) {
       return NextResponse.json({ error: "Esta demanda não está disponível para iniciar uma execução" }, { status: 409 });
@@ -38,9 +36,6 @@ export async function POST(request, context) {
       await verifyRepositoryProjectBranch(token, demand.project.repositoryFullName, demand.baseBranch);
     } catch (error) {
       if (error instanceof RepositoryBranchContentError) {
-        if (!emptyRepositoryConfirmed) {
-          return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
-        }
         allowEmptyRepository = true;
       } else return NextResponse.json({
         error: `A branch ${demand.baseBranch} não existe mais no repositório. Selecione outra branch na demanda antes de iniciar.`,

@@ -1,10 +1,9 @@
 import { getServerSession } from "next-auth";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { authOptions } from "../../lib/auth";
 import { env, getConfigurationStatus } from "../../lib/env";
-import { RETURN_PATH_COOKIE, safeInternalReturnPath } from "../../lib/return-navigation";
 import LoginCard from "./login-card";
 
 export const metadata = {
@@ -31,11 +30,6 @@ function copySearchParams(target, params) {
   }
 }
 
-function decodeRememberedPath(value) {
-  if (!value) return null;
-  try { return decodeURIComponent(value); } catch { return value; }
-}
-
 export default async function LoginPage({ searchParams }) {
   const configuration = getConfigurationStatus();
   const params = await searchParams;
@@ -52,13 +46,9 @@ export default async function LoginPage({ searchParams }) {
     }
   }
 
-  const cookieStore = await cookies();
-  const rememberedPath = decodeRememberedPath(cookieStore.get(RETURN_PATH_COOKIE)?.value);
-  const callbackUrl = safeInternalReturnPath(params?.callbackUrl ?? params?.state ?? rememberedPath ?? "/");
-
   if (configured) {
     const session = await getServerSession(authOptions);
-    if (session?.user) redirect(callbackUrl);
+    if (session?.user) redirect("/");
   }
 
   return (
@@ -66,7 +56,7 @@ export default async function LoginPage({ searchParams }) {
       <LoginCard
         configured={configured}
         error={params?.error ?? null}
-        callbackUrl={callbackUrl}
+        callbackUrl="/"
       />
     </main>
   );

@@ -66,8 +66,7 @@
   .sidebar:not(:hover):not(.pinned) .workspace > svg,
   .sidebar:not(:hover):not(.pinned) nav a > span,
   .sidebar:not(:hover):not(.pinned) .sidebar-bottom > a > span,
-  .sidebar:not(:hover):not(.pinned) .user > span:nth-child(2),
-  .sidebar:not(:hover):not(.pinned) .signout {
+  .sidebar:not(:hover):not(.pinned) .user > span:nth-child(2) {
     display: none;
   }
 
@@ -97,14 +96,31 @@
   .sidebar:not(:hover):not(.pinned) .user {
     width: 44px;
     margin-inline: auto;
-    padding: 14px 0 0;
+    padding: 10px 0 0;
+    flex-direction: column;
+    gap: 5px;
     justify-content: center;
+  }
+
+  .sidebar:not(:hover):not(.pinned) .signout {
+    width: 30px;
+    height: 24px;
   }
 
   .sidebar:not(:hover):not(.pinned) .user-avatar {
     width: 30px;
     height: 30px;
   }
+}
+
+@media (min-width: 961px) and (max-height: 720px) {
+  .sidebar { padding-top: 12px; padding-bottom: 10px; }
+  .sidebar .brand { min-height: 38px; padding-bottom: 8px; }
+  .sidebar-pin { margin-bottom: 8px; }
+  .workspace-label { display:none; }
+  .workspace { min-height: 38px; padding-block: 4px; }
+  .sidebar nav { padding-top: 9px; }
+  .user { margin-top: 7px; padding-top: 8px; }
 }
 
 @media (max-width: 960px) {
