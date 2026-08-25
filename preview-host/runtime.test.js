@@ -12,10 +12,32 @@ import {
   previewUpstreamPath,
   previewResponseHeaders,
   previewContainerName,
+  previewEgressNetworkCreateArguments,
+  previewEgressNetworkName,
   previewNetworkName,
+  previewNetworkCreateArguments,
   rewriteOpenApiDocument,
   validPreviewId,
 } from "./runtime.mjs";
+
+test("mantém a comunicação do gateway numa rede interna exclusiva do preview", () => {
+  const args = previewNetworkCreateArguments("preview-123");
+  assert.deepEqual(args, [
+    "network", "create",
+    "--internal",
+    "--label", "dashboardia.preview.id=preview-123",
+    "dashboardia-preview-preview-123",
+  ]);
+});
+
+test("cria uma segunda rede exclusiva para a saída externa do projeto", () => {
+  assert.deepEqual(previewEgressNetworkCreateArguments("preview-123"), [
+    "network", "create",
+    "--label", "dashboardia.preview.id=preview-123",
+    "dashboardia-preview-preview-123-egress",
+  ]);
+  assert.equal(previewEgressNetworkName("preview-123"), "dashboardia-preview-preview-123-egress");
+});
 
 test("gera os argumentos do Railpack sem transformar configuração em segredo de build", () => {
   assert.deepEqual(railpackPrepareArguments({

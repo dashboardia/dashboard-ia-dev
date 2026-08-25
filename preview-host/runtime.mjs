@@ -55,6 +55,28 @@ export function previewNetworkName(id) {
   return `dashboardia-preview-${id}`;
 }
 
+export function previewEgressNetworkName(id) {
+  if (!validPreviewId(id)) throw new Error("Identificador de preview inválido");
+  return `dashboardia-preview-${id}-egress`;
+}
+
+export function previewNetworkCreateArguments(id) {
+  return [
+    "network", "create",
+    "--internal",
+    "--label", `dashboardia.preview.id=${id}`,
+    previewNetworkName(id),
+  ];
+}
+
+export function previewEgressNetworkCreateArguments(id) {
+  return [
+    "network", "create",
+    "--label", `dashboardia.preview.id=${id}`,
+    previewEgressNetworkName(id),
+  ];
+}
+
 export function isPreviewReadyStatus(status) {
   return Number(status) >= 200 && Number(status) < 400;
 }

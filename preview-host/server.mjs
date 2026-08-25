@@ -17,7 +17,10 @@ import {
   previewUpstreamPath,
   previewResponseHeaders,
   previewContainerName,
+  previewEgressNetworkCreateArguments,
+  previewEgressNetworkName,
   previewImageName,
+  previewNetworkCreateArguments,
   previewNetworkName,
   rewriteOpenApiDocument,
   validPreviewId,
@@ -41,7 +44,13 @@ const hostContainerName = process.env.PREVIEW_HOST_CONTAINER_NAME || "dashboardi
 const maxArchiveBytes = Number(process.env.PREVIEW_MAX_ARCHIVE_MB || 64) * 1024 * 1024;
 const buildTimeoutMs = Number(process.env.PREVIEW_BUILD_TIMEOUT_MINUTES || 15) * 60_000;
 const maxParallelBuilds = Math.max(1, Math.min(8, Number(process.env.PREVIEW_MAX_PARALLEL_BUILDS || 2)));
+const allowOutboundNetwork = String(process.env.PREVIEW_ALLOW_OUTBOUND_NETWORK || "true").toLowerCase() !== "false";
+const proxyTimeoutMs = Math.max(10, Number(process.env.PREVIEW_PROXY_TIMEOUT_SECONDS || 60)) * 1_000;
+const readyHealthCheckIntervalMs = 15_000;
+const readyFailureThreshold = 2;
 const buildQueue = [];
+const failingReadyPreviews = new Set();
+const readyFailureCounts = new Map();
 let activeBuilds = 0;
 
 if (token.length < 32) throw new Error("PREVIEW_HOST_TOKEN precisa ter ao menos 32 caracteres");
@@ -121,6 +130,94 @@ async function docker(args, timeout = 120_000, environment = null) {
     maxBuffer: 4 * 1024 * 1024,
     ...(environment ? { env: { ...process.env, ...environment } } : {}),
   });
+}
+
+async function inspectPreviewRuntime(id) {
+  const inspected = await docker(["inspect", "--format", "{{json .State}}", previewContainerName(id)], 15_000).catch(() => null);
+  if (!inspected?.stdout?.trim()) return null;
+  try {
+    return JSON.parse(inspected.stdout.trim());
+  } catch {
+    return null;
+  }
+}
+
+async function previewRuntimeLogs(id) {
+  const logs = await docker(["logs", "--tail", "200", previewContainerName(id)], 15_000).catch(() => ({ stdout: "", stderr: "" }));
+  return `${logs.stdout || ""}${logs.stderr || ""}`.trim().slice(-12_000);
+}
+
+async function markReadyPreviewFailed(id, { failureClass = "APPLICATION", message, diagnostic = "" }) {
+  if (failingReadyPreviews.has(id)) return;
+  failingReadyPreviews.add(id);
+  try {
+    const state = await readState(id).catch(() => null);
+    if (!state || state.status !== "READY") return;
+    const runtime = await inspectPreviewRuntime(id);
+    const logs = await previewRuntimeLogs(id);
+    const details = [
+      message,
+      runtime ? `Estado do container: ${runtime.Status || "desconhecido"}; saída: ${runtime.ExitCode ?? "n/a"}; OOM: ${runtime.OOMKilled === true ? "sim" : "não"}.` : "O container não foi encontrado no host.",
+      diagnostic,
+      logs ? `Últimos logs do container:\n${logs}` : null,
+    ].filter(Boolean).join("\n").slice(-16_000);
+    await patchState(id, {
+      status: "FAILED",
+      url: null,
+      credentials: null,
+      stoppedAt: new Date().toISOString(),
+      error: `[${failureClass}] ${details}`,
+    });
+    await failActivity(id, "O ambiente deixou de responder; o erro foi disponibilizado para uma nova tentativa com IA").catch(() => null);
+    await removeRuntime(id);
+  } finally {
+    for (const key of readyFailureCounts.keys()) {
+      if (key.startsWith(`${id}:`)) readyFailureCounts.delete(key);
+    }
+    failingReadyPreviews.delete(id);
+  }
+}
+
+async function recordReadyFailure(id, field, failure) {
+  const state = await readState(id).catch(() => null);
+  if (!state || state.status !== "READY") return;
+  const key = `${id}:${field}`;
+  const failures = Number(readyFailureCounts.get(key) || 0) + 1;
+  readyFailureCounts.set(key, failures);
+  if (failures < readyFailureThreshold) return;
+  await markReadyPreviewFailed(id, {
+    failureClass: "APPLICATION",
+    message: "O processo do projeto deixou de responder depois que o ambiente já estava disponível.",
+    diagnostic: String(failure?.message || failure || "Falha de comunicação com a aplicação").slice(-4_000),
+  });
+}
+
+async function clearReadyFailure(id, field) {
+  readyFailureCounts.delete(`${id}:${field}`);
+}
+
+async function checkReadyRuntime(id, state) {
+  const runtime = await inspectPreviewRuntime(id);
+  if (!runtime) {
+    await markReadyPreviewFailed(id, {
+      failureClass: "INFRASTRUCTURE",
+      message: "O estado do ambiente indicava que ele estava pronto, mas o container não existe mais no host.",
+    });
+    return false;
+  }
+  if (runtime.Status !== "running") {
+    await recordReadyFailure(id, "healthFailureCount", new Error(`Container em estado ${runtime.Status || "desconhecido"}`));
+    return false;
+  }
+  try {
+    const status = await probePreviewHttp(previewContainerName(id), state.port, state.entryPath || "/", 5_000);
+    if (!isPreviewReadyStatus(status)) throw new Error(`A aplicação respondeu HTTP ${status}`);
+    await clearReadyFailure(id, "healthFailureCount");
+    return true;
+  } catch (error) {
+    await recordReadyFailure(id, "healthFailureCount", error);
+    return false;
+  }
 }
 
 function dockerErrorText(error) {
@@ -212,7 +309,23 @@ async function removeRuntime(id, removeImage = true) {
   await docker(["rm", "--force", previewContainerName(id)]).catch(() => null);
   await docker(["network", "disconnect", "--force", previewNetworkName(id), hostContainerName]).catch(() => null);
   await docker(["network", "rm", previewNetworkName(id)]).catch(() => null);
+  await docker(["network", "rm", previewEgressNetworkName(id)]).catch(() => null);
   if (removeImage) await docker(["image", "rm", "--force", previewImageName(id)]).catch(() => null);
+}
+
+async function ensurePreviewEgressNetwork(id) {
+  if (!allowOutboundNetwork) return;
+  const name = previewEgressNetworkName(id);
+  const existing = await docker(["network", "inspect", name], 15_000).catch(() => null);
+  if (!existing) await docker(previewEgressNetworkCreateArguments(id));
+  await docker(["network", "connect", "--gw-priority", "1", name, previewContainerName(id)]).catch(async (error) => {
+    if (/already exists|endpoint with name/i.test(dockerErrorText(error))) return;
+    if (/unknown flag|unknown option/i.test(dockerErrorText(error))) {
+      await docker(["network", "connect", name, previewContainerName(id)]);
+      return;
+    }
+    throw error;
+  });
 }
 
 async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
@@ -245,13 +358,14 @@ async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
 }
 
 async function startPreviewRuntime(id, configuration) {
-  await docker(["network", "create", "--internal", "--label", `dashboardia.preview.id=${id}`, previewNetworkName(id)]);
+  await docker(previewNetworkCreateArguments(id));
   await docker(["network", "connect", previewNetworkName(id), hostContainerName]);
   const runtimeEnvironment = Object.entries(configuration.runtimeEnvironment ?? {})
     .flatMap(([name, value]) => ["--env", `${name}=${value}`]);
   await docker([
-    "run", "--detach", "--name", previewContainerName(id),
+    "create", "--name", previewContainerName(id),
     "--network", previewNetworkName(id),
+    "--restart", "unless-stopped",
     "--memory", "768m", "--cpus", "1", "--pids-limit", "256",
     "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
     "--tmpfs", "/tmp:rw,noexec,nosuid,size=128m",
@@ -261,6 +375,8 @@ async function startPreviewRuntime(id, configuration) {
     "--label", `dashboardia.preview.id=${id}`,
     previewImageName(id),
   ]);
+  await ensurePreviewEgressNetwork(id);
+  await docker(["start", previewContainerName(id)], 60_000);
   return waitUntilReady(id, configuration.port);
 }
 
@@ -485,11 +601,30 @@ async function reconnectReadyPreviewNetworks() {
     const id = file.slice(0, -5);
     const state = await readState(id).catch(() => null);
     if (!state || state.status !== "READY" || new Date(state.expiresAt).getTime() <= now) return;
-    const runtime = await docker(["inspect", "--format", "{{.State.Status}}", previewContainerName(id)]).catch(() => null);
-    if (runtime?.stdout.trim() !== "running") return;
+    const runtime = await inspectPreviewRuntime(id);
+    if (!runtime) {
+      await markReadyPreviewFailed(id, {
+        failureClass: "INFRASTRUCTURE",
+        message: "O host reiniciou, mas o container anteriormente marcado como pronto não foi encontrado.",
+      });
+      return;
+    }
     await docker(["network", "connect", previewNetworkName(id), hostContainerName]).catch((error) => {
       if (!/already exists|endpoint with name/i.test(dockerErrorText(error))) console.error(error);
     });
+    await ensurePreviewEgressNetwork(id).catch((error) => console.error(error));
+    if (runtime.Status !== "running") await docker(["start", previewContainerName(id)], 60_000).catch(() => null);
+    await checkReadyRuntime(id, state);
+  }));
+}
+
+async function checkReadyPreviewHealth() {
+  const files = await readdir(stateDirectory).catch(() => []);
+  await Promise.all(files.filter((file) => file.endsWith(".json")).map(async (file) => {
+    const id = file.slice(0, -5);
+    const state = await readState(id).catch(() => null);
+    if (!state || state.status !== "READY" || new Date(state.expiresAt).getTime() <= Date.now()) return;
+    await checkReadyRuntime(id, state);
   }));
 }
 
@@ -500,7 +635,11 @@ async function handleApi(request, response, url) {
   const id = match[1];
 
   if (request.method === "GET") {
-    const state = await readState(id).catch(() => null);
+    let state = await readState(id).catch(() => null);
+    if (state?.status === "READY") {
+      await checkReadyRuntime(id, state);
+      state = await readState(id).catch(() => state);
+    }
     return state ? sendJson(response, 200, state) : sendJson(response, 404, { error: "Preview não encontrado" });
   }
   if (request.method === "DELETE") {
@@ -549,6 +688,7 @@ async function proxyPreview(request, response, state) {
     path: previewUpstreamPath(request.url, state.entryPath),
     headers: upstreamHeaders,
   }, (upstreamResponse) => {
+    clearReadyFailure(state.id, "proxyFailureCount").catch(console.error);
     const contentType = String(upstreamResponse.headers["content-type"] || "");
     const encoded = Boolean(upstreamResponse.headers["content-encoding"]);
     if (!rewriteOpenApi || !/json/i.test(contentType) || encoded) {
@@ -572,7 +712,9 @@ async function proxyPreview(request, response, state) {
       response.end(body);
     });
   });
-  upstream.on("error", () => {
+  upstream.setTimeout(proxyTimeoutMs, () => upstream.destroy(new Error(`A aplicação não respondeu em ${Math.round(proxyTimeoutMs / 1_000)} segundos`)));
+  upstream.on("error", (error) => {
+    recordReadyFailure(state.id, "proxyFailureCount", error).catch(console.error);
     if (!response.headersSent) sendJson(response, 502, { error: "O container temporário não respondeu" });
     else response.destroy();
   });
@@ -649,6 +791,8 @@ await cleanupExpired();
 await reconnectReadyPreviewNetworks();
 const cleanupTimer = setInterval(() => cleanupExpired().catch(console.error), 30_000);
 cleanupTimer.unref();
+const readyHealthTimer = setInterval(() => checkReadyPreviewHealth().catch(console.error), readyHealthCheckIntervalMs);
+readyHealthTimer.unref();
 server.listen(port, "0.0.0.0", () => console.log(`[preview-host] ouvindo na porta ${port}`));
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
