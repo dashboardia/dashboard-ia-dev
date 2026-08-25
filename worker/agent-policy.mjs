@@ -70,7 +70,7 @@ function businessKnowledgeInstructions(businessKnowledge) {
   ];
 }
 
-export function buildAgentPrompt(demand, scope = classifyImplementationScope(demand), { businessKnowledge = "", emptyRepository = false } = {}) {
+export function buildAgentPrompt(demand, scope = classifyImplementationScope(demand), { businessKnowledge = "", emptyRepository = false, runtimeContext = null } = {}) {
   const approvedKnowledge = businessKnowledgeInstructions(businessKnowledge);
   if (demand.type === "DOCUMENTATION") {
     return [
@@ -115,6 +115,8 @@ export function buildAgentPrompt(demand, scope = classifyImplementationScope(dem
     "Não altere arquivos de segredos nem workflows de CI.",
     "Use exclusivamente apply_patch para criar, alterar ou excluir arquivos.",
     "Não execute instalação, build, lint ou testes; o worker fará isso após os patches.",
+    "Use os manifests e scripts realmente existentes no repositório como fonte de verdade para dependências, build e inicialização. Não presuma npm, Maven, Gradle, pip ou Composer sem a configuração correspondente no código.",
+    "Toda dependência usada precisa estar declarada no manifest correto. A aplicação navegável deve aceitar a porta fornecida por PORT, iniciar sem interação manual e escutar em uma interface acessível ao ambiente de preview.",
     "Antes de concluir uma aplicação executável, revise o caminho real de inicialização: configuração do servidor, contexto da aplicação, conexão e criação do banco, migrações e carga de dados de demonstração. A aplicação precisa iniciar com banco limpo sem exceções de bootstrap.",
     "Em projetos com persistência, confira todas as restrições obrigatórias antes de salvar entidades. Campos de auditoria como createdAt e updatedAt devem ser preenchidos de forma centralizada e compatível com a stack, preferencialmente por callbacks de ciclo de vida como @PrePersist e @PreUpdate; seeds e fixtures também precisam respeitar NOT NULL, relacionamentos e unicidade.",
     "Se a aplicação possui autenticação, é obrigatório criar um acesso administrativo e uma massa mínima de demonstração no bootstrap, mesmo que o projeto ainda não possua seed ou fixture. Esse bootstrap deve ser idempotente e só pode ser ativado quando DASHBOARDIA_DEMO_MODE=true.",
@@ -124,6 +126,7 @@ export function buildAgentPrompt(demand, scope = classifyImplementationScope(dem
     "Não declare a demanda concluída se entregou apenas parte do escopo. Se existir bloqueio técnico incontornável, descreva-o explicitamente em vez de apresentar uma demonstração parcial como solução final.",
     "Ao concluir, retorne um resumo objetivo das alterações, dos critérios atendidos e dos riscos ou validações pendentes.",
     ...approvedKnowledge,
+    runtimeContext ? `Contexto técnico detectado antes da alteração:\n${JSON.stringify(runtimeContext, null, 2)}` : null,
     `Projeto: ${demand.project.name}`,
     `Repositório: ${demand.project.repositoryFullName}`,
     `Branch base: ${demand.baseBranch}`,
@@ -133,5 +136,5 @@ export function buildAgentPrompt(demand, scope = classifyImplementationScope(dem
     `Descrição:\n${demand.description}`,
     demand.acceptanceCriteria ? `Critérios de aceite:\n${demand.acceptanceCriteria}` : "Critérios de aceite: não informados",
     demand.visualValidation ? `Validação visual obrigatória nas rotas: ${(Array.isArray(demand.visualPaths) ? demand.visualPaths : ["/"]).join(", ")}` : "Validação visual: não solicitada",
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 }

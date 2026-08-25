@@ -7,7 +7,7 @@ import { db } from "../lib/db.js";
 import { env } from "../lib/env.js";
 import { createGitHubPullRequest, findOpenGitHubPullRequest, getProjectGitHubAccessToken } from "../lib/github.js";
 import { getGlobalSettings } from "../lib/global-settings.js";
-import { applyDetectedRuntime, detectWorkspaceProjectRuntime, detectedRuntimeReplacesConfiguration } from "../lib/project-runtime.js";
+import { detectWorkspaceProjectRuntime, environmentRuntimeConfiguration } from "../lib/project-runtime.js";
 import {
   cleanWorkspace,
   cleanValidationArtifacts,
@@ -263,12 +263,19 @@ export async function processExecution(executionId, workerId) {
       await log(executionId, "workspace", "Branch sem código: criação completa do projeto autorizada pelo cliente");
     }
 
+    const initialDetectedRuntime = await detectWorkspaceProjectRuntime(workspace);
+    const initialRuntimeConfiguration = environmentRuntimeConfiguration(execution.demand.project, initialDetectedRuntime);
+    execution.demand.project = { ...execution.demand.project, ...initialRuntimeConfiguration };
+    await log(executionId, "workspace", `Contexto ${initialDetectedRuntime.runtime} confirmado pelos arquivos da branch; somente comandos compatíveis serão usados`, "info", {
+      workingDirectory: initialRuntimeConfiguration.workingDirectory ?? ".",
+      commands: initialDetectedRuntime.commands,
+    });
     const branchName = isFollowUp ? execution.branchName : `forgeboard/demand-${execution.demandId.slice(-8)}-${execution.id.slice(-6)}`;
     const documentationOnly = execution.demand.type === "DOCUMENTATION";
     const agentLabel = documentationOnly ? "Agente de documentação" : "Agente de implementação";
     if (!isFollowUp) await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
     await runProcess("git", [...authenticationArgs, "fetch", "origin", remoteFetchRefspec(execution.demand.baseBranch)], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
-    const projectDirectory = resolveWorkspacePath(workspace, execution.demand.project.workingDirectory);
+    const projectDirectory = resolveWorkspacePath(workspace, initialRuntimeConfiguration.workingDirectory ?? ".");
     const selectedModel = execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL;
     execution.model = selectedModel;
     const approvedKnowledge = await getBusinessKnowledgeContext(db, {
@@ -278,6 +285,11 @@ export async function processExecution(executionId, workerId) {
     const promptOptions = {
       businessKnowledge: approvedKnowledge.context,
       emptyRepository: execution.allowEmptyRepository,
+      runtimeContext: {
+        runtime: initialDetectedRuntime.runtime,
+        workingDirectory: initialRuntimeConfiguration.workingDirectory ?? ".",
+        commands: initialDetectedRuntime.commands,
+      },
     };
     await db.execution.update({
       where: { id: executionId },
@@ -450,26 +462,23 @@ export async function processExecution(executionId, workerId) {
 
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
 
-    // Use sempre a configuração mais recente salva no cadastro do projeto.
+    // Os manifests da branch implementada são a fonte de verdade. Comandos
+    // persistidos podem pertencer a outra branch ou até a uma stack anterior.
     const savedProject = await db.project.findUniqueOrThrow({
       where: { id: execution.demand.projectId },
     });
-    const detectedRuntime = await detectWorkspaceProjectRuntime(projectDirectory);
-    const replaceExistingRuntime = detectedRuntimeReplacesConfiguration(savedProject, detectedRuntime);
-    const resolvedProject = applyDetectedRuntime(savedProject, detectedRuntime, { replaceExisting: replaceExistingRuntime });
-    const runtimeFields = ["installCommand", "lintCommand", "testCommand", "buildCommand", "previewCommand", "previewPort"];
+    const detectedRuntime = await detectWorkspaceProjectRuntime(workspace);
+    const resolvedProject = environmentRuntimeConfiguration(savedProject, detectedRuntime);
+    const runtimeFields = ["workingDirectory", "installCommand", "lintCommand", "testCommand", "buildCommand", "previewCommand", "previewPort"];
     const detectedConfiguration = Object.fromEntries(runtimeFields
-      .filter((field) => savedProject[field] !== resolvedProject[field] && (replaceExistingRuntime || savedProject[field] == null))
+      .filter((field) => savedProject[field] !== resolvedProject[field])
       .map((field) => [field, resolvedProject[field]]));
-    if (replaceExistingRuntime && savedProject.workingDirectory !== resolvedProject.workingDirectory) {
-      detectedConfiguration.workingDirectory = resolvedProject.workingDirectory;
-    }
     if (Object.keys(detectedConfiguration).length) {
       await db.project.update({ where: { id: savedProject.id }, data: detectedConfiguration });
-      await log(executionId, "validation", `Configuração ${detectedRuntime.runtime} detectada após a implementação`, "info", detectedConfiguration);
+      await log(executionId, "validation", `Comandos confirmados pelos manifests da branch (${detectedRuntime.runtime})`, "info", detectedConfiguration);
     }
-    execution.demand.project = { ...savedProject, ...detectedConfiguration };
-    let validationResult = await runValidations(execution, projectDirectory, settings);
+    execution.demand.project = { ...savedProject, ...resolvedProject };
+    let validationResult = await runValidations(execution, workspace, settings);
     if (!validationResult.passed) {
       for (let repairAttempt = 1; repairAttempt <= MAX_AUTOMATIC_VALIDATION_REPAIRS && !validationResult.passed; repairAttempt += 1) {
         const consumedBeforeRepair = creditCostPolicy
@@ -539,7 +548,7 @@ export async function processExecution(executionId, workerId) {
           await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "--amend", "--no-edit"], { cwd: workspace });
           implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
           await log(executionId, "validation", `Correção automática ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS} aplicada; executando a validação novamente`);
-          validationResult = await runValidations(execution, projectDirectory, settings);
+          validationResult = await runValidations(execution, workspace, settings);
         } else if (repairCompleted) {
           await log(executionId, "validation", `A tentativa ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS} não encontrou uma alteração aplicável; o erro será reenviado no próximo ciclo`, "warn");
         }
@@ -554,7 +563,7 @@ export async function processExecution(executionId, workerId) {
       try {
         visualArtifacts = await runVisualValidation({
           execution,
-          projectDirectory,
+          projectDirectory: workspace,
           log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
         });
         await log(executionId, "visual", `${visualArtifacts.length} evidências visuais geradas`);
@@ -569,7 +578,7 @@ export async function processExecution(executionId, workerId) {
         try {
           visualArtifacts = await runImplementationPreview({
             execution,
-            projectDirectory,
+            projectDirectory: workspace,
             log: (scope, message, level, metadata) => log(executionId, scope, message, level, metadata),
           });
           await log(executionId, "visual", "Preview visual automático gerado");
@@ -581,7 +590,7 @@ export async function processExecution(executionId, workerId) {
         await assertExecutionActive(executionId);
       }
     }
-    await cleanValidationArtifacts(projectDirectory);
+    await cleanValidationArtifacts(workspace);
     await restoreImplementationSnapshot(workspace, implementationHead);
     let diffResult = await runProcess("git", ["diff", "--binary", base, implementationHead], { cwd: workspace });
     await runProcess("git", [...authenticationArgs, "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });

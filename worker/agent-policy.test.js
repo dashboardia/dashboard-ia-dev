@@ -114,4 +114,24 @@ describe("agent policy", () => {
     expect(prompt).toContain("DASHBOARDIA_DEMO_PASSWORD");
     expect(prompt).toContain(".dashboardia/demo-access.json");
   });
+
+  it("entrega à IA o runtime real e exige inicialização compatível com o preview", () => {
+    const demand = {
+      project,
+      baseBranch,
+      type: "FEATURE",
+      priority: "NORMAL",
+      title: "Adicionar relatório",
+      description: "Criar o relatório solicitado.",
+      acceptanceCriteria: "Relatório acessível no navegador.",
+      visualValidation: false,
+    };
+    const prompt = buildAgentPrompt(demand, "STANDARD", {
+      runtimeContext: { runtime: "JAVA_MAVEN_17", workingDirectory: ".", commands: { buildCommand: "mvn package" } },
+    });
+
+    expect(prompt).toContain("Não presuma npm, Maven, Gradle, pip ou Composer");
+    expect(prompt).toContain("porta fornecida por PORT");
+    expect(prompt).toContain("JAVA_MAVEN_17");
+  });
 });

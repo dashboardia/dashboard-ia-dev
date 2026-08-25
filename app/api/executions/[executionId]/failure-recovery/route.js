@@ -51,14 +51,15 @@ export async function GET(_request, context) {
         required: true,
         kind: "PREVIEW_REPAIR_CONSENT",
         title: "O ambiente ainda precisa de uma correção",
-        message: "A versão navegável ainda não ficou pronta. A falha mais recente está no build ou na inicialização do projeto e pode ser tratada pela IA no código.",
+        message: "A versão navegável ainda não ficou pronta. Você pode enviar o erro completo para a IA revisar o código, as dependências e a configuração de inicialização, mesmo quando a origem da falha não estiver clara.",
         action: hasCredits
           ? "Deseja continuar tentando nesta mesma execução?"
           : "Adicione créditos para continuar esta mesma execução.",
         continuationPrompt: [
-          "Continue tentando corrigir a falha de build ou inicialização do ambiente navegável nesta mesma execução.",
+          "Analise e tente corrigir a falha do ambiente navegável nesta mesma execução.",
           "Preserve a branch, o Pull Request, o escopo original e todo o trabalho válido já realizado.",
-          "Analise o erro mais recente, corrija apenas a causa atribuída ao código do projeto e deixe a aplicação compatível com o ambiente de preview.",
+          "Inspecione primeiro os manifests, scripts, dependências, build, porta e caminho real de inicialização do projeto. Não presuma uma stack ou um comando que não exista no código.",
+          "Se houver uma correção possível no projeto, aplique-a e deixe a aplicação compatível com o ambiente de preview. Se a evidência apontar exclusivamente para infraestrutura externa, não invente alterações: explique isso objetivamente para o cliente.",
           `Erro mais recente do ambiente:\n${technical}`,
         ].join("\n\n"),
         canContinue: hasCredits,

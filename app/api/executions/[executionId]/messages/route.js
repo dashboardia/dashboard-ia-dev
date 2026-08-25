@@ -112,7 +112,8 @@ export async function POST(request, context) {
             metadata: {
               automatic: false,
               aiInvoked: true,
-              failureClass: "APPLICATION",
+              previewAiRepair: true,
+              failureClass: "UNKNOWN",
               previewRepairConsentGranted: true,
               repairCycleAttempt: 1,
               technical: redactSensitiveData(rawPreviewRepairError(execution.previewEnvironment.error)).slice(-4_000),
