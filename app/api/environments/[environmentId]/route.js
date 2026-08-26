@@ -6,6 +6,7 @@ import { auditData } from "../../../../lib/audit";
 import { db } from "../../../../lib/db";
 import { stopDevEnvironment, syncDevEnvironment } from "../../../../lib/dev-environments";
 import { deleteDashboardiaPreview, getDashboardiaPreview, syncDashboardiaPreview } from "../../../../lib/preview-host-client";
+import { manualPreviewStopError, previewWasManuallyStopped } from "../../../../lib/preview-stop-reason";
 
 async function loadEnvironment(environmentId) {
   const manual = await db.devEnvironment.findUnique({
@@ -39,6 +40,7 @@ async function loadEnvironment(environmentId) {
 function automaticEnvironmentView(environment, remote = null) {
   const execution = environment.execution;
   const status = remote?.status ?? environment.status;
+  const storedError = remote?.error ?? environment.error;
   return {
     id: environment.id,
     source: "EXECUTION",
@@ -52,7 +54,8 @@ function automaticEnvironmentView(environment, remote = null) {
     runtime: remote?.displayRuntime ?? remote?.runtime ?? environment.runtime,
     imageReference: remote?.imageReference ?? environment.imageReference,
     port: remote?.port ?? environment.port,
-    error: remote?.error ?? environment.error,
+    error: status === "FAILED" ? storedError : null,
+    manuallyStopped: status === "EXPIRED" && previewWasManuallyStopped(environment.error),
     requestedAt: environment.requestedAt,
     createdAt: environment.createdAt,
     updatedAt: environment.updatedAt,
@@ -116,7 +119,7 @@ export async function DELETE(request, context) {
     await deleteDashboardiaPreview(loaded.environment.externalId ?? loaded.environment.id).catch(() => null);
     const stopped = await db.previewEnvironment.update({
       where: { id: loaded.environment.id },
-      data: { status: "EXPIRED", url: null, stoppedAt: new Date(), lastHeartbeatAt: new Date() },
+      data: { status: "EXPIRED", url: null, error: manualPreviewStopError(), stoppedAt: new Date(), lastHeartbeatAt: new Date() },
       include: {
         execution: {
           select: {

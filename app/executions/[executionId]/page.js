@@ -80,7 +80,7 @@ export default async function ExecutionPage({ params }) {
     .filter((message) => {
       const previewConsentMessage = previewConsentMessageIds.includes(message.id);
       if (!previewConsentMessage) return true;
-      return !initialControlState.previewReady && message.id === latestPreviewConsentMessageId;
+      return initialControlState.awaitingPreviewRepairConsent && message.id === latestPreviewConsentMessageId;
     })
     .map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
   const displayLogs = [...execution.logs].reverse();
@@ -114,32 +114,53 @@ export default async function ExecutionPage({ params }) {
           eyebrow={`${execution.demand.project.name} · ${executionStageLabel(execution.stage)}`}
           title={execution.demand.title}
           description={`Execução ${execution.id.slice(-10)} · solicitada por ${execution.requestedBy.name ?? execution.requestedBy.githubLogin}`}
-          action={<div className="execution-header-actions">{execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : interrupted ? <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar a demanda</Link></div> : null}</div>}
+          action={null}
         />
 
-        <div className="execution-primary-state">
-          <ExecutionFailureRecovery pathname={`/executions/${execution.id}`} />
-          <ExecutionEnvironmentShortcut pathname={`/executions/${execution.id}`} />
-        </div>
-
-        <section className="execution-metrics">
-          <div><Activity size={17} /><span><small>Status</small><strong>{executionStatusLabel(execution)}</strong></span></div>
-          <div><GitBranch size={17} /><span><small>Branch</small><span className="execution-branch-value"><strong>{execution.branchName ?? "Aguardando worker"}</strong><CopyBranchButton branchName={execution.branchName} /></span></span></div>
-          <div><Clock3 size={17} /><span><small>Duração</small><strong><ExecutionDuration startedAt={execution.startedAt?.toISOString() ?? null} finishedAt={execution.finishedAt?.toISOString() ?? null} initialNow={execution.updatedAt.getTime()} /></strong></span></div>
-          <div><Coins size={17} /><span><small>Créditos usados</small><strong>{consumedCredits.toLocaleString("pt-BR")} créditos</strong>{user.globalRole === "ADMIN" && <em className="execution-admin-token-usage">{measuredTokens.toLocaleString("pt-BR")} tokens medidos</em>}</span></div>
-        </section>
-
-        <div className={`execution-workbench ${showConversation ? "with-chat" : "single"}`}>
+        {showConversation ? <div className="execution-workbench with-chat execution-command-center">
+          <ExecutionConversation
+            executionId={execution.id}
+            status={execution.status}
+            messages={conversationMessages}
+            expiresAt={execution.conversationExpiresAt?.toISOString() ?? null}
+            adjustmentCount={execution.adjustmentCount}
+            conversationReady={conversationReady}
+            creditBlocked={creditBlocked}
+            canManage={role === "MANAGER"}
+            initialControlState={initialControlState}
+            overview={<section className="execution-metrics execution-chat-overview">
+              <div><Activity size={17} /><span><small>Status</small><strong>{executionStatusLabel(execution)}</strong></span></div>
+              <div><GitBranch size={17} /><span><small>Branch</small><span className="execution-branch-value"><strong>{execution.branchName ?? "Aguardando worker"}</strong><CopyBranchButton branchName={execution.branchName} /></span></span></div>
+              <div><Clock3 size={17} /><span><small>Duração</small><strong><ExecutionDuration startedAt={execution.startedAt?.toISOString() ?? null} finishedAt={execution.finishedAt?.toISOString() ?? null} initialNow={execution.updatedAt.getTime()} /></strong></span></div>
+              <div><Coins size={17} /><span><small>Créditos usados</small><strong>{consumedCredits.toLocaleString("pt-BR")} créditos</strong>{user.globalRole === "ADMIN" && <em className="execution-admin-token-usage">{measuredTokens.toLocaleString("pt-BR")} tokens medidos</em>}</span></div>
+            </section>}
+            stateNotices={<div className="execution-chat-state-notices">
+              <ExecutionFailureRecovery pathname={`/executions/${execution.id}`} />
+              <ExecutionEnvironmentShortcut pathname={`/executions/${execution.id}`} />
+            </div>}
+            activity={<details className="execution-activity-disclosure">
+              <summary><span>{liveIcon}</span><span><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></span><em>Ver andamento</em><ChevronDown size={16} /></summary>
+              <div className="execution-activity-grid">
+                <section className={`execution-live-progress ${livePresentation.tone}`}>
+                  <header><span>{liveIcon}</span><div><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></div><em>{executionStageLabel(execution.stage)}</em></header>
+                  <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
+                </section>
+                <ExecutionEnvironmentActivity executionId={execution.id} showAction={false} />
+              </div>
+            </details>}
+            externalActions={(execution.pullRequest || shouldAutoOpenPullRequest || interrupted) ? <>
+              {execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : null}
+              {interrupted && <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar</Link></div>}
+            </> : null}
+          />
+        </div> : <div className="execution-workbench single">
           <div className="execution-live-column">
             <section className={`execution-live-progress ${livePresentation.tone}`}>
               <header><span>{liveIcon}</span><div><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></div><em>{executionStageLabel(execution.stage)}</em></header>
-              <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
+              <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}</ol>
             </section>
-            {showConversation && <ExecutionEnvironmentActivity executionId={execution.id} />}
           </div>
-
-          {showConversation && <ExecutionConversation executionId={execution.id} status={execution.status} messages={conversationMessages} expiresAt={execution.conversationExpiresAt?.toISOString() ?? null} adjustmentCount={execution.adjustmentCount} conversationReady={conversationReady} creditBlocked={creditBlocked} canManage={role === "MANAGER"} initialControlState={initialControlState} />}
-        </div>
+        </div>}
 
         <details className="form-card detail-card full-card execution-detail-disclosure">
           <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Resultado e detalhes da execução</strong><small>Resumo, referências Git, créditos e informações administrativas</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
@@ -172,8 +193,6 @@ export default async function ExecutionPage({ params }) {
         </section>}
 
         {execution.creditReservation && <section className="form-card detail-card full-card execution-credit-card"><div className="card-heading"><div><h2>Estimativa de créditos</h2><p>A reserva não é uma cobrança: ela protege um limite aproximado enquanto o trabalho é executado.</p></div><Coins size={20} /></div><div className="financial-summary-grid"><span><small>Limite protegido</small><strong>Até {execution.creditReservation.reservedCredits}</strong></span><span><small>Uso real</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em cálculo" : execution.creditReservation.consumedCredits}</strong></span><span><small>Saldo liberado</small><strong>{execution.creditReservation.status === "RESERVED" ? "Após concluir" : Math.max(0, execution.creditReservation.reservedCredits - execution.creditReservation.consumedCredits)}</strong></span><span><small>Situação</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em execução" : execution.creditReservation.status === "SETTLED" ? "Consumo calculado" : "Reserva liberada"}</strong></span></div><p className="execution-credit-explanation">{creditEstimateExplanation(execution.creditReservation)} Ao concluir, somente o uso real é cobrado e todo o restante fica disponível novamente.</p></section>}
-          </div>
-        </details>
 
         {execution.demand.type === "DOCUMENTATION" && execution.summary && <section className="form-card detail-card full-card documentation-download-card">
           <div className="card-heading"><div><h2>Documentação de negócio</h2><p>Arquivos formatados para compartilhar, apresentar ou arquivar.</p></div><FileText size={20} /></div>
@@ -193,6 +212,8 @@ export default async function ExecutionPage({ params }) {
         <details className="form-card detail-card full-card execution-collapsible execution-diff-card">
           <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Diff para revisão</strong><small>{diff?.content ? "Alterações exatas geradas antes da abertura do Pull Request" : "Disponível após as validações"}</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
           <div className="execution-collapsible-content">{diff?.content ? <DiffViewer content={diff.content} /> : <div className="list-empty">O diff ficará disponível após as validações.</div>}</div>
+        </details>
+          </div>
         </details>
       </div>
     </AppShell>

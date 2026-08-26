@@ -49,7 +49,7 @@ function stateBadge(state) {
   return "AUTOMÁTICO";
 }
 
-export default function ExecutionEnvironmentActivity({ executionId }) {
+export default function ExecutionEnvironmentActivity({ executionId, showAction = true }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
@@ -87,10 +87,10 @@ export default function ExecutionEnvironmentActivity({ executionId }) {
         <span><strong>{item.message}</strong>{item.at && <small>{new Date(item.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</small>}</span>
       </li>)}
     </ol>
-    {data.state === "READY" && data.url && <a className={styles.open} href={data.url} target="_blank" rel="noreferrer"><ExternalLink size={15} />Abrir ambiente pronto</a>}
+    {showAction && data.state === "READY" && data.url && <a className={styles.open} href={data.url} target="_blank" rel="noreferrer"><ExternalLink size={15} />Abrir ambiente pronto</a>}
     {data.state === "WAITING_IMPLEMENTATION" && <p className={styles.note}>A versão anterior não representa mais o último pedido. Aguarde a IA concluir: o Dashboard IA publicará e validará novamente o ambiente automaticamente.</p>}
     {data.state === "REPAIRING" && <p className={styles.note}>Você não precisa fazer nada agora. O erro do ambiente já foi enviado para a IA nesta mesma execução.</p>}
     {data.state === "FAILED" && <p className={styles.note}>A correção automática não conseguiu concluir a publicação. Os detalhes permanecem disponíveis no histórico da execução.</p>}
-    {data.state === "EXPIRED" && <p className={styles.note}>O ambiente foi encerrado, mas o chat, a branch e todo o histórico continuam disponíveis.</p>}
+    {data.state === "EXPIRED" && <p className={styles.note}>{data.manuallyStopped ? "O ambiente foi encerrado por você." : "O ambiente temporário foi encerrado."} O chat, a branch e todo o histórico continuam disponíveis.</p>}
   </section>;
 }

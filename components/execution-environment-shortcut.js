@@ -18,7 +18,12 @@ function presentation(shortcut, control) {
   if (shortcut?.state === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "Corrigindo ambiente", detail: "A falha do ambiente foi encaminhada para correção automática." };
   if (["STARTING", "PREPARING"].includes(shortcut?.state)) return { tone: "preparing", icon: LoaderCircle, title: "Preparando ambiente", detail: "Build e inicialização do ambiente acontecem automaticamente." };
   if (shortcut?.state === "FAILED") return { tone: "failed", icon: CircleAlert, title: "Ambiente com falha", detail: "A publicação falhou. Quando uma correção começar, o acompanhamento do ambiente será reiniciado automaticamente." };
-  if (shortcut?.state === "EXPIRED") return { tone: "expired", icon: CircleAlert, title: "Ambiente encerrado", detail: "A execução e o histórico continuam preservados." };
+  if (shortcut?.state === "EXPIRED") return {
+    tone: "expired",
+    icon: CircleAlert,
+    title: shortcut?.manuallyStopped ? "Ambiente encerrado por você" : "Ambiente encerrado",
+    detail: "O chat, a branch e todo o histórico continuam disponíveis. Suba o mesmo ambiente quando quiser navegar novamente.",
+  };
   if (control?.canPause) return { tone: "processing", icon: LoaderCircle, title: control.environmentStatus || "Ambiente em processamento", detail: "Os controles da execução estão disponíveis dentro do chat." };
   if (control?.canCancel) return { tone: "processing", icon: ServerCog, title: control.environmentStatus || "Ambiente da execução", detail: "O estado do ambiente é acompanhado separadamente da execução da IA." };
   return null;

@@ -28,7 +28,7 @@ function messageAuthor(message) {
   return message.authorId ? "Você" : "Dashboard IA";
 }
 
-export default function ExecutionConversation({ executionId, status, messages, expiresAt, adjustmentCount, conversationReady = false, creditBlocked = false, canManage = false, initialControlState = null }) {
+export default function ExecutionConversation({ executionId, status, messages, expiresAt, adjustmentCount, conversationReady = false, creditBlocked = false, canManage = false, initialControlState = null, overview = null, stateNotices = null, activity = null, externalActions = null }) {
   const router = useRouter();
   const [content, setContent] = useState("");
   const [attachments, setAttachments] = useState([]);
@@ -227,7 +227,9 @@ export default function ExecutionConversation({ executionId, status, messages, e
 
   return <section className="form-card detail-card execution-conversation">
     <header className="execution-chat-header"><span className="execution-chat-icon"><MessageSquareText size={19} /></span><div><h2>{chatTitle}</h2><p>{chatDescription}</p></div><em className={`execution-chat-status ${available ? "available" : processing ? "processing" : "closed"}`}>{effectiveCreditBlocked ? "Aguardando créditos" : available ? paused ? "Pausada · escreva aqui" : "Escreva aqui" : processing ? "IA trabalhando" : "Concluída"}</em></header>
+    {overview}
     {available && <div className="execution-chat-guidance"><Sparkles size={16} /><span><strong>{paused ? "Processos pausados — você pode decidir o próximo passo" : "Peça mudanças em linguagem natural"}</strong><small>{paused ? "Envie um ajuste para a IA e a execução será retomada automaticamente, ou use Reexecutar de onde parou para continuar sem um novo pedido." : "Você pode pedir para corrigir um erro, mudar uma tela, adicionar uma função ou colar um print. A IA continua exatamente deste ponto."}</small></span></div>}
+    {activity}
     <div className="execution-message-list" ref={messageListRef}>{messages.map((message) => {
       const hasAttachments = message.attachments?.length > 0;
       const attachmentOnly = hasAttachments && !message.content?.trim();
@@ -239,8 +241,9 @@ export default function ExecutionConversation({ executionId, status, messages, e
         </div>
       </article>;
     })}{!messages.length && <div className="list-empty">{conversationReady ? "O histórico dos seus ajustes aparecerá aqui." : "A conversa ficará disponível assim que a primeira implementação e o ambiente terminarem."}</div>}</div>
-    {processing && <div className="execution-chat-processing"><LoaderCircle className="spin" size={16} /><span><strong>{conversationReady ? "A IA está aplicando seu ajuste" : "A IA está trabalhando na implementação"}</strong><small>Acompanhe as etapas ao lado. A tela atualiza automaticamente.</small></span>{renderControlActions()}</div>}
-    {!processing && showControlActions && <div className="execution-chat-action-bar">{renderControlActions()}</div>}
+    {stateNotices}
+    {processing && <div className="execution-chat-processing"><LoaderCircle className="spin" size={16} /><span><strong>{conversationReady ? "A IA está aplicando seu ajuste" : "A IA está trabalhando na implementação"}</strong><small>Acompanhe o andamento acima. A tela atualiza automaticamente.</small></span><div className="execution-chat-primary-actions">{externalActions}</div>{renderControlActions()}</div>}
+    {!processing && (externalActions || showControlActions || available) && <div className="execution-chat-action-bar"><div className="execution-chat-primary-actions">{externalActions}</div>{renderControlActions()}{available && <button className="execution-complete-button" type="button" onClick={completeExecution} disabled={loading || paused}><CheckCircle2 size={16} />Concluir execução</button>}</div>}
     {available && <div className="execution-modern-reply"><ChatComposer
       id="execution-adjustment"
       label="O que você quer que a IA faça agora?"
@@ -261,7 +264,7 @@ export default function ExecutionConversation({ executionId, status, messages, e
       attachmentDisabled={attachments.length >= MAX_MESSAGE_ATTACHMENTS}
       compact
       error={error}
-      footer={<><span>{adjustmentCount} ajuste{adjustmentCount === 1 ? "" : "s"} · disponível enquanto houver créditos{expiresAt ? ` · expira após 24h sem interação` : ""}</span><button className="execution-complete-button" type="button" onClick={completeExecution} disabled={loading || paused}><CheckCircle2 size={16} />Concluir execução</button></>}
+      footer={<span>{adjustmentCount} ajuste{adjustmentCount === 1 ? "" : "s"} · disponível enquanto houver créditos{expiresAt ? " · expira após 24h sem interação" : ""}</span>}
     /></div>}
     {!available && effectiveStatus === "SUCCEEDED" && <div className="form-success"><CheckCircle2 size={15} />Execução concluída. O histórico foi preservado.</div>}
     {error && !available && <div className="form-error">{error}</div>}

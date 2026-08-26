@@ -5,6 +5,7 @@ import { apiError } from "../../../../../lib/api";
 import { db } from "../../../../../lib/db";
 import { executionPreviewState } from "../../../../../lib/execution-control-state";
 import { dashboardiaPreviewConfigured, getDashboardiaPreview, persistDashboardiaPreviewState } from "../../../../../lib/preview-host-client";
+import { previewWasManuallyStopped } from "../../../../../lib/preview-stop-reason";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,7 @@ export async function GET(_request, context) {
       closed: Boolean(execution.closedAt),
       activity: resetActivity ? [] : normalizedActivity(remotePreview?.activity),
       technicalError: state === "FAILED" ? String(effectivePreview?.error ?? "") : null,
+      manuallyStopped: state === "EXPIRED" && previewWasManuallyStopped(localPreview?.error),
       updatedAt: remotePreview?.updatedAt ?? localPreview?.updatedAt ?? null,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
