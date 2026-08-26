@@ -14,6 +14,7 @@ import {
   rawPreviewRepairError,
 } from "../../../../../lib/preview-repair-consent";
 import { redactSensitiveData } from "../../../../../lib/redaction";
+import { syncDashboardiaPreview } from "../../../../../lib/preview-host-client";
 
 export async function GET(_request, context) {
   try {
@@ -23,7 +24,7 @@ export async function GET(_request, context) {
       include: {
         demand: { select: { projectId: true } },
         pullRequest: { select: { id: true } },
-        previewEnvironment: { select: { status: true, error: true } },
+        previewEnvironment: true,
         logs: {
           where: { scope: "preview" },
           select: { metadata: true },
@@ -31,12 +32,14 @@ export async function GET(_request, context) {
       },
     });
     await requireProjectRole(execution.demand.projectId, "MANAGER");
+    const previewEnvironment = await syncDashboardiaPreview(db, execution.previewEnvironment, { force: true })
+      .catch(() => execution.previewEnvironment);
     const settings = await getGlobalSettings();
     const statusAllowsRecovery = execution.status === "FAILED" || execution.status === "AWAITING_CLIENT";
     const expired = Boolean(execution.conversationExpiresAt && execution.conversationExpiresAt <= new Date());
     const previewConsentRequired = execution.status === "AWAITING_CLIENT"
-      && execution.previewEnvironment?.status === "FAILED"
-      && previewRepairConsentRequired(execution.previewEnvironment.error)
+      && previewEnvironment?.status === "FAILED"
+      && previewRepairConsentRequired(previewEnvironment.error)
       && !execution.closedAt
       && !expired;
 
@@ -46,7 +49,7 @@ export async function GET(_request, context) {
         marginPercent: settings.creditBalanceSafetyMarginPercent,
       });
       const hasCredits = !creditBudget || creditBudget.hardLimitCredits > 0;
-      const technical = redactSensitiveData(rawPreviewRepairError(execution.previewEnvironment.error)).slice(-8_000);
+      const technical = redactSensitiveData(rawPreviewRepairError(previewEnvironment.error)).slice(-8_000);
       return NextResponse.json({
         required: true,
         kind: "PREVIEW_REPAIR_CONSENT",

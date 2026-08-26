@@ -29,8 +29,8 @@ export default function EnvironmentsClient({ initialProjects, initialEnvironment
     for (const environment of environments) {
       const branchKey = `${environment.projectId}:${environment.branchName}`;
       const current = latestByBranch.get(branchKey);
-      const createdAt = new Date(environment.createdAt ?? environment.requestedAt ?? 0).getTime();
-      if (!current || createdAt > current.createdAt) latestByBranch.set(branchKey, { id: environment.id, createdAt });
+      const activityAt = new Date(environment.updatedAt ?? environment.createdAt ?? environment.requestedAt ?? 0).getTime();
+      if (!current || activityAt > current.activityAt) latestByBranch.set(branchKey, { id: environment.id, activityAt });
     }
     return new Set(Array.from(latestByBranch.values(), ({ id }) => id));
   }, [environments]);

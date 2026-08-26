@@ -20,6 +20,7 @@ export async function GET(_request, context) {
         inputTokens: true,
         outputTokens: true,
         adjustmentCount: true,
+        previewEnvironment: { select: { status: true, url: true, readyAt: true, error: true } },
         demand: { select: { projectId: true } },
         logs: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true } },
         artifacts: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true } },

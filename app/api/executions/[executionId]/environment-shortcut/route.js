@@ -4,7 +4,7 @@ import { requireProjectRole } from "../../../../../lib/access";
 import { apiError } from "../../../../../lib/api";
 import { db } from "../../../../../lib/db";
 import { executionPreviewState } from "../../../../../lib/execution-control-state";
-import { dashboardiaPreviewConfigured, getDashboardiaPreview } from "../../../../../lib/preview-host-client";
+import { dashboardiaPreviewConfigured, getDashboardiaPreview, persistDashboardiaPreviewState } from "../../../../../lib/preview-host-client";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +29,7 @@ export async function GET(_request, context) {
         headSha: true,
         closedAt: true,
         demand: { select: { projectId: true, type: true } },
-        previewEnvironment: { select: { id: true, externalId: true, status: true, url: true, error: true, updatedAt: true } },
+        previewEnvironment: true,
       },
     });
     await requireProjectRole(execution.demand.projectId, "VIEWER");
@@ -37,17 +37,23 @@ export async function GET(_request, context) {
     if (!available) return NextResponse.json({ available: false }, { headers: { "Cache-Control": "no-store" } });
 
     let remotePreview = null;
-    const localPreview = execution.previewEnvironment;
+    let localPreview = execution.previewEnvironment;
     if (localPreview && dashboardiaPreviewConfigured()) {
       try {
         remotePreview = await getDashboardiaPreview(localPreview.externalId ?? localPreview.id);
+        localPreview = await persistDashboardiaPreviewState(db, localPreview, remotePreview);
       } catch {
         remotePreview = null;
       }
     }
 
     const effectivePreview = remotePreview
-      ? { status: remotePreview.status ?? localPreview?.status, url: remotePreview.url ?? localPreview?.url, error: remotePreview.error ?? localPreview?.error }
+      ? {
+          ...localPreview,
+          status: remotePreview.status ?? localPreview?.status,
+          url: remotePreview.status === "READY" ? (remotePreview.url ?? localPreview?.url) : null,
+          error: remotePreview.error ?? null,
+        }
       : localPreview;
     const state = executionPreviewState(execution, effectivePreview);
     const resetActivity = ["WAITING_IMPLEMENTATION", "REPAIRING"].includes(state);

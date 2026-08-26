@@ -17,6 +17,7 @@ import { requirePageUser } from "../../../lib/page-access";
 import { redactSensitiveData } from "../../../lib/redaction";
 import { explainError, logLevelLabels, logScopeLabels } from "../../../lib/error-messages";
 import { calculateDisplayedExecutionCredits, formatBrlCents } from "../../../lib/financial-shadow";
+import { syncExecutionPreviewForPresentation } from "../../../lib/preview-host-client";
 import { formatDateTime, getGlobalSettings } from "../../../lib/global-settings";
 import OpenPullRequestButton from "../../demands/[demandId]/open-pull-request-button";
 import AutoOpenPullRequest from "./auto-open-pull-request";
@@ -42,7 +43,7 @@ export default async function ExecutionPage({ params }) {
   const user = await requirePageUser();
   const { executionId } = await params;
   const settings = await getGlobalSettings();
-  const execution = await db.execution.findUnique({
+  let execution = await db.execution.findUnique({
     where: { id: executionId },
     include: {
       demand: { include: { project: true } },
@@ -51,7 +52,7 @@ export default async function ExecutionPage({ params }) {
       logs: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
       artifacts: { orderBy: { createdAt: "asc" } },
       pullRequest: true,
-      previewEnvironment: { select: { status: true, url: true, error: true } },
+      previewEnvironment: true,
       financialSnapshot: true,
       creditReservation: true,
       messages: { orderBy: { createdAt: "asc" }, include: { attachments: { orderBy: { createdAt: "asc" } } } },
@@ -60,6 +61,7 @@ export default async function ExecutionPage({ params }) {
   if (!execution) notFound();
   const role = await getProjectRole(user, execution.demand.projectId);
   if (!role) redirect("/executions");
+  execution = await syncExecutionPreviewForPresentation(db, execution);
   const diff = execution.artifacts.find((artifact) => artifact.type === "diff");
   const shouldAutoOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.pullRequest && !execution.cancelRequestedAt;
   const interrupted = execution.status === "CANCELLED" || Boolean(execution.cancelRequestedAt);
@@ -68,10 +70,14 @@ export default async function ExecutionPage({ params }) {
   const executionActive = activeExecutionStatuses.has(execution.status) && !execution.cancelRequestedAt;
   const showConversation = execution.demand.type !== "DOCUMENTATION";
   const conversationReady = Boolean(execution.pullRequest || execution.adjustmentCount > 0 || execution.status === "AWAITING_CLIENT");
-  const conversationMessages = execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
+  const initialControlState = executionControlState(execution);
+  const conversationMessages = execution.messages
+    .filter((message) => !(initialControlState.previewReady
+      && message.role === "SYSTEM"
+      && message.content?.startsWith("## O ambiente ainda precisa de uma correção")))
+    .map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
   const displayLogs = [...execution.logs].reverse();
   const creditBlocked = isExecutionCreditBlocked(execution.error);
-  const initialControlState = executionControlState(execution);
   const liveRevision = executionRevision(execution);
   const shouldLiveRefresh = shouldPollExecutionDetail(execution);
   const livePresentation = executionLivePresentation(execution);

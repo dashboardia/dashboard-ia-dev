@@ -222,10 +222,12 @@ async function recoverReadyPreview(id, failure) {
     try {
       await docker(["restart", previewContainerName(id)], 60_000);
       const entryPath = await waitUntilReady(id, state.port, 90_000);
+      const recoveredAt = new Date().toISOString();
       await patchState(id, {
         status: "READY",
         entryPath,
         url: `https://${id}.${baseDomain}`,
+        readyAt: recoveredAt,
         stoppedAt: null,
         error: null,
       });

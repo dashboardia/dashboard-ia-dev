@@ -3,6 +3,7 @@ import SectionHeader from "../../components/section-header";
 import { db } from "../../lib/db";
 import { requirePageUser } from "../../lib/page-access";
 import { projectAccessWhere } from "../../lib/projects";
+import { syncDashboardiaPreview } from "../../lib/preview-host-client";
 import EnvironmentsClient from "./environments-client";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +60,7 @@ export default async function EnvironmentsPage({ searchParams }) {
     db.devEnvironment.findMany({
       where: { project: access },
       include: { project: { select: { name: true, repositoryFullName: true } }, requestedBy: { select: { name: true, githubLogin: true } } },
-      orderBy: { createdAt: "desc" },
+      orderBy: { updatedAt: "desc" },
       take: 50,
     }),
     db.previewEnvironment.findMany({
@@ -80,16 +81,22 @@ export default async function EnvironmentsPage({ searchParams }) {
           },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { updatedAt: "desc" },
       take: 50,
     }),
   ]);
 
+  const synchronizedExecutionPreviews = await Promise.all(executionPreviews.map(async (environment) => {
+    if (!["QUEUED", "BUILDING", "DEPLOYING", "FAILED", "STOPPING"].includes(environment.status)) return environment;
+    const synchronized = await syncDashboardiaPreview(db, environment, { force: true }).catch(() => null);
+    return synchronized ? { ...environment, ...synchronized } : environment;
+  }));
+
   const environments = [
     ...devEnvironments.map((environment) => ({ ...environment, source: "MANUAL", executionId: null })),
-    ...executionPreviews.map(executionPreviewView),
+    ...synchronizedExecutionPreviews.map(executionPreviewView),
   ]
-    .sort((left, right) => new Date(right.createdAt ?? right.requestedAt ?? 0) - new Date(left.createdAt ?? left.requestedAt ?? 0))
+    .sort((left, right) => new Date(right.updatedAt ?? right.createdAt ?? right.requestedAt ?? 0) - new Date(left.updatedAt ?? left.createdAt ?? left.requestedAt ?? 0))
     .slice(0, 50);
 
   const requestedProject = projects.find((project) => project.id === query?.projectId);

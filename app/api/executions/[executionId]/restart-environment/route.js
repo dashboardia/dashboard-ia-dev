@@ -6,7 +6,7 @@ import { auditData } from "../../../../../lib/audit";
 import { db } from "../../../../../lib/db";
 import { executionControlState } from "../../../../../lib/execution-control-state";
 import { assertOperationalAccess } from "../../../../../lib/operational-access";
-import { dashboardiaPreviewConfigured, getDashboardiaPreview } from "../../../../../lib/preview-host-client";
+import { dashboardiaPreviewConfigured, syncDashboardiaPreview } from "../../../../../lib/preview-host-client";
 import { requestExecutionPreviewAutomation } from "../../../../../worker/execution-preview-automation.mjs";
 
 export async function POST(request, context) {
@@ -27,20 +27,8 @@ export async function POST(request, context) {
     const { user } = await requireProjectRole(execution.demand.projectId, "MANAGER");
     await assertOperationalAccess(user);
 
-    let effectivePreview = execution.previewEnvironment;
-    if (effectivePreview) {
-      try {
-        const remote = await getDashboardiaPreview(effectivePreview.externalId ?? effectivePreview.id);
-        effectivePreview = {
-          ...effectivePreview,
-          status: remote.status ?? effectivePreview.status,
-          url: remote.url ?? effectivePreview.url,
-          error: remote.error ?? effectivePreview.error,
-        };
-      } catch {
-        // O estado persistido continua sendo a referência caso o host esteja indisponível.
-      }
-    }
+    const effectivePreview = await syncDashboardiaPreview(db, execution.previewEnvironment, { force: true })
+      .catch(() => execution.previewEnvironment);
 
     const control = executionControlState(execution, effectivePreview);
     if (!control.canRestartEnvironment) {

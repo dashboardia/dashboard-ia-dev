@@ -91,7 +91,7 @@ export async function GET(_request, context) {
       return NextResponse.json({ environment: { ...loaded.environment, source: "MANUAL", executionId: null } });
     }
 
-    await syncDashboardiaPreview(db, loaded.environment).catch(() => null);
+    await syncDashboardiaPreview(db, loaded.environment, { force: true }).catch(() => null);
     loaded = await loadEnvironment(environmentId);
     const remote = await getDashboardiaPreview(loaded.environment.externalId ?? loaded.environment.id).catch(() => null);
     return NextResponse.json({ environment: automaticEnvironmentView(loaded.environment, remote) });
