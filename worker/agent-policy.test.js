@@ -134,4 +134,25 @@ describe("agent policy", () => {
     expect(prompt).toContain("porta fornecida por PORT");
     expect(prompt).toContain("JAVA_MAVEN_17");
   });
+
+  it("exige entrega funcional e abre conversa somente quando falta informação indispensável", () => {
+    const demand = {
+      project,
+      baseBranch,
+      type: "FEATURE",
+      priority: "NORMAL",
+      title: "Criar integração de pagamentos",
+      description: "Criar a integração solicitada.",
+      acceptanceCriteria: null,
+      visualValidation: true,
+      visualPaths: ["/"],
+    };
+
+    const prompt = buildAgentPrompt(demand, "STANDARD");
+
+    expect(prompt).toContain("[DASHBOARDIA_CLARIFICATION_REQUIRED]");
+    expect(prompt).toContain("primeira versão funcional");
+    expect(prompt).toContain("executados obrigatoriamente pelo worker");
+    expect(prompt).toContain("não inclua no resumo declarações como 'não executei'");
+  });
 });

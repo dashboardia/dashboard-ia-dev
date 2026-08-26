@@ -7,7 +7,7 @@ export default function SectionHeader({ eyebrow, title, description, backHref, b
       <div>
         {backHref && <Link className="back-link" href={backHref}><ArrowLeft size={15} />{backLabel}</Link>}
         {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-        <h1>{title}</h1>
+        <h1 title={typeof title === "string" ? title : undefined}>{title}</h1>
         {description && <p>{description}</p>}
       </div>
       {action}

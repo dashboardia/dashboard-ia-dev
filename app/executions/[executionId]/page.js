@@ -75,13 +75,8 @@ export default async function ExecutionPage({ params }) {
     .filter((message) => message.role === "SYSTEM"
       && message.content?.startsWith("## O ambiente ainda precisa de uma correção"))
     .map((message) => message.id);
-  const latestPreviewConsentMessageId = previewConsentMessageIds.at(-1) ?? null;
   const conversationMessages = execution.messages
-    .filter((message) => {
-      const previewConsentMessage = previewConsentMessageIds.includes(message.id);
-      if (!previewConsentMessage) return true;
-      return initialControlState.awaitingPreviewRepairConsent && message.id === latestPreviewConsentMessageId;
-    })
+    .filter((message) => !previewConsentMessageIds.includes(message.id))
     .map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
   const displayLogs = [...execution.logs].reverse();
   const detailAccordionName = `execution-details-${execution.id}`;

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, FileText, LoaderCircle, MessageSquareText, PauseCircle, PlayCircle, Sparkles, XCircle } from "lucide-react";
+import { CheckCircle2, FileText, LoaderCircle, MessageSquareText, PauseCircle, PlayCircle, XCircle } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -30,15 +30,17 @@ function messageAuthor(message) {
   return message.authorId ? "Você" : "Dashboard IA";
 }
 
-function CollapsibleMessageText({ content }) {
+function CollapsibleMessageText({ content, compact = false }) {
   const [expanded, setExpanded] = useState(false);
   const text = String(content ?? "");
-  const collapsible = text.length > LONG_MESSAGE_CHARACTER_LIMIT || text.split("\n").length > LONG_MESSAGE_LINE_LIMIT;
+  const collapsible = compact
+    ? text.length > 220 || text.split("\n").length > 4
+    : text.length > LONG_MESSAGE_CHARACTER_LIMIT || text.split("\n").length > LONG_MESSAGE_LINE_LIMIT;
 
-  return <div className={`execution-message-text${collapsible && !expanded ? " is-collapsed" : ""}`}>
+  return <div className={`execution-message-text${compact ? " is-compact" : ""}${collapsible && !expanded ? " is-collapsed" : ""}`}>
     <p>{text}</p>
     {collapsible && <button aria-expanded={expanded} className="execution-message-expand" type="button" onClick={() => setExpanded((current) => !current)}>
-      {expanded ? "Mostrar menos" : "Ler mensagem completa"}
+      {expanded ? "Mostrar menos" : compact ? "Ver detalhes" : "Ler mensagem completa"}
     </button>}
   </div>;
 }
@@ -278,7 +280,6 @@ export default function ExecutionConversation({ executionId, status, messages, e
   return <section className="form-card detail-card execution-conversation">
     <header className="execution-chat-header"><span className="execution-chat-icon"><MessageSquareText size={19} /></span><div><h2>{chatTitle}</h2><p>{chatDescription}</p></div><em className={`execution-chat-status ${available ? "available" : processing ? "processing" : "closed"}`}>{effectiveCreditBlocked ? "Aguardando créditos" : available ? paused ? "Pausada · escreva aqui" : "Escreva aqui" : processing ? "IA trabalhando" : "Concluída"}</em></header>
     {overview}
-    {available && <div className="execution-chat-guidance"><Sparkles size={16} /><span><strong>{paused ? "Processos pausados — você pode decidir o próximo passo" : "Peça mudanças em linguagem natural"}</strong><small>{paused ? "Envie um ajuste para a IA e a execução será retomada automaticamente, ou use Reexecutar de onde parou para continuar sem um novo pedido." : "Você pode pedir para corrigir um erro, mudar uma tela, adicionar uma função ou colar um print. A IA continua exatamente deste ponto."}</small></span></div>}
     <div className={`execution-chat-content${activity ? " has-live-activity" : ""}`}>
       <div className="execution-message-list" ref={messageListRef} onScroll={trackMessageScroll}>{messages.map((message) => {
         const hasAttachments = message.attachments?.length > 0;
@@ -287,7 +288,7 @@ export default function ExecutionConversation({ executionId, status, messages, e
           <header><strong>{messageAuthor(message)}</strong><time>{new Date(message.createdAt).toLocaleString("pt-BR")}</time></header>
           <div className="execution-message-body">
             {hasAttachments && <div className="execution-message-attachments">{message.attachments.map((attachment) => <StoredAttachment attachment={attachment} key={attachment.id} />)}</div>}
-            {!attachmentOnly && <CollapsibleMessageText content={message.content} />}
+            {!attachmentOnly && <CollapsibleMessageText content={message.content} compact={message.role === "SYSTEM"} />}
           </div>
         </article>;
       })}{!messages.length && <div className="list-empty">{conversationReady ? "O histórico dos seus ajustes aparecerá aqui." : "A conversa ficará disponível assim que a primeira implementação e o ambiente terminarem."}</div>}</div>

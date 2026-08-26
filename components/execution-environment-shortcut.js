@@ -105,6 +105,7 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
 
   if (!executionId) return null;
   if (control?.creditBlocked) return null;
+  if (control?.awaitingPreviewRepairConsent) return null;
   if (control?.previewState === "REPAIRING" || shortcut?.state === "REPAIRING") return null;
   const view = presentation(shortcut, control);
   const shouldRenderControls = Boolean(control?.canRestartEnvironment);

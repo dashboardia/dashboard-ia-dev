@@ -31,8 +31,10 @@
   font: 500 15px/1.58 Manrope,sans-serif;
 }
 .shell textarea::placeholder { color: color-mix(in srgb,var(--muted) 86%,transparent); }
-.compact .shell { padding: 9px; border-radius: 16px; box-shadow: none; }
-.compact .shell textarea { min-height: 48px; max-height: 156px; padding: 5px 7px; font-size: 11px; line-height: 1.5; }
+.compact .shell { padding: 7px; gap: 4px; border-radius: 14px; box-shadow: none; }
+.compact .shell textarea { min-height: 34px; max-height: 120px; padding: 4px 6px; font-size: 11px; line-height: 1.5; }
+.compact .attachButton,.compact .sendButton { width: 32px; height: 32px; }
+.compact .footer { font-size: 7.5px; }
 .toolbar { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .toolbarStart { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; }
 .controls { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }

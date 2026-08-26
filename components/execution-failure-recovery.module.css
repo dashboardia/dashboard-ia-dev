@@ -1,10 +1,11 @@
 .banner {
   width: 100%;
   margin: 0;
-  padding: 14px 16px;
+  min-height: 58px;
+  padding: 8px 11px;
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) minmax(320px, 520px);
-  gap: 12px;
+  grid-template-columns: 32px minmax(0, 1fr) minmax(210px, 290px);
+  gap: 10px;
   align-items: center;
   border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line));
   border-radius: 12px;
@@ -13,8 +14,8 @@
 }
 
 .icon {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border-radius: 10px;
@@ -31,14 +32,14 @@
 
 .copy strong {
   color: var(--ink);
-  font-size: 12px;
+  font-size: 10.5px;
 }
 
 .copy span,
 .copy small {
   color: var(--muted);
-  font-size: 9px;
-  line-height: 1.45;
+  font-size: 8.5px;
+  line-height: 1.4;
 }
 
 .copy b {
@@ -130,15 +131,14 @@
 
 .creditActions {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .creditActions > a,
 .creditActions > button {
-  min-height: 40px;
-  padding: 0 14px;
+  min-height: 34px;
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -148,7 +148,7 @@
   color: #fff;
   background: linear-gradient(135deg, #7657ff, #6240ee);
   box-shadow: 0 8px 20px #6d4aff31;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   text-decoration: none;
   cursor: pointer;
@@ -160,10 +160,11 @@
 }
 
 .creditActions > small {
-  color: var(--muted);
-  font-size: 8px;
-  line-height: 1.4;
-  text-align: center;
+  display: none;
+}
+
+.previewConsent .copy small {
+  display: none;
 }
 
 @media (max-width: 1050px) {
@@ -177,7 +178,11 @@
 
   .creditActions {
     grid-column: 1 / -1;
+    justify-content: stretch;
   }
+
+  .creditActions > a,
+  .creditActions > button { width: 100%; }
 }
 
 @media (max-width: 760px) {

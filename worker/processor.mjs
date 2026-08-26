@@ -26,6 +26,7 @@ import { getBusinessKnowledgeContext } from "../lib/business-knowledge.js";
 import { repositoryHasUsableProject } from "../lib/repository-content.js";
 import { getPrivateObject } from "../lib/visual-storage.js";
 import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
+import { parseAgentOutcome } from "./agent-outcome.mjs";
 import { remoteFetchRefspec, remoteTrackingRef } from "./git-refs.mjs";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
@@ -238,7 +239,10 @@ export async function processExecution(executionId, workerId) {
     const token = await getProjectGitHubAccessToken(execution.demand.project, execution.requestedById);
     const repositoryUrl = `https://github.com/${execution.demand.project.repositoryFullName}.git`;
     const authenticationArgs = gitAuthenticationArgs(token);
-    const isFollowUp = Boolean(execution.pullRequest && execution.branchName && execution.messages.some((message) => message.role === "USER"));
+    const userMessageCount = execution.messages.filter((message) => message.role === "USER").length;
+    const hasAgentConversation = execution.messages.some((message) => message.role === "AGENT");
+    const isFollowUp = Boolean(execution.pullRequest && execution.branchName && userMessageCount > 0);
+    const isClarificationFollowUp = !isFollowUp && hasAgentConversation && userMessageCount > 1;
     const sourceBranch = isFollowUp ? execution.branchName : execution.demand.baseBranch;
     await runProcess("git", [
       ...authenticationArgs,
@@ -323,7 +327,7 @@ export async function processExecution(executionId, workerId) {
       creditValueCents: settings.creditValueCents,
       targetGrossMarginPercent: settings.targetGrossMarginPercent,
     } : null;
-    const conversationContext = isFollowUp
+    const conversationContext = isFollowUp || isClarificationFollowUp
       ? execution.messages.map((message) => `${message.role === "USER" ? "Cliente" : message.role === "AGENT" ? "Agente" : "Sistema"}: ${message.content}${message.attachments.length ? `\nAnexos: ${message.attachments.map((attachment) => attachment.name).join(", ")}` : ""}`).join("\n\n")
       : "";
     const latestUserMessage = [...execution.messages].reverse().find((message) => message.role === "USER");
@@ -346,6 +350,13 @@ export async function processExecution(executionId, workerId) {
           buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions),
           `Interações desta execução:\n${conversationContext}`,
         ].join("\n\n")
+      : isClarificationFollowUp
+        ? [
+            "Continue a demanda após o cliente responder às perguntas de esclarecimento.",
+            "Use as respostas da conversa como requisitos adicionais e implemente agora uma versão funcional. Preserve o escopo original e não repita perguntas que já foram respondidas.",
+            buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions),
+            `Interações desta execução:\n${conversationContext}`,
+          ].join("\n\n")
       : buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions);
     const createImplementationAgent = () => startImplementationAgent({
       projectDirectory,
@@ -382,12 +393,14 @@ export async function processExecution(executionId, workerId) {
     agentTimeout.unref();
 
     let summary;
+    let agentOutcome = { clarificationRequired: false, message: "" };
     try {
       const maxAgentAttempts = 3;
       for (let attempt = 1; attempt <= maxAgentAttempts; attempt += 1) {
         try {
           const result = await implementationAgent.promise;
-          summary = result.summary;
+          agentOutcome = parseAgentOutcome(result.summary);
+          summary = agentOutcome.message;
           addMeasuredUsage(result);
           break;
         } catch (error) {
@@ -421,10 +434,39 @@ export async function processExecution(executionId, workerId) {
       clearTimeout(agentTimeout);
     }
 
-    await log(executionId, "agent", `${agentLabel} concluído`);
+    await log(executionId, "agent", agentOutcome.clarificationRequired ? "A IA precisa de informações do cliente antes de implementar" : `${agentLabel} concluído`);
     await assertExecutionActive(executionId);
 
     const statusResult = await runProcess("git", ["status", "--porcelain"], { cwd: workspace });
+    if (agentOutcome.clarificationRequired && !statusResult.stdout.trim()) {
+      const clarificationMessage = summary || "Preciso de mais algumas informações para implementar uma versão funcional. Detalhe o comportamento esperado e as integrações obrigatórias.";
+      const expiresAt = new Date(Date.now() + Math.max(24 * 60, settings.executionConversationTimeoutMinutes) * 60_000);
+      const finishedAt = new Date();
+      await db.$transaction(async (transaction) => {
+        const updated = await transaction.execution.updateMany({
+          where: { id: executionId, cancelRequestedAt: null, stopRequestedAt: null },
+          data: {
+            status: "AWAITING_CLIENT",
+            stage: "ANALYSIS",
+            summary: clarificationMessage,
+            inputTokens,
+            outputTokens,
+            lockedAt: null,
+            lockedBy: null,
+            finishedAt,
+            conversationExpiresAt: expiresAt,
+            lastInteractionAt: new Date(),
+          },
+        });
+        if (updated.count !== 1) throw new ExecutionCancelledError();
+        const snapshot = await saveFinancialSnapshot(transaction, { execution, settings, usage: measuredUsage, endedAt: finishedAt, runStartedAt, previousSnapshot: execution.financialSnapshot, visualValidationPerformed });
+        await settleExecutionCredits(transaction, { executionId, consumedCredits: snapshot.simulatedConsumedCredits });
+        await transaction.executionMessage.create({ data: { executionId, role: "AGENT", content: clarificationMessage } });
+        await transaction.demand.update({ where: { id: execution.demandId }, data: { status: "REVIEW" } });
+      });
+      await log(executionId, "agent", "Execução pausada para o cliente responder no mesmo chat", "info");
+      return;
+    }
     if (!statusResult.stdout.trim()) {
       if (isFollowUp) {
         const expiresAt = new Date(Date.now() + Math.max(24 * 60, settings.executionConversationTimeoutMinutes) * 60_000);
@@ -510,7 +552,7 @@ export async function processExecution(executionId, workerId) {
           prompt: [
             `Esta é a tentativa automática ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS}. A implementação abaixo já foi realizada, mas a validação automática falhou.`,
             "Inspecione os arquivos relacionados ao erro e aplique somente as correções necessárias para a validação passar, sem remover funcionalidades nem alterar o escopo aprovado.",
-            "Use exclusivamente apply_patch. Não execute build, lint, instalação ou testes; o worker validará novamente.",
+            "Use exclusivamente apply_patch. O worker repetirá build, lint, instalação e testes após a correção. No resumo, descreva somente a correção aplicada e não diga ao cliente que essas etapas não foram executadas.",
             `Etapa que falhou: ${validationResult.failedScope}`,
             `Saída técnica da validação:\n${validationResult.technical}`,
             `Demanda original:\n${buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions)}`,

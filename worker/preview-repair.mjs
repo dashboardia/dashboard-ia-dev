@@ -22,7 +22,7 @@ export function buildPreviewRepairPrompt({ technical, demandPrompt, attempt, pre
     "Identifique a exceção raiz mais interna, não apenas a última linha do stack trace. Em persistência ou bootstrap, inicialize campos obrigatórios de auditoria como createdAt, updatedAt e version na entidade, no ciclo de vida ou no serviço/bootstrap apropriado.",
     "Não repita uma correção já aplicada. Considere o histórico abaixo para avançar até a próxima causa raiz revelada pela reconstrução.",
     "Não mascare a falha, não remova constraints, não torne campos obrigatórios opcionais e não substitua a aplicação por conteúdo estático.",
-    "Use exclusivamente apply_patch. Não execute build, instalação, testes, servidor ou Docker; o host de preview fará a validação novamente.",
+    "Use exclusivamente apply_patch. O host de preview executará novamente build, instalação, testes e inicialização após a correção. No resumo, descreva apenas a correção aplicada e não diga ao cliente que essas etapas não foram executadas.",
     history,
     `Saída técnica mais recente do container:\n${technical}`,
     `Demanda original:\n${demandPrompt}`,

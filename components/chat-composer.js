@@ -42,7 +42,7 @@ export default function ChatComposer({
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, compact ? 156 : 260)}px`;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, compact ? 120 : 260)}px`;
   }, [compact, value]);
 
   function handleKeyDown(event) {
