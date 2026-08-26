@@ -13,9 +13,7 @@ function executionIdFromPath(pathname) {
 function presentation(shortcut, control) {
   if (control?.canResume) return { tone: "paused", icon: PauseCircle, title: "Processos pausados", detail: "Você pode conversar com a IA ou reexecutar de onde parou." };
   if (shortcut?.state === "READY") return { tone: "ready", icon: ServerCog, title: "Ambiente pronto", detail: "A versão navegável desta execução está disponível." };
-  if (control?.previewState === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "Corrigindo ambiente", detail: "Uma nova tentativa de correção do ambiente está em andamento." };
   if (control?.previewState === "WAITING_IMPLEMENTATION") return { tone: "repairing", icon: Sparkles, title: "Ambiente aguardando nova versão", detail: "A IA está trabalhando; o ambiente será republicado depois que a implementação terminar." };
-  if (shortcut?.state === "REPAIRING") return { tone: "repairing", icon: Sparkles, title: "Corrigindo ambiente", detail: "A falha do ambiente foi encaminhada para correção automática." };
   if (["STARTING", "PREPARING"].includes(shortcut?.state)) return { tone: "preparing", icon: LoaderCircle, title: "Preparando ambiente", detail: "Build e inicialização do ambiente acontecem automaticamente." };
   if (shortcut?.state === "FAILED") return { tone: "failed", icon: CircleAlert, title: "Ambiente com falha", detail: "A publicação falhou. Quando uma correção começar, o acompanhamento do ambiente será reiniciado automaticamente." };
   if (shortcut?.state === "EXPIRED") return {
@@ -107,6 +105,7 @@ export default function ExecutionEnvironmentShortcut({ pathname }) {
 
   if (!executionId) return null;
   if (control?.creditBlocked) return null;
+  if (control?.previewState === "REPAIRING" || shortcut?.state === "REPAIRING") return null;
   const view = presentation(shortcut, control);
   const shouldRenderControls = Boolean(control?.canRestartEnvironment);
   if (!view && !shouldRenderControls) return null;

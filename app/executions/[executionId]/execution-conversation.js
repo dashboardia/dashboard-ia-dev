@@ -3,7 +3,7 @@
 import { CheckCircle2, FileText, LoaderCircle, MessageSquareText, PauseCircle, PlayCircle, Sparkles, XCircle } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ATTACHMENT_ACCEPT, isImageAttachment, MAX_MESSAGE_ATTACHMENTS, validateAttachmentFiles } from "../../../lib/attachments";
 import ChatComposer from "../../../components/chat-composer";
@@ -54,6 +54,7 @@ export default function ExecutionConversation({ executionId, status, messages, e
   const messageListRef = useRef(null);
   const fileInputRef = useRef(null);
   const previewUrlsRef = useRef(new Set());
+  const keepLatestMessageVisibleRef = useRef(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,10 +97,44 @@ export default function ExecutionConversation({ executionId, status, messages, e
         ? (conversationReady ? "Acompanhe a execução ao lado. Quando terminar, você pode pedir outro ajuste aqui." : "Assim que a primeira implementação terminar, você poderá pedir ajustes sem sair desta execução.")
         : "As decisões e ajustes desta execução ficam preservados aqui.";
 
+  useLayoutEffect(() => {
+    const list = messageListRef.current;
+    if (!list) return undefined;
+
+    keepLatestMessageVisibleRef.current = true;
+    const scrollToLatest = () => {
+      list.scrollTop = list.scrollHeight;
+    };
+    scrollToLatest();
+    let secondFrame = null;
+    const firstFrame = window.requestAnimationFrame(() => {
+      scrollToLatest();
+      secondFrame = window.requestAnimationFrame(scrollToLatest);
+    });
+    const settledLayoutTimer = window.setTimeout(scrollToLatest, 160);
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+      window.clearTimeout(settledLayoutTimer);
+    };
+  }, [executionId, messages.length]);
+
   useEffect(() => {
     const list = messageListRef.current;
-    if (list) list.scrollTop = list.scrollHeight;
-  }, [messages.length]);
+    if (!list || typeof window.ResizeObserver !== "function") return undefined;
+    const observer = new window.ResizeObserver(() => {
+      if (keepLatestMessageVisibleRef.current) list.scrollTop = list.scrollHeight;
+    });
+    Array.from(list.children).forEach((message) => observer.observe(message));
+    return () => observer.disconnect();
+  }, [executionId, messages.length]);
+
+  function trackMessageScroll(event) {
+    const list = event.currentTarget;
+    const distanceFromLatest = list.scrollHeight - list.scrollTop - list.clientHeight;
+    keepLatestMessageVisibleRef.current = distanceFromLatest <= 48;
+  }
 
   useEffect(() => {
     if (!available) return;
@@ -245,7 +280,7 @@ export default function ExecutionConversation({ executionId, status, messages, e
     {overview}
     {available && <div className="execution-chat-guidance"><Sparkles size={16} /><span><strong>{paused ? "Processos pausados — você pode decidir o próximo passo" : "Peça mudanças em linguagem natural"}</strong><small>{paused ? "Envie um ajuste para a IA e a execução será retomada automaticamente, ou use Reexecutar de onde parou para continuar sem um novo pedido." : "Você pode pedir para corrigir um erro, mudar uma tela, adicionar uma função ou colar um print. A IA continua exatamente deste ponto."}</small></span></div>}
     <div className={`execution-chat-content${activity ? " has-live-activity" : ""}`}>
-      <div className="execution-message-list" ref={messageListRef}>{messages.map((message) => {
+      <div className="execution-message-list" ref={messageListRef} onScroll={trackMessageScroll}>{messages.map((message) => {
         const hasAttachments = message.attachments?.length > 0;
         const attachmentOnly = hasAttachments && !message.content?.trim();
         return <article className={`execution-message role-${message.role.toLowerCase()}${message.role === "USER" && !message.authorId ? " automatic" : ""}${hasAttachments ? " has-attachments" : ""}${attachmentOnly ? " attachment-only" : ""}`} key={message.id}>

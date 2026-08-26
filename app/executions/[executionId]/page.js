@@ -140,7 +140,7 @@ export default async function ExecutionPage({ params }) {
               <ExecutionFailureRecovery pathname={`/executions/${execution.id}`} />
               <ExecutionEnvironmentShortcut pathname={`/executions/${execution.id}`} />
             </div>}
-            activity={<details className="execution-activity-disclosure" open={executionActive}>
+            activity={<details className="execution-activity-disclosure" open>
               <summary><span>{liveIcon}</span><span><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></span><em>Ver andamento</em><ChevronDown size={16} /></summary>
               <div className="execution-activity-grid">
                 <section className={`execution-live-progress ${livePresentation.tone}`}>
