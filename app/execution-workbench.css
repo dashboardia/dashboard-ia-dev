@@ -362,6 +362,110 @@
   font-size: 7px;
 }
 
+.execution-detail-page .execution-log-card .execution-collapsible-content {
+  padding: 10px 12px 12px;
+}
+
+.execution-detail-page .execution-log-card .execution-timeline {
+  gap: 7px;
+  max-height: min(640px, 72vh);
+  margin-top: 0;
+  padding-right: 3px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.execution-detail-page .execution-log-card .execution-log-entry {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--soft) 94%, var(--purple) 6%);
+}
+
+.execution-detail-page .execution-log-card .execution-log-entry.error {
+  border-color: color-mix(in srgb, #ef5b69 36%, var(--line));
+}
+
+.execution-detail-page .execution-log-card .execution-log-entry.warn {
+  border-color: color-mix(in srgb, #e6a73c 34%, var(--line));
+}
+
+.execution-log-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #7656f6;
+  background: color-mix(in srgb, #7656f6 13%, transparent);
+}
+
+.execution-log-entry.error .execution-log-icon {
+  color: #e45462;
+  background: color-mix(in srgb, #e45462 13%, transparent);
+}
+
+.execution-log-entry.warn .execution-log-icon {
+  color: #d89420;
+  background: color-mix(in srgb, #d89420 14%, transparent);
+}
+
+.execution-log-main {
+  min-width: 0;
+}
+
+.execution-log-main > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.execution-log-main > header strong {
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.execution-log-main > header time {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.execution-log-main > header .log-level {
+  order: -1;
+}
+
+.execution-log-main > p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.execution-log-main > details {
+  margin-top: 7px;
+}
+
+.execution-log-main > details summary {
+  width: max-content;
+  color: var(--purple);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.execution-log-main > details pre {
+  max-height: 360px;
+  margin-top: 7px;
+}
+
 @media (max-width: 1180px) {
   .execution-workbench {
     grid-template-columns: 1fr;
@@ -427,5 +531,26 @@
   .execution-workbench .execution-conversation-actions button {
     flex: 1;
     justify-content: center;
+  }
+
+  .execution-detail-page .execution-log-card .execution-log-entry {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 7px;
+    padding: 9px;
+  }
+
+  .execution-log-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .execution-log-main > header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .execution-log-main > header time {
+    width: 100%;
+    margin-left: 0;
   }
 }

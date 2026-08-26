@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -31,6 +31,7 @@ import { verifyOrCreateDemoAccess } from "./demo-verification.mjs";
 import { applyKnownRuntimeRepairs } from "./runtime-repairs.mjs";
 import { ensureRustToolchainVersion } from "./railpack.mjs";
 import { expectedRepositoryPaths, normalizeExtractedRepository } from "./archive.mjs";
+import { interruptedBuildRecoveryDecision } from "./interrupted-build-recovery.mjs";
 
 const execFile = promisify(execFileCallback);
 const port = Number(process.env.PORT || 8080);
@@ -269,10 +270,8 @@ async function projectDockerfile(sourceDirectory) {
   return path.join(sourceDirectory, dockerfile.name);
 }
 
-function parseConfiguration(request) {
-  const encoded = request.headers["x-dashboardia-preview"];
-  if (!encoded || Array.isArray(encoded)) throw new Error("Metadados do preview ausentes");
-  const configuration = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+function validateConfiguration(configuration) {
+  if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) throw new Error("Metadados do preview inválidos");
   if (!configuration.previewCommand?.trim()) throw new Error("Comando de preview ausente");
   if (!Number.isInteger(configuration.port) || configuration.port < 1 || configuration.port > 65535) throw new Error("Porta do preview inválida");
   if (configuration.auxiliaryPreviewCommand != null) {
@@ -292,6 +291,12 @@ function parseConfiguration(request) {
     configuration.demoCredentials = { username, email, password };
   }
   return configuration;
+}
+
+function parseConfiguration(request) {
+  const encoded = request.headers["x-dashboardia-preview"];
+  if (!encoded || Array.isArray(encoded)) throw new Error("Metadados do preview ausentes");
+  return validateConfiguration(JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")));
 }
 
 async function receiveArchive(request, target) {
@@ -530,13 +535,14 @@ async function deployPreview(id, configuration) {
       url: `https://${id}.${baseDomain}`,
       entryPath,
       credentials: configuration.demoAccessCredentials,
+      recoveryConfiguration: null,
       error: null,
     });
     await rm(directory, { recursive: true, force: true });
   } catch (error) {
     const buildOutput = dockerErrorText(error).slice(-16_000);
     await removeRuntime(id);
-    await patchState(id, { status: "FAILED", credentials: null, error: buildOutput || "Falha desconhecida ao publicar o preview" }).catch(() => null);
+    await patchState(id, { status: "FAILED", credentials: null, recoveryConfiguration: null, error: buildOutput || "Falha desconhecida ao publicar o preview" }).catch(() => null);
     await failActivity(id, "A publicação falhou; os detalhes técnicos estão disponíveis abaixo").catch(() => null);
     await rm(directory, { recursive: true, force: true }).catch(() => null);
   }
@@ -586,11 +592,34 @@ async function recoverInterruptedBuilds() {
   await Promise.all(files.filter((file) => file.endsWith(".json")).map(async (file) => {
     const id = file.slice(0, -5);
     const state = await readState(id).catch(() => null);
-    if (state && ["QUEUED", "BUILDING", "DEPLOYING"].includes(state.status)) {
-      await removeRuntime(id);
-      await patchState(id, { status: "FAILED", credentials: null, error: "O host de previews reiniciou durante a publicação. Solicite uma nova execução." });
-      await failActivity(id, "A publicação foi interrompida pela reinicialização do host").catch(() => null);
+    const archivePath = path.join(workPath(id), "source.tar.gz");
+    const archiveAvailable = await access(archivePath).then(() => true).catch(() => false);
+    const decision = interruptedBuildRecoveryDecision(state, archiveAvailable);
+    if (decision.action === "IGNORE") return;
+    await removeRuntime(id);
+    if (decision.action === "RESUME") {
+      await rm(path.join(workPath(id), "source"), { recursive: true, force: true }).catch(() => null);
+      let configuration;
+      try {
+        configuration = validateConfiguration(structuredClone(decision.configuration));
+      } catch {
+        await patchState(id, { status: "FAILED", credentials: null, recoveryConfiguration: null, error: "O host reiniciou e os metadados preservados da publicação não eram válidos para uma retomada segura." });
+        await failActivity(id, "A publicação interrompida não pôde ser retomada com segurança").catch(() => null);
+        return;
+      }
+      await patchState(id, {
+        status: "QUEUED",
+        startedAt: null,
+        imageReference: null,
+        credentials: null,
+        error: null,
+      });
+      await recordActivity(id, "resuming", "Host reiniciado; retomando automaticamente a publicação preservada");
+      enqueuePreview(id, configuration);
+      return;
     }
+    await patchState(id, { status: "FAILED", credentials: null, recoveryConfiguration: null, error: "O host de previews reiniciou durante a publicação e os dados necessários para retomá-la não estavam disponíveis." });
+    await failActivity(id, "A publicação foi interrompida e não pôde ser retomada automaticamente").catch(() => null);
   }));
 }
 
@@ -665,6 +694,7 @@ async function handleApi(request, response, url) {
     imageReference: null,
     url: null,
     credentials: null,
+    recoveryConfiguration: configuration,
     error: null,
     adjustments: [],
     activity: [{ key: "queued", message: "Código recebido e aguardando uma vaga para o build", status: "RUNNING", at: now.toISOString() }],

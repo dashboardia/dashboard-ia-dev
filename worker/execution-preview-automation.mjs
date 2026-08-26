@@ -208,20 +208,17 @@ async function queueAutomaticCorrection(preview, settings, database, execution, 
 }
 
 async function retryInfrastructurePreview(preview, settings, database, execution, failureClass, failureSignature) {
-  const repeatedSignature = signatureSeen(execution.logs, failureSignature, (metadata) => metadata.infrastructureRetryScheduled === true);
   const retryable = failureClass === "INFRASTRUCTURE" && isRetryableInfrastructureFailure(preview.error);
   const attemptLimitReached = Number(preview.attempts || 0) >= MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS;
 
-  if (!retryable || repeatedSignature || attemptLimitReached) {
+  if (!retryable || attemptLimitReached) {
     await requestApplicationRepairConsent(preview, execution, database, {
       automaticRepairCount: automaticApplicationRepairCount(execution.logs),
       failureClass,
       failureSignature,
-      reason: repeatedSignature
-        ? "repeated-infrastructure-failure"
-        : attemptLimitReached
-          ? "infrastructure-retry-limit"
-          : "uncertain-preview-failure",
+      reason: attemptLimitReached
+        ? "infrastructure-retry-limit"
+        : "uncertain-preview-failure",
     });
     return false;
   }

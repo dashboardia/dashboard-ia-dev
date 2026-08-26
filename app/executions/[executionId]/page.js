@@ -48,7 +48,7 @@ export default async function ExecutionPage({ params }) {
       demand: { include: { project: true } },
       requestedBy: { select: { name: true, githubLogin: true } },
       approvedBy: { select: { name: true, githubLogin: true } },
-      logs: { orderBy: { createdAt: "asc" } },
+      logs: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
       artifacts: { orderBy: { createdAt: "asc" } },
       pullRequest: true,
       previewEnvironment: { select: { status: true, url: true, error: true } },
@@ -69,6 +69,7 @@ export default async function ExecutionPage({ params }) {
   const showConversation = execution.demand.type !== "DOCUMENTATION";
   const conversationReady = Boolean(execution.pullRequest || execution.adjustmentCount > 0 || execution.status === "AWAITING_CLIENT");
   const conversationMessages = execution.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
+  const displayLogs = [...execution.logs].reverse();
   const creditBlocked = isExecutionCreditBlocked(execution.error);
   const initialControlState = executionControlState(execution);
   const liveRevision = executionRevision(execution);
@@ -170,8 +171,8 @@ export default async function ExecutionPage({ params }) {
         </section>}
 
         <details className="form-card detail-card full-card execution-collapsible execution-log-card">
-          <summary className="execution-collapsible-header"><TerminalSquare size={19} /><span><strong>Logs da execução</strong><small>{execution.logs.length} eventos registrados em ordem cronológica</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
-          <div className="execution-collapsible-content"><div className="execution-timeline">{execution.logs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; return <div key={entry.id}><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Ver detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div>; })}{!execution.logs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div></div>
+          <summary className="execution-collapsible-header"><TerminalSquare size={19} /><span><strong>Logs da execução</strong><small>{execution.logs.length} eventos · mais recentes primeiro</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+          <div className="execution-collapsible-content"><div className="execution-timeline">{displayLogs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; const LogIcon = entry.level === "error" ? CircleX : entry.level === "warn" ? CircleDotDashed : CircleCheck; return <article className={`execution-log-entry ${entry.level}`} key={entry.id}><span className="execution-log-icon"><LogIcon size={15} /></span><div className="execution-log-main"><header><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span></header><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div></article>; })}{!displayLogs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div></div>
         </details>
 
         {execution.demand.type !== "DOCUMENTATION" && <EvidenceCard artifacts={execution.artifacts} />}
