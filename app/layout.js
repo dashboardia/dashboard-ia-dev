@@ -15,6 +15,7 @@ import "./action-center-toast.css";
 import "./readability.css";
 import "./experience-polish.css";
 import "./dashboardia-neon.css";
+import "./execution-command-center.css";
 
 export const metadata = {
   title: "Dashboard IA",

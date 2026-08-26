@@ -9,6 +9,8 @@ import { ATTACHMENT_ACCEPT, isImageAttachment, MAX_MESSAGE_ATTACHMENTS, validate
 import ChatComposer from "../../../components/chat-composer";
 
 const ENVIRONMENT_RECOVERY_STORAGE_KEY = "dashboardia:environment-recovery";
+const LONG_MESSAGE_CHARACTER_LIMIT = 900;
+const LONG_MESSAGE_LINE_LIMIT = 12;
 
 function fileKey(file) {
   return `${file.name}:${file.size}:${file.lastModified}`;
@@ -26,6 +28,19 @@ function messageAuthor(message) {
   if (message.role === "AGENT") return "Agente";
   if (message.role === "SYSTEM") return "Sistema";
   return message.authorId ? "Você" : "Dashboard IA";
+}
+
+function CollapsibleMessageText({ content }) {
+  const [expanded, setExpanded] = useState(false);
+  const text = String(content ?? "");
+  const collapsible = text.length > LONG_MESSAGE_CHARACTER_LIMIT || text.split("\n").length > LONG_MESSAGE_LINE_LIMIT;
+
+  return <div className={`execution-message-text${collapsible && !expanded ? " is-collapsed" : ""}`}>
+    <p>{text}</p>
+    {collapsible && <button aria-expanded={expanded} className="execution-message-expand" type="button" onClick={() => setExpanded((current) => !current)}>
+      {expanded ? "Mostrar menos" : "Ler mensagem completa"}
+    </button>}
+  </div>;
 }
 
 export default function ExecutionConversation({ executionId, status, messages, expiresAt, adjustmentCount, conversationReady = false, creditBlocked = false, canManage = false, initialControlState = null, overview = null, stateNotices = null, activity = null, externalActions = null }) {
@@ -229,20 +244,22 @@ export default function ExecutionConversation({ executionId, status, messages, e
     <header className="execution-chat-header"><span className="execution-chat-icon"><MessageSquareText size={19} /></span><div><h2>{chatTitle}</h2><p>{chatDescription}</p></div><em className={`execution-chat-status ${available ? "available" : processing ? "processing" : "closed"}`}>{effectiveCreditBlocked ? "Aguardando créditos" : available ? paused ? "Pausada · escreva aqui" : "Escreva aqui" : processing ? "IA trabalhando" : "Concluída"}</em></header>
     {overview}
     {available && <div className="execution-chat-guidance"><Sparkles size={16} /><span><strong>{paused ? "Processos pausados — você pode decidir o próximo passo" : "Peça mudanças em linguagem natural"}</strong><small>{paused ? "Envie um ajuste para a IA e a execução será retomada automaticamente, ou use Reexecutar de onde parou para continuar sem um novo pedido." : "Você pode pedir para corrigir um erro, mudar uma tela, adicionar uma função ou colar um print. A IA continua exatamente deste ponto."}</small></span></div>}
-    {activity}
-    <div className="execution-message-list" ref={messageListRef}>{messages.map((message) => {
-      const hasAttachments = message.attachments?.length > 0;
-      const attachmentOnly = hasAttachments && !message.content?.trim();
-      return <article className={`execution-message role-${message.role.toLowerCase()}${message.role === "USER" && !message.authorId ? " automatic" : ""}${hasAttachments ? " has-attachments" : ""}${attachmentOnly ? " attachment-only" : ""}`} key={message.id}>
-        <header><strong>{messageAuthor(message)}</strong><time>{new Date(message.createdAt).toLocaleString("pt-BR")}</time></header>
-        <div className="execution-message-body">
-          {hasAttachments && <div className="execution-message-attachments">{message.attachments.map((attachment) => <StoredAttachment attachment={attachment} key={attachment.id} />)}</div>}
-          {!attachmentOnly && <p>{message.content}</p>}
-        </div>
-      </article>;
-    })}{!messages.length && <div className="list-empty">{conversationReady ? "O histórico dos seus ajustes aparecerá aqui." : "A conversa ficará disponível assim que a primeira implementação e o ambiente terminarem."}</div>}</div>
+    <div className={`execution-chat-content${activity ? " has-live-activity" : ""}`}>
+      <div className="execution-message-list" ref={messageListRef}>{messages.map((message) => {
+        const hasAttachments = message.attachments?.length > 0;
+        const attachmentOnly = hasAttachments && !message.content?.trim();
+        return <article className={`execution-message role-${message.role.toLowerCase()}${message.role === "USER" && !message.authorId ? " automatic" : ""}${hasAttachments ? " has-attachments" : ""}${attachmentOnly ? " attachment-only" : ""}`} key={message.id}>
+          <header><strong>{messageAuthor(message)}</strong><time>{new Date(message.createdAt).toLocaleString("pt-BR")}</time></header>
+          <div className="execution-message-body">
+            {hasAttachments && <div className="execution-message-attachments">{message.attachments.map((attachment) => <StoredAttachment attachment={attachment} key={attachment.id} />)}</div>}
+            {!attachmentOnly && <CollapsibleMessageText content={message.content} />}
+          </div>
+        </article>;
+      })}{!messages.length && <div className="list-empty">{conversationReady ? "O histórico dos seus ajustes aparecerá aqui." : "A conversa ficará disponível assim que a primeira implementação e o ambiente terminarem."}</div>}</div>
+      {activity && <aside className="execution-chat-live-dock" aria-label="Andamento da execução">{activity}</aside>}
+    </div>
     {stateNotices}
-    {processing && <div className="execution-chat-processing"><LoaderCircle className="spin" size={16} /><span><strong>{conversationReady ? "A IA está aplicando seu ajuste" : "A IA está trabalhando na implementação"}</strong><small>Acompanhe o andamento acima. A tela atualiza automaticamente.</small></span><div className="execution-chat-primary-actions">{externalActions}</div>{renderControlActions()}</div>}
+    {processing && <div className="execution-chat-processing"><LoaderCircle className="spin" size={16} /><span><strong>{conversationReady ? "A IA está aplicando seu ajuste" : "A IA está trabalhando na implementação"}</strong><small>Acompanhe pelo painel de andamento. A tela atualiza automaticamente.</small></span><div className="execution-chat-primary-actions">{externalActions}</div>{renderControlActions()}</div>}
     {!processing && (externalActions || showControlActions || available) && <div className="execution-chat-action-bar"><div className="execution-chat-primary-actions">{externalActions}</div>{renderControlActions()}{available && <button className="execution-complete-button" type="button" onClick={completeExecution} disabled={loading || paused}><CheckCircle2 size={16} />Concluir execução</button>}</div>}
     {available && <div className="execution-modern-reply"><ChatComposer
       id="execution-adjustment"

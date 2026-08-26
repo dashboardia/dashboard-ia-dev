@@ -117,6 +117,7 @@ export default async function ExecutionPage({ params }) {
           action={null}
         />
 
+        <div className={`execution-command-layout${showConversation ? " with-conversation" : " without-conversation"}`}>
         {showConversation ? <div className="execution-workbench with-chat execution-command-center">
           <ExecutionConversation
             executionId={execution.id}
@@ -138,7 +139,7 @@ export default async function ExecutionPage({ params }) {
               <ExecutionFailureRecovery pathname={`/executions/${execution.id}`} />
               <ExecutionEnvironmentShortcut pathname={`/executions/${execution.id}`} />
             </div>}
-            activity={<details className="execution-activity-disclosure">
+            activity={<details className="execution-activity-disclosure" open={executionActive}>
               <summary><span>{liveIcon}</span><span><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></span><em>Ver andamento</em><ChevronDown size={16} /></summary>
               <div className="execution-activity-grid">
                 <section className={`execution-live-progress ${livePresentation.tone}`}>
@@ -162,8 +163,8 @@ export default async function ExecutionPage({ params }) {
           </div>
         </div>}
 
-        <details className="form-card detail-card full-card execution-detail-disclosure">
-          <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Resultado e detalhes da execução</strong><small>Resumo, referências Git, créditos e informações administrativas</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+        <details className="form-card detail-card full-card execution-detail-disclosure execution-side-panel">
+          <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Detalhes</strong><small>Resultado, logs e Git</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
           <div className="execution-detail-disclosure-content">
         <div className="execution-review-grid">
           <section className="form-card detail-card execution-summary-card">
@@ -178,6 +179,11 @@ export default async function ExecutionPage({ params }) {
             <div className="commit-list"><span><small>Base</small><code>{execution.baseSha ?? "—"}</code></span><span><small>Resultado</small><code>{execution.headSha ?? "—"}</code></span><span><small>Modelo</small><code>{execution.model ?? "—"}</code></span></div>
           </section>
         </div>
+
+        <details className="form-card detail-card full-card execution-collapsible execution-log-card">
+          <summary className="execution-collapsible-header"><TerminalSquare size={19} /><span><strong>Logs da execução</strong><small>{execution.logs.length} eventos · mais recentes primeiro</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+          <div className="execution-collapsible-content"><div className="execution-timeline">{displayLogs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; const LogIcon = entry.level === "error" ? CircleX : entry.level === "warn" ? CircleDotDashed : CircleCheck; return <article className={`execution-log-entry ${entry.level}`} key={entry.id}><span className="execution-log-icon"><LogIcon size={15} /></span><div className="execution-log-main"><header><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span></header><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div></article>; })}{!displayLogs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div></div>
+        </details>
 
         {user.globalRole === "ADMIN" && execution.financialSnapshot && <section className="form-card detail-card full-card financial-execution-card">
           <div className="card-heading"><div><h2>Simulação financeira</h2><p>Visível somente para administradores. O custo segue silencioso; créditos são liquidados pelo consumo medido.</p></div><div className="shadow-mode-badge"><Coins size={14} />CUSTO SILENCIOSO</div></div>
@@ -202,11 +208,6 @@ export default async function ExecutionPage({ params }) {
           </div>
         </section>}
 
-        <details className="form-card detail-card full-card execution-collapsible execution-log-card">
-          <summary className="execution-collapsible-header"><TerminalSquare size={19} /><span><strong>Logs da execução</strong><small>{execution.logs.length} eventos · mais recentes primeiro</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
-          <div className="execution-collapsible-content"><div className="execution-timeline">{displayLogs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; const LogIcon = entry.level === "error" ? CircleX : entry.level === "warn" ? CircleDotDashed : CircleCheck; return <article className={`execution-log-entry ${entry.level}`} key={entry.id}><span className="execution-log-icon"><LogIcon size={15} /></span><div className="execution-log-main"><header><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span></header><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div></article>; })}{!displayLogs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div></div>
-        </details>
-
         {execution.demand.type !== "DOCUMENTATION" && <EvidenceCard artifacts={execution.artifacts} />}
 
         <details className="form-card detail-card full-card execution-collapsible execution-diff-card">
@@ -215,6 +216,7 @@ export default async function ExecutionPage({ params }) {
         </details>
           </div>
         </details>
+        </div>
       </div>
     </AppShell>
   );

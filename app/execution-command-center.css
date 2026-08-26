@@ -1,0 +1,368 @@
+/* Centro de execução: conversa principal, andamento contextual e detalhes laterais. */
+.execution-command-layout {
+  --execution-rail-width: 54px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--execution-rail-width);
+  gap: 10px;
+  align-items: stretch;
+  transition: grid-template-columns .24s ease;
+}
+
+.execution-command-layout:has(> .execution-side-panel[open]) {
+  grid-template-columns: minmax(0, 1fr) clamp(370px, 32vw, 520px);
+}
+
+.execution-command-layout > .execution-command-center,
+.execution-command-layout > .execution-workbench,
+.execution-command-layout > .execution-side-panel {
+  min-width: 0;
+  margin: 0;
+}
+
+.execution-command-layout .execution-command-center > .execution-conversation {
+  min-height: calc(100dvh - 190px);
+}
+
+.execution-command-layout > .execution-side-panel {
+  position: sticky;
+  top: 74px;
+  height: calc(100dvh - 92px);
+  min-height: 520px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--purple) 28%, var(--line));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--soft) 97%, var(--purple) 3%);
+  box-shadow: 0 18px 52px rgba(17, 12, 39, .12);
+}
+
+.execution-command-layout > .execution-side-panel > summary {
+  min-height: 58px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--ink);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--purple) 8%, var(--soft)), color-mix(in srgb, var(--blue) 3%, var(--soft)));
+  transition: background .18s ease, color .18s ease;
+}
+
+.execution-command-layout > .execution-side-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.execution-command-layout > .execution-side-panel > summary:hover {
+  background: color-mix(in srgb, var(--purple) 11%, var(--soft));
+}
+
+.execution-command-layout > .execution-side-panel > summary > svg:first-child {
+  width: 30px;
+  height: 30px;
+  padding: 7px;
+  border-radius: 9px;
+  color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 13%, transparent);
+}
+
+.execution-command-layout > .execution-side-panel > summary > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.execution-command-layout > .execution-side-panel > summary strong {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.execution-command-layout > .execution-side-panel > summary small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.execution-command-layout > .execution-side-panel:not([open]) > summary {
+  height: 100%;
+  min-height: 520px;
+  padding: 14px 9px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 13px;
+}
+
+.execution-command-layout > .execution-side-panel:not([open]) > summary > span {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.execution-command-layout > .execution-side-panel:not([open]) > summary strong {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  letter-spacing: .06em;
+}
+
+.execution-command-layout > .execution-side-panel:not([open]) > summary small {
+  display: none;
+}
+
+.execution-command-layout > .execution-side-panel:not([open]) > summary .execution-collapsible-chevron {
+  transform: rotate(90deg);
+}
+
+.execution-command-layout > .execution-side-panel[open] > summary .execution-collapsible-chevron {
+  transform: rotate(-90deg);
+}
+
+.execution-command-layout > .execution-side-panel > .execution-detail-disclosure-content {
+  height: calc(100% - 58px);
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border-top: 1px solid var(--line);
+}
+
+.execution-command-layout .execution-detail-disclosure-content > *,
+.execution-command-layout .execution-detail-disclosure-content > .full-card,
+.execution-command-layout .execution-detail-disclosure-content > details,
+.execution-command-layout .execution-detail-disclosure-content > section,
+.execution-command-layout .execution-detail-disclosure-content .execution-review-grid {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+
+.execution-command-layout .execution-detail-disclosure-content .execution-review-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.execution-command-layout .execution-detail-disclosure-content .execution-summary-card > p,
+.execution-command-layout .execution-detail-disclosure-content .execution-log-card .execution-timeline {
+  max-height: none;
+  overflow: visible;
+}
+
+.execution-command-layout .execution-detail-disclosure-content code,
+.execution-command-layout .execution-detail-disclosure-content pre,
+.execution-command-layout .execution-detail-disclosure-content p {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.execution-command-layout .execution-detail-disclosure-content .financial-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.execution-command-layout .execution-detail-disclosure-content .execution-log-entry {
+  grid-template-columns: 26px minmax(0, 1fr);
+  padding: 9px;
+}
+
+.execution-command-layout .execution-detail-disclosure-content .execution-log-main header {
+  flex-wrap: wrap;
+}
+
+/* Andamento ao vivo: um painel contextual dentro da conversa. */
+.execution-command-center .execution-chat-content {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--soft) 72%, transparent);
+}
+
+.execution-command-center .execution-chat-content.has-live-activity {
+  grid-template-columns: minmax(0, 1fr) clamp(250px, 22vw, 340px);
+}
+
+.execution-command-center .execution-chat-content > .execution-message-list {
+  min-width: 0;
+  width: 100%;
+  min-height: 320px;
+  max-height: 62vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.execution-command-center .execution-chat-live-dock {
+  min-width: 0;
+  max-height: 62vh;
+  padding: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+  background: color-mix(in srgb, var(--purple) 4%, var(--soft));
+  scrollbar-gutter: stable;
+}
+
+.execution-command-center .execution-chat-live-dock .execution-activity-disclosure {
+  margin: 0;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--soft) 94%, var(--purple) 6%);
+}
+
+.execution-command-center .execution-chat-live-dock .execution-activity-disclosure > summary {
+  min-height: 54px;
+  padding: 10px;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+}
+
+.execution-command-center .execution-chat-live-dock .execution-activity-disclosure > summary em {
+  display: none;
+}
+
+.execution-command-center .execution-chat-live-dock .execution-activity-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 0 8px 8px;
+}
+
+.execution-command-center .execution-chat-live-dock .execution-activity-grid > * {
+  margin-top: 8px !important;
+}
+
+.execution-command-center .execution-chat-live-dock .execution-live-progress,
+.execution-command-center .execution-chat-live-dock .execution-activity-grid > section {
+  min-width: 0;
+  border-radius: 11px;
+  box-shadow: none;
+}
+
+.execution-command-center .execution-chat-live-dock .execution-live-progress header {
+  padding: 10px;
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+
+.execution-command-center .execution-chat-live-dock .execution-live-progress header em {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.execution-command-center .execution-chat-live-dock .execution-live-progress ol {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* Mensagens extensas permanecem legíveis sem dominar o histórico. */
+.execution-command-center .execution-message,
+.execution-command-center .execution-message-body,
+.execution-command-center .execution-message-text {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.execution-command-center .execution-message-text {
+  position: relative;
+}
+
+.execution-command-center .execution-message.has-attachments .execution-message-text {
+  margin-top: 10px;
+}
+
+.execution-command-center .execution-message-text > p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.execution-command-center .execution-message-text.is-collapsed > p {
+  max-height: 12.5rem;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(#000 72%, transparent 100%);
+  mask-image: linear-gradient(#000 72%, transparent 100%);
+}
+
+.execution-command-center .execution-message-expand {
+  min-height: 28px;
+  margin-top: 7px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--purple) 24%, var(--line));
+  border-radius: 999px;
+  color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 7%, var(--soft));
+  font: inherit;
+  font-size: 8.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, transform .16s ease;
+}
+
+.execution-command-center .execution-message-expand:hover {
+  border-color: color-mix(in srgb, var(--purple) 52%, var(--line));
+  background: color-mix(in srgb, var(--purple) 12%, var(--soft));
+  transform: translateY(-1px);
+}
+
+@media (max-width: 1260px) {
+  .execution-command-layout:has(> .execution-side-panel[open]) {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 38vw);
+  }
+
+  .execution-command-center .execution-chat-content.has-live-activity {
+    grid-template-columns: minmax(0, 1fr) minmax(230px, 29%);
+  }
+}
+
+@media (max-width: 980px) {
+  .execution-command-center .execution-chat-content.has-live-activity {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .execution-command-center .execution-chat-live-dock {
+    max-height: none;
+    padding: 9px 12px;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .execution-command-center .execution-chat-live-dock .execution-activity-disclosure:not([open]) {
+    margin: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .execution-command-layout,
+  .execution-command-layout:has(> .execution-side-panel[open]) {
+    grid-template-columns: minmax(0, 1fr) 48px;
+  }
+
+  .execution-command-layout:has(> .execution-side-panel[open]) {
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
+  .execution-command-layout:has(> .execution-side-panel[open]) > .execution-command-center,
+  .execution-command-layout:has(> .execution-side-panel[open]) > .execution-workbench:not(.execution-side-panel) {
+    visibility: hidden;
+    overflow: hidden;
+  }
+
+  .execution-command-layout > .execution-side-panel {
+    top: 8px;
+    height: calc(100dvh - 16px);
+    min-height: 460px;
+  }
+
+  .execution-command-layout > .execution-side-panel:not([open]) > summary {
+    min-height: 460px;
+    padding-inline: 7px;
+  }
+
+  .execution-command-layout .execution-detail-disclosure-content .financial-summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
