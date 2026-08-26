@@ -1,4 +1,41 @@
 /* Centro de execução: conversa principal, andamento contextual e detalhes laterais. */
+.execution-detail-page > .section-header {
+  min-height: 0;
+  margin-bottom: 8px;
+  padding: 12px 16px;
+  align-items: center;
+  border-radius: 14px;
+}
+
+.execution-detail-page > .section-header > div {
+  min-width: 0;
+  width: 100%;
+}
+
+.execution-detail-page > .section-header .back-link {
+  margin-bottom: 6px;
+  font-size: 8px;
+}
+
+.execution-detail-page > .section-header .eyebrow {
+  margin-bottom: 5px;
+  font-size: 8px;
+  letter-spacing: .12em;
+}
+
+.execution-detail-page > .section-header h1 {
+  max-width: 1220px;
+  margin-bottom: 4px;
+  font-size: clamp(17px, 1.25vw, 21px);
+  line-height: 1.18;
+  letter-spacing: -.45px;
+}
+
+.execution-detail-page > .section-header p:not(.eyebrow) {
+  font-size: 9px;
+  line-height: 1.35;
+}
+
 .execution-command-layout {
   --execution-rail-width: 54px;
   min-width: 0;
@@ -37,7 +74,13 @@
   box-shadow: 0 18px 52px rgba(17, 12, 39, .12);
 }
 
+.execution-command-layout > .execution-side-panel[open] {
+  display: flex;
+  flex-direction: column;
+}
+
 .execution-command-layout > .execution-side-panel > summary {
+  flex: 0 0 auto;
   min-height: 58px;
   padding: 12px 14px;
   display: grid;
@@ -122,7 +165,10 @@
 }
 
 .execution-command-layout > .execution-side-panel > .execution-detail-disclosure-content {
-  height: calc(100% - 58px);
+  min-height: 0;
+  height: auto;
+  flex: 1 1 auto;
+  box-sizing: border-box;
   padding: 12px;
   display: grid;
   align-content: start;
@@ -132,6 +178,55 @@
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   border-top: 1px solid var(--line);
+}
+
+.execution-command-layout .execution-detail-accordion-item {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, var(--purple) 12%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--soft) 96%, transparent);
+  box-shadow: none;
+  transition: border-color .18s ease, background .18s ease;
+}
+
+.execution-command-layout .execution-detail-accordion-item[open] {
+  border-color: color-mix(in srgb, var(--purple) 38%, var(--line));
+  background: color-mix(in srgb, var(--purple) 4%, var(--soft));
+}
+
+.execution-command-layout .execution-detail-accordion-item > summary {
+  min-height: 52px;
+  padding: 10px 12px;
+}
+
+.execution-command-layout .execution-detail-accordion-item > summary:hover {
+  background: color-mix(in srgb, var(--purple) 7%, transparent);
+}
+
+.execution-command-layout .execution-detail-accordion-item[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.execution-command-layout .execution-detail-accordion-item[open] > summary .execution-collapsible-chevron {
+  transform: rotate(180deg);
+}
+
+.execution-command-layout .execution-detail-accordion-body,
+.execution-command-layout .execution-detail-accordion-item > .execution-collapsible-content {
+  min-width: 0;
+  padding: 14px;
+  overflow: visible;
+  border-top: 0;
+}
+
+.execution-command-layout .execution-detail-accordion-body > p {
+  max-height: none;
+  margin: 0;
+  overflow: visible;
+  color: var(--ink);
+  font-size: 10px;
+  line-height: 1.65;
+  white-space: pre-wrap;
 }
 
 .execution-command-layout .execution-detail-disclosure-content > *,
@@ -162,6 +257,17 @@
   overflow-wrap: anywhere;
 }
 
+.execution-command-layout .execution-detail-disclosure-content pre {
+  max-height: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.execution-command-layout .execution-detail-disclosure-content .commit-list code {
+  white-space: normal;
+  word-break: break-all;
+}
+
 .execution-command-layout .execution-detail-disclosure-content .financial-summary-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -182,7 +288,10 @@
   flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  overflow: hidden;
+  max-height: 62vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   background: color-mix(in srgb, var(--soft) 72%, transparent);
 }
 
@@ -194,26 +303,28 @@
   min-width: 0;
   width: 100%;
   min-height: 320px;
-  max-height: 62vh;
+  max-height: none;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: visible;
+  background: transparent;
 }
 
 .execution-command-center .execution-chat-live-dock {
   min-width: 0;
-  max-height: 62vh;
-  padding: 12px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  border-left: 1px solid var(--line);
-  background: color-mix(in srgb, var(--purple) 4%, var(--soft));
-  scrollbar-gutter: stable;
+  align-self: start;
+  position: sticky;
+  top: 0;
+  padding: 12px 12px 12px 0;
+  overflow: visible;
+  background: transparent;
 }
 
 .execution-command-center .execution-chat-live-dock .execution-activity-disclosure {
   margin: 0;
+  overflow: hidden;
   border-radius: 13px;
-  background: color-mix(in srgb, var(--soft) 94%, var(--purple) 6%);
+  background: color-mix(in srgb, var(--purple) 6%, var(--soft));
+  box-shadow: 0 10px 28px rgba(17, 12, 39, .08);
 }
 
 .execution-command-center .execution-chat-live-dock .execution-activity-disclosure > summary {
@@ -254,8 +365,23 @@
 }
 
 .execution-command-center .execution-chat-live-dock .execution-live-progress ol {
-  max-height: 220px;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.execution-command-center .execution-chat-processing {
+  min-height: 52px;
+  padding: 9px 16px;
+  background: color-mix(in srgb, var(--soft) 96%, transparent);
+}
+
+.execution-command-center .execution-chat-processing > span {
+  flex: 0 1 auto;
+}
+
+.execution-command-center .execution-chat-processing .execution-chat-primary-actions {
+  margin-right: 0;
+  margin-left: auto;
 }
 
 /* Mensagens extensas permanecem legíveis sem dominar o histórico. */
@@ -325,7 +451,8 @@
 
   .execution-command-center .execution-chat-live-dock {
     max-height: none;
-    padding: 9px 12px;
+    position: static;
+    padding: 0 12px 12px;
     border-top: 1px solid var(--line);
     border-left: 0;
   }
@@ -336,6 +463,15 @@
 }
 
 @media (max-width: 760px) {
+  .execution-detail-page > .section-header {
+    padding: 11px 12px;
+    border-radius: 12px;
+  }
+
+  .execution-detail-page > .section-header h1 {
+    font-size: 17px;
+  }
+
   .execution-command-layout,
   .execution-command-layout:has(> .execution-side-panel[open]) {
     grid-template-columns: minmax(0, 1fr) 48px;

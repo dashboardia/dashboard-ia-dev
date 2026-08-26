@@ -84,6 +84,7 @@ export default async function ExecutionPage({ params }) {
     })
     .map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
   const displayLogs = [...execution.logs].reverse();
+  const detailAccordionName = `execution-details-${execution.id}`;
   const creditBlocked = isExecutionCreditBlocked(execution.error);
   const liveRevision = executionRevision(execution);
   const shouldLiveRefresh = shouldPollExecutionDetail(execution);
@@ -166,27 +167,28 @@ export default async function ExecutionPage({ params }) {
         <details className="form-card detail-card full-card execution-detail-disclosure execution-side-panel">
           <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Detalhes</strong><small>Resultado, logs e Git</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
           <div className="execution-detail-disclosure-content">
-        <div className="execution-review-grid">
-          <section className="form-card detail-card execution-summary-card">
-            <div className="card-heading"><div><h2>Resultado</h2><p>Resumo produzido pelo agente</p></div><Code2 size={20} /></div>
+        <details className="form-card detail-card full-card execution-collapsible execution-detail-accordion-item execution-summary-card" name={detailAccordionName}>
+          <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Resultado</strong><small>Resumo produzido pelo agente</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+          <div className="execution-collapsible-content execution-detail-accordion-body">
             <p>{execution.summary ?? "O resumo ficará disponível quando o agente concluir a implementação."}</p>
             {explainedError && <div className="execution-error-box"><strong>{explainedError.title}</strong><p>{explainedError.message}</p><small>{explainedError.action}</small><details><summary>Ver detalhes técnicos</summary><pre>{explainedError.technical}</pre></details></div>}
             <div className="execution-links"><Link href={`/demands/${execution.demandId}`}>Ver demanda original</Link>{execution.pullRequest && <a href={execution.pullRequest.url} target="_blank" rel="noreferrer">Abrir PR #{execution.pullRequest.externalNumber}</a>}</div>
-          </section>
+          </div>
+        </details>
 
-          <section className="form-card detail-card execution-summary-card">
-            <div className="card-heading"><div><h2>Referências Git</h2><p>Rastreabilidade da alteração</p></div><GitBranch size={20} /></div>
-            <div className="commit-list"><span><small>Base</small><code>{execution.baseSha ?? "—"}</code></span><span><small>Resultado</small><code>{execution.headSha ?? "—"}</code></span><span><small>Modelo</small><code>{execution.model ?? "—"}</code></span></div>
-          </section>
-        </div>
+        <details className="form-card detail-card full-card execution-collapsible execution-detail-accordion-item" name={detailAccordionName}>
+          <summary className="execution-collapsible-header"><GitBranch size={19} /><span><strong>Referências Git</strong><small>Branch, commits e modelo utilizado</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+          <div className="execution-collapsible-content execution-detail-accordion-body"><div className="commit-list"><span><small>Base</small><code>{execution.baseSha ?? "—"}</code></span><span><small>Resultado</small><code>{execution.headSha ?? "—"}</code></span><span><small>Modelo</small><code>{execution.model ?? "—"}</code></span></div></div>
+        </details>
 
-        <details className="form-card detail-card full-card execution-collapsible execution-log-card">
+        <details className="form-card detail-card full-card execution-collapsible execution-log-card execution-detail-accordion-item" name={detailAccordionName}>
           <summary className="execution-collapsible-header"><TerminalSquare size={19} /><span><strong>Logs da execução</strong><small>{execution.logs.length} eventos · mais recentes primeiro</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
           <div className="execution-collapsible-content"><div className="execution-timeline">{displayLogs.map((entry) => { const logError = entry.level === "error" ? explainError(entry.message) : null; const LogIcon = entry.level === "error" ? CircleX : entry.level === "warn" ? CircleDotDashed : CircleCheck; return <article className={`execution-log-entry ${entry.level}`} key={entry.id}><span className="execution-log-icon"><LogIcon size={15} /></span><div className="execution-log-main"><header><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><time>{formatDateTime(entry.createdAt, settings.timeZone)}</time><span className={`log-level ${entry.level}`}>{logLevelLabels[entry.level] ?? entry.level}</span></header><p>{logError ? `${logError.title}. ${logError.action}` : redactSensitiveData(entry.message)}</p>{entry.metadata && <details><summary>Detalhes técnicos</summary><pre>{redactSensitiveData(JSON.stringify(entry.metadata, null, 2))}</pre></details>}</div></article>; })}{!displayLogs.length && <div className="list-empty">Aguardando eventos do worker.</div>}</div></div>
         </details>
 
-        {user.globalRole === "ADMIN" && execution.financialSnapshot && <section className="form-card detail-card full-card financial-execution-card">
-          <div className="card-heading"><div><h2>Simulação financeira</h2><p>Visível somente para administradores. O custo segue silencioso; créditos são liquidados pelo consumo medido.</p></div><div className="shadow-mode-badge"><Coins size={14} />CUSTO SILENCIOSO</div></div>
+        {user.globalRole === "ADMIN" && execution.financialSnapshot && <details className="form-card detail-card full-card execution-collapsible execution-detail-accordion-item financial-execution-card" name={detailAccordionName}>
+          <summary className="execution-collapsible-header"><Coins size={19} /><span><strong>Simulação financeira</strong><small>Custos, consumo e margem administrativa</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+          <div className="execution-collapsible-content execution-detail-accordion-body">
           <div className="financial-summary-grid">
             <span><small>Custo interno</small><strong>{formatBrlCents(execution.financialSnapshot.totalInternalCostBrlCents)}</strong></span>
             <span><small>Reserva simulada</small><strong>{execution.financialSnapshot.simulatedReservedCredits} créditos</strong></span>
@@ -196,21 +198,24 @@ export default async function ExecutionPage({ params }) {
             <span><small>Medição</small><strong>{execution.financialSnapshot.calculationStatus === "MEASURED" ? "Tokens medidos" : "Sem dados de uso"}</strong></span>
           </div>
           <details className="financial-details"><summary>Ver composição e fórmula</summary><div><span>IA ajustada: <strong>{formatBrlCents(execution.financialSnapshot.adjustedAiCostBrlCents)}</strong></span><span>Worker ({execution.financialSnapshot.workerDurationSeconds}s): <strong>{formatBrlCents(execution.financialSnapshot.workerCostBrlCents)}</strong></span><span>Validação visual: <strong>{formatBrlCents(execution.financialSnapshot.visualValidationCostBrlCents)}</strong></span><span>Modelo: <strong>{execution.financialSnapshot.model}</strong></span><span>Fórmula: <strong>{execution.financialSnapshot.formulaVersion}</strong></span></div></details>
-        </section>}
+          </div>
+        </details>}
 
-        {execution.creditReservation && <section className="form-card detail-card full-card execution-credit-card"><div className="card-heading"><div><h2>Estimativa de créditos</h2><p>A reserva não é uma cobrança: ela protege um limite aproximado enquanto o trabalho é executado.</p></div><Coins size={20} /></div><div className="financial-summary-grid"><span><small>Limite protegido</small><strong>Até {execution.creditReservation.reservedCredits}</strong></span><span><small>Uso real</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em cálculo" : execution.creditReservation.consumedCredits}</strong></span><span><small>Saldo liberado</small><strong>{execution.creditReservation.status === "RESERVED" ? "Após concluir" : Math.max(0, execution.creditReservation.reservedCredits - execution.creditReservation.consumedCredits)}</strong></span><span><small>Situação</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em execução" : execution.creditReservation.status === "SETTLED" ? "Consumo calculado" : "Reserva liberada"}</strong></span></div><p className="execution-credit-explanation">{creditEstimateExplanation(execution.creditReservation)} Ao concluir, somente o uso real é cobrado e todo o restante fica disponível novamente.</p></section>}
+        {execution.creditReservation && <details className="form-card detail-card full-card execution-collapsible execution-detail-accordion-item execution-credit-card" name={detailAccordionName}><summary className="execution-collapsible-header"><Coins size={19} /><span><strong>Créditos da execução</strong><small>Reserva, uso real e saldo liberado</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary><div className="execution-collapsible-content execution-detail-accordion-body"><div className="financial-summary-grid"><span><small>Limite protegido</small><strong>Até {execution.creditReservation.reservedCredits}</strong></span><span><small>Uso real</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em cálculo" : execution.creditReservation.consumedCredits}</strong></span><span><small>Saldo liberado</small><strong>{execution.creditReservation.status === "RESERVED" ? "Após concluir" : Math.max(0, execution.creditReservation.reservedCredits - execution.creditReservation.consumedCredits)}</strong></span><span><small>Situação</small><strong>{execution.creditReservation.status === "RESERVED" ? "Em execução" : execution.creditReservation.status === "SETTLED" ? "Consumo calculado" : "Reserva liberada"}</strong></span></div><p className="execution-credit-explanation">{creditEstimateExplanation(execution.creditReservation)} Ao concluir, somente o uso real é cobrado e todo o restante fica disponível novamente.</p></div></details>}
 
-        {execution.demand.type === "DOCUMENTATION" && execution.summary && <section className="form-card detail-card full-card documentation-download-card">
-          <div className="card-heading"><div><h2>Documentação de negócio</h2><p>Arquivos formatados para compartilhar, apresentar ou arquivar.</p></div><FileText size={20} /></div>
+        {execution.demand.type === "DOCUMENTATION" && execution.summary && <details className="form-card detail-card full-card execution-collapsible execution-detail-accordion-item documentation-download-card" name={detailAccordionName}>
+          <summary className="execution-collapsible-header"><FileText size={19} /><span><strong>Documentação de negócio</strong><small>Arquivos prontos para baixar</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
+          <div className="execution-collapsible-content execution-detail-accordion-body">
           <div className="documentation-download-actions">
             <a href={`/api/executions/${execution.id}/documentation/docx`}><Download size={16} /><span><strong>Baixar DOCX</strong><small>Editável no Word e aplicativos compatíveis</small></span></a>
             <a href={`/api/executions/${execution.id}/documentation/pdf`}><Download size={16} /><span><strong>Baixar PDF</strong><small>Pronto para apresentação e compartilhamento</small></span></a>
           </div>
-        </section>}
+          </div>
+        </details>}
 
-        {execution.demand.type !== "DOCUMENTATION" && <EvidenceCard artifacts={execution.artifacts} />}
+        {execution.demand.type !== "DOCUMENTATION" && <EvidenceCard accordionName={detailAccordionName} artifacts={execution.artifacts} />}
 
-        <details className="form-card detail-card full-card execution-collapsible execution-diff-card">
+        <details className="form-card detail-card full-card execution-collapsible execution-diff-card execution-detail-accordion-item" name={detailAccordionName}>
           <summary className="execution-collapsible-header"><Code2 size={19} /><span><strong>Diff para revisão</strong><small>{diff?.content ? "Alterações exatas geradas antes da abertura do Pull Request" : "Disponível após as validações"}</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
           <div className="execution-collapsible-content">{diff?.content ? <DiffViewer content={diff.content} /> : <div className="list-empty">O diff ficará disponível após as validações.</div>}</div>
         </details>

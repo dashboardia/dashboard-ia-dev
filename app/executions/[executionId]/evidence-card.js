@@ -4,7 +4,7 @@ import { ChevronDown, Download, Images, Maximize2, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
-export default function EvidenceCard({ artifacts }) {
+export default function EvidenceCard({ artifacts, accordionName }) {
   const visuals = artifacts.filter((artifact) => artifact.type === "visual");
   const [selected, setSelected] = useState(null);
 
@@ -22,7 +22,7 @@ export default function EvidenceCard({ artifacts }) {
   if (!visuals.length) return null;
 
   return <>
-    <details className="form-card detail-card full-card execution-collapsible execution-evidence-card" open>
+    <details className="form-card detail-card full-card execution-collapsible execution-evidence-card execution-detail-accordion-item" name={accordionName}>
       <summary className="execution-collapsible-header"><Images size={19} /><span><strong>Prévia visual</strong><small>{visuals.length} captura{visuals.length === 1 ? "" : "s"} da implementação em desktop e celular</small></span><ChevronDown className="execution-collapsible-chevron" size={18} /></summary>
       <div className="execution-collapsible-content execution-evidence-content">
         <div className="execution-screenshot-grid">{visuals.map((artifact) => {
