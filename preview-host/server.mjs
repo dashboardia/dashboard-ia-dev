@@ -31,7 +31,7 @@ import { verifyOrCreateDemoAccess } from "./demo-verification.mjs";
 import { applyKnownRuntimeRepairs } from "./runtime-repairs.mjs";
 import { ensureRustToolchainVersion } from "./railpack.mjs";
 import { expectedRepositoryPaths, normalizeExtractedRepository } from "./archive.mjs";
-import { interruptedBuildRecoveryDecision } from "./interrupted-build-recovery.mjs";
+import { interruptedBuildRecoveryDecision, nextReadyFailure } from "./interrupted-build-recovery.mjs";
 
 const execFile = promisify(execFileCallback);
 const port = Number(process.env.PORT || 8080);
@@ -48,9 +48,11 @@ const maxParallelBuilds = Math.max(1, Math.min(8, Number(process.env.PREVIEW_MAX
 const allowOutboundNetwork = String(process.env.PREVIEW_ALLOW_OUTBOUND_NETWORK || "true").toLowerCase() !== "false";
 const proxyTimeoutMs = Math.max(10, Number(process.env.PREVIEW_PROXY_TIMEOUT_SECONDS || 60)) * 1_000;
 const readyHealthCheckIntervalMs = 15_000;
-const readyFailureThreshold = 2;
+const readyFailureThreshold = 3;
+const readyFailureGraceMs = Math.max(15, Number(process.env.PREVIEW_READY_FAILURE_GRACE_SECONDS || 30)) * 1_000;
 const buildQueue = [];
 const failingReadyPreviews = new Set();
+const recoveringReadyPreviews = new Set();
 const readyFailureCounts = new Map();
 let activeBuilds = 0;
 
@@ -148,6 +150,12 @@ async function previewRuntimeLogs(id) {
   return `${logs.stdout || ""}${logs.stderr || ""}`.trim().slice(-12_000);
 }
 
+function clearReadyFailures(id) {
+  for (const key of readyFailureCounts.keys()) {
+    if (key.startsWith(`${id}:`)) readyFailureCounts.delete(key);
+  }
+}
+
 async function markReadyPreviewFailed(id, { failureClass = "APPLICATION", message, diagnostic = "" }) {
   if (failingReadyPreviews.has(id)) return;
   failingReadyPreviews.add(id);
@@ -172,9 +180,7 @@ async function markReadyPreviewFailed(id, { failureClass = "APPLICATION", messag
     await failActivity(id, "O ambiente deixou de responder; o erro foi disponibilizado para uma nova tentativa com IA").catch(() => null);
     await removeRuntime(id);
   } finally {
-    for (const key of readyFailureCounts.keys()) {
-      if (key.startsWith(`${id}:`)) readyFailureCounts.delete(key);
-    }
+    clearReadyFailures(id);
     failingReadyPreviews.delete(id);
   }
 }
@@ -183,18 +189,58 @@ async function recordReadyFailure(id, field, failure) {
   const state = await readState(id).catch(() => null);
   if (!state || state.status !== "READY") return;
   const key = `${id}:${field}`;
-  const failures = Number(readyFailureCounts.get(key) || 0) + 1;
-  readyFailureCounts.set(key, failures);
-  if (failures < readyFailureThreshold) return;
-  await markReadyPreviewFailed(id, {
-    failureClass: "APPLICATION",
-    message: "O processo do projeto deixou de responder depois que o ambiente já estava disponível.",
-    diagnostic: String(failure?.message || failure || "Falha de comunicação com a aplicação").slice(-4_000),
+  const decision = nextReadyFailure(readyFailureCounts.get(key), Date.now(), {
+    threshold: readyFailureThreshold,
+    graceMs: readyFailureGraceMs,
   });
+  readyFailureCounts.set(key, decision.record);
+  if (!decision.shouldRecover) return;
+  recoverReadyPreview(id, failure).catch(console.error);
 }
 
 async function clearReadyFailure(id, field) {
   readyFailureCounts.delete(`${id}:${field}`);
+}
+
+async function recoverReadyPreview(id, failure) {
+  if (recoveringReadyPreviews.has(id) || failingReadyPreviews.has(id)) return;
+  recoveringReadyPreviews.add(id);
+  try {
+    const state = await readState(id).catch(() => null);
+    if (!state || state.status !== "READY") return;
+    const runtime = await inspectPreviewRuntime(id);
+    if (!runtime) {
+      await markReadyPreviewFailed(id, {
+        failureClass: "INFRASTRUCTURE",
+        message: "O ambiente deixou de responder e o container não foi encontrado para recuperação.",
+        diagnostic: String(failure?.message || failure || "Container ausente").slice(-4_000),
+      });
+      return;
+    }
+
+    await recordActivity(id, "recovering-ready", "A aplicação oscilou; reiniciando automaticamente o mesmo ambiente");
+    try {
+      await docker(["restart", previewContainerName(id)], 60_000);
+      const entryPath = await waitUntilReady(id, state.port, 90_000);
+      await patchState(id, {
+        status: "READY",
+        entryPath,
+        url: `https://${id}.${baseDomain}`,
+        stoppedAt: null,
+        error: null,
+      });
+      await recordActivity(id, "ready", "Ambiente recuperado automaticamente e pronto para uso", "COMPLETED");
+      clearReadyFailures(id);
+    } catch (recoveryError) {
+      await markReadyPreviewFailed(id, {
+        failureClass: "APPLICATION",
+        message: "A aplicação parou de responder e não voltou após a reinicialização automática do container.",
+        diagnostic: dockerErrorText(recoveryError).slice(-4_000),
+      });
+    }
+  } finally {
+    recoveringReadyPreviews.delete(id);
+  }
 }
 
 async function checkReadyRuntime(id, state) {
@@ -718,7 +764,6 @@ async function proxyPreview(request, response, state) {
     path: previewUpstreamPath(request.url, state.entryPath),
     headers: upstreamHeaders,
   }, (upstreamResponse) => {
-    clearReadyFailure(state.id, "proxyFailureCount").catch(console.error);
     const contentType = String(upstreamResponse.headers["content-type"] || "");
     const encoded = Boolean(upstreamResponse.headers["content-encoding"]);
     if (!rewriteOpenApi || !/json/i.test(contentType) || encoded) {
@@ -743,8 +788,7 @@ async function proxyPreview(request, response, state) {
     });
   });
   upstream.setTimeout(proxyTimeoutMs, () => upstream.destroy(new Error(`A aplicação não respondeu em ${Math.round(proxyTimeoutMs / 1_000)} segundos`)));
-  upstream.on("error", (error) => {
-    recordReadyFailure(state.id, "proxyFailureCount", error).catch(console.error);
+  upstream.on("error", () => {
     if (!response.headersSent) sendJson(response, 502, { error: "O container temporário não respondeu" });
     else response.destroy();
   });

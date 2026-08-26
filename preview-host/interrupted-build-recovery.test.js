@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { interruptedBuildRecoveryDecision } from "./interrupted-build-recovery.mjs";
+import { interruptedBuildRecoveryDecision, nextReadyFailure } from "./interrupted-build-recovery.mjs";
 
 const configuration = {
   runtime: "NODE",
@@ -30,4 +30,18 @@ test("ignora ambientes que não estavam em publicação", () => {
     interruptedBuildRecoveryDecision({ status: "READY", recoveryConfiguration: configuration }, true),
     { action: "IGNORE" },
   );
+});
+
+test("não encerra um preview por falhas transitórias concentradas em poucos segundos", () => {
+  const first = nextReadyFailure(null, 1_000, { threshold: 3, graceMs: 30_000 });
+  const second = nextReadyFailure(first.record, 2_000, { threshold: 3, graceMs: 30_000 });
+  const third = nextReadyFailure(second.record, 3_000, { threshold: 3, graceMs: 30_000 });
+  assert.equal(third.shouldRecover, false);
+});
+
+test("aciona a recuperação somente após falhas persistentes", () => {
+  const first = nextReadyFailure(null, 1_000, { threshold: 3, graceMs: 30_000 });
+  const second = nextReadyFailure(first.record, 16_000, { threshold: 3, graceMs: 30_000 });
+  const third = nextReadyFailure(second.record, 31_000, { threshold: 3, graceMs: 30_000 });
+  assert.equal(third.shouldRecover, true);
 });

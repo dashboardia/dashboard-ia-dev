@@ -16,6 +16,7 @@ services:
       PREVIEW_MAX_PARALLEL_BUILDS: ${PREVIEW_MAX_PARALLEL_BUILDS:-2}
       PREVIEW_ALLOW_OUTBOUND_NETWORK: ${PREVIEW_ALLOW_OUTBOUND_NETWORK:-true}
       PREVIEW_PROXY_TIMEOUT_SECONDS: ${PREVIEW_PROXY_TIMEOUT_SECONDS:-60}
+      PREVIEW_READY_FAILURE_GRACE_SECONDS: ${PREVIEW_READY_FAILURE_GRACE_SECONDS:-30}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - preview-data:/var/lib/dashboardia-previews
