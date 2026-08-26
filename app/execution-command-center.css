@@ -42,7 +42,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--execution-rail-width);
   gap: 10px;
-  align-items: stretch;
+  align-items: start;
   transition: grid-template-columns .24s ease;
 }
 
@@ -64,8 +64,8 @@
 .execution-command-layout > .execution-side-panel {
   position: sticky;
   top: 74px;
-  height: calc(100dvh - 92px);
-  min-height: 520px;
+  height: auto;
+  min-height: 0;
   padding: 0;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--purple) 28%, var(--line));
@@ -75,8 +75,15 @@
 }
 
 .execution-command-layout > .execution-side-panel[open] {
+  position: relative;
+  top: auto;
   display: flex;
   flex-direction: column;
+}
+
+.execution-command-layout > .execution-side-panel:not([open]) {
+  height: calc(100dvh - 92px);
+  min-height: 520px;
 }
 
 .execution-command-layout > .execution-side-panel > summary {
@@ -167,16 +174,13 @@
 .execution-command-layout > .execution-side-panel > .execution-detail-disclosure-content {
   min-height: 0;
   height: auto;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   box-sizing: border-box;
   padding: 12px;
   display: grid;
   align-content: start;
   gap: 10px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  overflow: visible;
   border-top: 1px solid var(--line);
 }
 
@@ -487,10 +491,15 @@
     overflow: hidden;
   }
 
-  .execution-command-layout > .execution-side-panel {
+  .execution-command-layout > .execution-side-panel:not([open]) {
     top: 8px;
     height: calc(100dvh - 16px);
     min-height: 460px;
+  }
+
+  .execution-command-layout > .execution-side-panel[open] {
+    height: auto;
+    min-height: 0;
   }
 
   .execution-command-layout > .execution-side-panel:not([open]) > summary {
