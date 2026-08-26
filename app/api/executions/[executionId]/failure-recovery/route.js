@@ -9,6 +9,8 @@ import { isExecutionCreditBlocked } from "../../../../../lib/execution-credit-st
 import { isGitHubAuthorizationFailure } from "../../../../../lib/github-authorization-recovery";
 import { getGlobalSettings } from "../../../../../lib/global-settings";
 import {
+  MAX_APPLICATION_REPAIR_ATTEMPTS_PER_EXECUTION,
+  applicationRepairAttemptCount,
   automaticApplicationRepairCount,
   previewRepairConsentRequired,
   rawPreviewRepairError,
@@ -49,13 +51,17 @@ export async function GET(_request, context) {
         marginPercent: settings.creditBalanceSafetyMarginPercent,
       });
       const hasCredits = !creditBudget || creditBudget.hardLimitCredits > 0;
+      const repairAttemptCount = applicationRepairAttemptCount(execution.logs);
+      const repairLimitReached = repairAttemptCount >= MAX_APPLICATION_REPAIR_ATTEMPTS_PER_EXECUTION;
       const technical = redactSensitiveData(rawPreviewRepairError(previewEnvironment.error)).slice(-8_000);
       return NextResponse.json({
         required: true,
         kind: "PREVIEW_REPAIR_CONSENT",
         title: "O ambiente ainda precisa de uma correção",
         message: "A versão navegável ainda não ficou pronta. Você pode enviar o erro completo para a IA revisar o código, as dependências e a configuração de inicialização, mesmo quando a origem da falha não estiver clara.",
-        action: hasCredits
+        action: repairLimitReached
+          ? "O limite de segurança foi atingido; nenhuma nova chamada de IA será iniciada para esta execução."
+          : hasCredits
           ? "Deseja continuar tentando nesta mesma execução?"
           : "Adicione créditos para continuar esta mesma execução.",
         continuationPrompt: [
@@ -65,10 +71,12 @@ export async function GET(_request, context) {
           "Se houver uma correção possível no projeto, aplique-a e deixe a aplicação compatível com o ambiente de preview. Se a evidência apontar exclusivamente para infraestrutura externa, não invente alterações: explique isso objetivamente para o cliente.",
           `Erro mais recente do ambiente:\n${technical}`,
         ].join("\n\n"),
-        canContinue: hasCredits,
-        blockedReason: !hasCredits ? "CREDITS" : null,
+        canContinue: hasCredits && !repairLimitReached,
+        blockedReason: repairLimitReached ? "REPAIR_LIMIT" : !hasCredits ? "CREDITS" : null,
         billingUrl: `/billing?returnTo=${encodeURIComponent(`/executions/${executionId}`)}#credit-packs`,
         automaticRepairCount: automaticApplicationRepairCount(execution.logs),
+        repairAttemptCount,
+        maxRepairAttempts: MAX_APPLICATION_REPAIR_ATTEMPTS_PER_EXECUTION,
         adjustmentCount: execution.adjustmentCount,
         maxAdjustments: settings.executionConversationMaxAdjustments,
       }, { headers: { "Cache-Control": "no-store" } });

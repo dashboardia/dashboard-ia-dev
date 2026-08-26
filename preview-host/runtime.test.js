@@ -148,7 +148,7 @@ test("instala dependências Python do monorepo em ambiente virtual", () => {
   assert.match(result, /pip install -r requirements\.txt/);
   assert.match(result, /uvicorn main:app --host 0\.0\.0\.0 --port 8000/);
   assert.match(result, /auxiliary_pid=\$!/);
-  assert.match(result, /npm --prefix frontend run dev/);
+  assert.match(result, /npm --ignore-scripts --prefix frontend run dev/);
 });
 
 test("instala Maven e JDK no monorepo Java com frontend Node", () => {

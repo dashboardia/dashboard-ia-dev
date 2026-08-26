@@ -97,8 +97,10 @@ async function requestApplicationRepairConsent(preview, execution, database, {
             : "A origem da falha não ficou clara. Mesmo assim, você pode pedir para a IA revisar o código, as dependências e a configuração de inicialização antes de uma nova publicação.",
           reason === "insufficient-credits"
             ? "A próxima correção não foi iniciada porque não há créditos disponíveis."
-            : reason === "automatic-repair-limit"
-              ? `As ${MAX_AUTOMATIC_APPLICATION_REPAIRS} tentativas automáticas deste ciclo terminaram. Um novo ciclo de até ${MAX_AUTOMATIC_APPLICATION_REPAIRS} tentativas só será iniciado após sua confirmação.`
+            : reason === "execution-repair-limit"
+              ? `O limite global de ${MAX_AUTOMATIC_APPLICATION_REPAIRS} reparos com IA desta execução foi atingido. Novas confirmações não reiniciarão esse contador.`
+              : reason === "repeated-failure-without-code-change"
+                ? "O mesmo erro reapareceu sem qualquer alteração no commit da aplicação. A IA não será chamada novamente sem uma nova evidência técnica."
               : "O Dashboardia interrompeu novas tentativas automáticas, mas deixou disponível a opção de enviar o erro completo para análise da IA.",
           "A branch, o Pull Request e todo o histórico permanecem preservados.",
         ].join("\n\n"),
@@ -129,8 +131,8 @@ async function requestApplicationRepairConsent(preview, execution, database, {
 }
 
 async function queueAutomaticCorrection(preview, settings, database, execution, failureSignature, failureClass = "APPLICATION") {
-  const decision = applicationRepairDecision({ logs: execution.logs });
-  if (decision.action === "REQUEST_CONSENT") {
+  const decision = applicationRepairDecision({ logs: execution.logs, failureSignature, headSha: execution.headSha });
+  if (decision.action !== "AUTO_REPAIR") {
     await requestApplicationRepairConsent(preview, execution, database, {
       automaticRepairCount: decision.automaticRepairCount,
       failureClass,
@@ -191,6 +193,7 @@ async function queueAutomaticCorrection(preview, settings, database, execution, 
           previewAiRepair: true,
           failureClass,
           failureSignature,
+          headSha: execution.headSha,
           automaticRepairNumber: repairNumber,
           previewEnvironmentId: preview.id,
           technical: redactSensitiveData(String(preview.error || "")).slice(-4_000),

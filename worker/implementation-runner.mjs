@@ -165,6 +165,7 @@ process.on("message", async (message) => {
       const prompt = `${basePrompt}${visualContext}${attachmentContext ? `\n\n${attachmentContext}` : ""}`;
       let result;
       let budgetExceeded = false;
+      let usageLimitExceeded = false;
       let usageRecorded = false;
 
       try {
@@ -175,28 +176,44 @@ process.on("message", async (message) => {
         });
 
         for await (const _event of result) {
-          if (message.creditBudget == null || !message.creditCostPolicy) continue;
           const currentUsage = usageOf(result);
-          const consumedCredits = calculateLiveUsageCredits({
-            ...message.creditCostPolicy,
-            inputTokens: totalInputTokens + currentUsage.inputTokens,
-            outputTokens: totalOutputTokens + currentUsage.outputTokens,
-          });
-          if (consumedCredits > message.creditBudget) {
-            budgetExceeded = true;
+          const measuredTokens = totalInputTokens + totalOutputTokens + currentUsage.inputTokens + currentUsage.outputTokens;
+          if (message.policy?.maxMeasuredTokens && measuredTokens > message.policy.maxMeasuredTokens) {
+            usageLimitExceeded = true;
             controller.abort();
             break;
+          }
+          if (message.creditBudget != null && message.creditCostPolicy) {
+            const consumedCredits = calculateLiveUsageCredits({
+              ...message.creditCostPolicy,
+              inputTokens: totalInputTokens + currentUsage.inputTokens,
+              outputTokens: totalOutputTokens + currentUsage.outputTokens,
+            });
+            if (consumedCredits > message.creditBudget) {
+              budgetExceeded = true;
+              controller.abort();
+              break;
+            }
           }
         }
 
         await result.completed.catch((error) => {
-          if (!budgetExceeded) throw error;
+          if (!budgetExceeded && !usageLimitExceeded) throw error;
         });
 
         const currentUsage = usageOf(result);
         totalInputTokens += currentUsage.inputTokens;
         totalOutputTokens += currentUsage.outputTokens;
         usageRecorded = true;
+
+        if (usageLimitExceeded) {
+          const usageError = new Error(`A chamada atingiu o limite de segurança de ${message.policy.maxMeasuredTokens} tokens medidos.`);
+          usageError.name = "AgentUsageLimitExceededError";
+          usageError.code = "AGENT_USAGE_LIMIT_EXCEEDED";
+          usageError.inputTokens = totalInputTokens;
+          usageError.outputTokens = totalOutputTokens;
+          throw usageError;
+        }
 
         if (budgetExceeded) {
           await preparedWorkspaceAttachments.cleanup().catch(() => null);

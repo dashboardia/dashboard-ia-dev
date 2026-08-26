@@ -1,10 +1,14 @@
 import { createHash } from "node:crypto";
-import { applicationRepairCycleCount, automaticApplicationRepairCount } from "../lib/preview-repair-consent.js";
+import {
+  MAX_APPLICATION_REPAIR_ATTEMPTS_PER_EXECUTION,
+  applicationRepairAttemptCount,
+  automaticApplicationRepairCount,
+} from "../lib/preview-repair-consent.js";
 
 export { automaticApplicationRepairCount } from "../lib/preview-repair-consent.js";
 
 export const MAX_FREE_INFRASTRUCTURE_PREVIEW_ATTEMPTS = 3;
-export const MAX_AUTOMATIC_APPLICATION_REPAIRS = 3;
+export const MAX_AUTOMATIC_APPLICATION_REPAIRS = MAX_APPLICATION_REPAIR_ATTEMPTS_PER_EXECUTION;
 const MINIMUM_CONVERSATION_TIMEOUT_MINUTES = 24 * 60;
 
 const CIRCUIT_PREFIX = "[PREVIEW_CIRCUIT_OPEN]";
@@ -145,17 +149,26 @@ export function previewCircuitOpenError(error) {
   return `${CIRCUIT_PREFIX} ${rawFailure(error)}`;
 }
 
-export function applicationRepairDecision({ logs = [] } = {}) {
+export function applicationRepairDecision({ logs = [], failureSignature = null, headSha = null } = {}) {
   const automaticRepairCount = automaticApplicationRepairCount(logs);
-  const repairCycleCount = applicationRepairCycleCount(logs);
-  const automaticRepairLimitReached = repairCycleCount >= MAX_AUTOMATIC_APPLICATION_REPAIRS;
+  const repairAttemptCount = applicationRepairAttemptCount(logs);
+  const repeatedWithoutCodeChange = Boolean(failureSignature && headSha && logs.some((entry) => {
+    const metadata = entry?.metadata;
+    return metadata?.aiInvoked === true
+      && metadata?.previewAiRepair === true
+      && metadata?.failureSignature === failureSignature
+      && metadata?.headSha === headSha;
+  }));
+  const automaticRepairLimitReached = repairAttemptCount >= MAX_AUTOMATIC_APPLICATION_REPAIRS;
   return {
-    action: automaticRepairLimitReached ? "REQUEST_CONSENT" : "AUTO_REPAIR",
+    action: automaticRepairLimitReached || repeatedWithoutCodeChange ? "STOP_REPAIR" : "AUTO_REPAIR",
     automaticRepairCount,
-    repairCycleCount,
-    repairNumber: repairCycleCount + 1,
-    reason: automaticRepairLimitReached
-      ? "automatic-repair-limit"
+    repairAttemptCount,
+    repairNumber: repairAttemptCount + 1,
+    reason: repeatedWithoutCodeChange
+      ? "repeated-failure-without-code-change"
+      : automaticRepairLimitReached
+        ? "execution-repair-limit"
       : "within-automatic-limit",
   };
 }

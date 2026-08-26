@@ -27,10 +27,12 @@ import { repositoryHasUsableProject } from "../lib/repository-content.js";
 import { getPrivateObject } from "../lib/visual-storage.js";
 import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
 import { parseAgentOutcome } from "./agent-outcome.mjs";
+import { buildExecutionAgentContext, isAutomaticPreviewRepairMessage } from "./execution-agent-context.mjs";
 import { remoteFetchRefspec, remoteTrackingRef } from "./git-refs.mjs";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 const MAX_AUTOMATIC_VALIDATION_REPAIRS = 3;
+const MAX_REPAIR_MEASURED_TOKENS = 120_000;
 
 class ExecutionCancelledError extends Error {
   constructor() {
@@ -230,6 +232,19 @@ export async function processExecution(executionId, workerId) {
       runOutputTokens += addedOutputTokens;
       measuredUsage = { inputTokens, outputTokens };
     };
+    const recordMeasuredUsage = async (usage, callKind, attempt) => {
+      const callInputTokens = Math.max(0, Number(usage?.inputTokens) || 0);
+      const callOutputTokens = Math.max(0, Number(usage?.outputTokens) || 0);
+      addMeasuredUsage(usage);
+      await log(executionId, "agent-usage", "Consumo individual da chamada de IA registrado", "info", {
+        model: execution.model ?? null,
+        callKind,
+        attempt,
+        inputTokens: callInputTokens,
+        outputTokens: callOutputTokens,
+        totalTokens: callInputTokens + callOutputTokens,
+      }).catch(() => null);
+    };
     if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada no worker");
     await mkdir(workspaceRoot, { recursive: true });
     await cleanWorkspace(workspace);
@@ -305,12 +320,23 @@ export async function processExecution(executionId, workerId) {
     }
 
     let abortReason = null;
-    const agentPolicy = resolveAgentRunPolicy({
+    const latestUserMessage = [...execution.messages].reverse().find((message) => message.role === "USER");
+    const previewRepairRun = isAutomaticPreviewRepairMessage(latestUserMessage);
+    const resolvedAgentPolicy = resolveAgentRunPolicy({
       demand: execution.demand,
       model: selectedModel,
       configuredTimeoutMinutes: settings.agentTimeoutMinutes,
       powerMode: settings.agentPowerMode,
     });
+    const agentPolicy = previewRepairRun
+      ? {
+          ...resolvedAgentPolicy,
+          maxTurns: Math.min(resolvedAgentPolicy.maxTurns, 10),
+          maxTokens: Math.min(resolvedAgentPolicy.maxTokens, 8_000),
+          maxSegments: 1,
+          maxMeasuredTokens: MAX_REPAIR_MEASURED_TOKENS,
+        }
+      : resolvedAgentPolicy;
     const creditBudgetContext = await getExecutionCreditBudget(db, {
       executionId,
       marginPercent: settings.creditBalanceSafetyMarginPercent,
@@ -327,10 +353,18 @@ export async function processExecution(executionId, workerId) {
       creditValueCents: settings.creditValueCents,
       targetGrossMarginPercent: settings.targetGrossMarginPercent,
     } : null;
-    const conversationContext = isFollowUp || isClarificationFollowUp
-      ? execution.messages.map((message) => `${message.role === "USER" ? "Cliente" : message.role === "AGENT" ? "Agente" : "Sistema"}: ${message.content}${message.attachments.length ? `\nAnexos: ${message.attachments.map((attachment) => attachment.name).join(", ")}` : ""}`).join("\n\n")
-      : "";
-    const latestUserMessage = [...execution.messages].reverse().find((message) => message.role === "USER");
+    const compactContext = isFollowUp || isClarificationFollowUp
+      ? buildExecutionAgentContext(execution.messages)
+      : { text: "", characters: 0, includedMessages: 0, omittedMessages: 0 };
+    const conversationContext = compactContext.text;
+    if (isFollowUp || isClarificationFollowUp) {
+      await log(executionId, "agent", "Contexto da conversa compactado antes da chamada de IA", "info", {
+        characters: compactContext.characters,
+        includedMessages: compactContext.includedMessages,
+        omittedMessages: compactContext.omittedMessages,
+        previewRepairRun,
+      });
+    }
     const agentAttachments = latestUserMessage?.attachments.length
       ? await Promise.all(latestUserMessage.attachments.map(async (attachment) => {
           const object = await getPrivateObject(attachment.storageKey);
@@ -348,26 +382,37 @@ export async function processExecution(executionId, workerId) {
           "Aplique o ajuste solicitado pelo cliente preservando todas as decisões e alterações anteriores.",
           "Não recrie o projeto nem reverta trabalho válido. Inspecione o estado atual antes de editar.",
           buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions),
-          `Interações desta execução:\n${conversationContext}`,
+          `Contexto recente e compactado desta execução:\n${conversationContext}`,
         ].join("\n\n")
       : isClarificationFollowUp
         ? [
             "Continue a demanda após o cliente responder às perguntas de esclarecimento.",
             "Use as respostas da conversa como requisitos adicionais e implemente agora uma versão funcional. Preserve o escopo original e não repita perguntas que já foram respondidas.",
             buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions),
-            `Interações desta execução:\n${conversationContext}`,
+            `Contexto recente e compactado desta execução:\n${conversationContext}`,
           ].join("\n\n")
       : buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions);
-    const createImplementationAgent = () => startImplementationAgent({
-      projectDirectory,
-      prompt: agentPrompt,
-      attachments: agentAttachments,
-      model: selectedModel,
-      policy: agentPolicy,
-      creditBudget,
-      creditBudgetContext,
-      creditCostPolicy,
-    });
+    const createImplementationAgent = () => {
+      const remainingRepairTokens = previewRepairRun
+        ? MAX_REPAIR_MEASURED_TOKENS - runInputTokens - runOutputTokens
+        : null;
+      if (remainingRepairTokens != null && remainingRepairTokens <= 0) {
+        const error = new Error(`O reparo atingiu o limite de segurança de ${MAX_REPAIR_MEASURED_TOKENS} tokens medidos.`);
+        error.name = "AgentUsageLimitExceededError";
+        error.code = "AGENT_USAGE_LIMIT_EXCEEDED";
+        throw error;
+      }
+      return startImplementationAgent({
+        projectDirectory,
+        prompt: agentPrompt,
+        attachments: agentAttachments,
+        model: selectedModel,
+        policy: remainingRepairTokens == null ? agentPolicy : { ...agentPolicy, maxMeasuredTokens: remainingRepairTokens },
+        creditBudget,
+        creditBudgetContext,
+        creditCostPolicy,
+      });
+    };
     let implementationAgent = createImplementationAgent();
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
@@ -401,11 +446,11 @@ export async function processExecution(executionId, workerId) {
           const result = await implementationAgent.promise;
           agentOutcome = parseAgentOutcome(result.summary);
           summary = agentOutcome.message;
-          addMeasuredUsage(result);
+          await recordMeasuredUsage(result, previewRepairRun ? "PREVIEW_REPAIR" : "IMPLEMENTATION", attempt);
           break;
         } catch (error) {
           if (error?.inputTokens != null && error?.outputTokens != null) {
-            addMeasuredUsage(error);
+            await recordMeasuredUsage(error, previewRepairRun ? "PREVIEW_REPAIR" : "IMPLEMENTATION", attempt);
           }
           if (abortReason === "stopped") throw new ExecutionStoppedError();
           if (abortReason === "cancelled") throw new ExecutionCancelledError();
@@ -522,7 +567,8 @@ export async function processExecution(executionId, workerId) {
     execution.demand.project = { ...savedProject, ...resolvedProject };
     let validationResult = await runValidations(execution, workspace, settings);
     if (!validationResult.passed) {
-      for (let repairAttempt = 1; repairAttempt <= MAX_AUTOMATIC_VALIDATION_REPAIRS && !validationResult.passed; repairAttempt += 1) {
+      const validationRepairLimit = previewRepairRun ? 0 : MAX_AUTOMATIC_VALIDATION_REPAIRS;
+      for (let repairAttempt = 1; repairAttempt <= validationRepairLimit && !validationResult.passed; repairAttempt += 1) {
         const consumedBeforeRepair = creditCostPolicy
           ? calculateLiveUsageCredits({ ...creditCostPolicy, inputTokens: runInputTokens, outputTokens: runOutputTokens })
           : 0;
@@ -543,8 +589,10 @@ export async function processExecution(executionId, workerId) {
         });
         const repairPolicy = {
           ...agentPolicy,
-          maxTurns: Math.min(agentPolicy.maxTurns, 24),
-          maxTokens: Math.min(agentPolicy.maxTokens, 20_000),
+          maxTurns: Math.min(agentPolicy.maxTurns, 10),
+          maxTokens: Math.min(agentPolicy.maxTokens, 8_000),
+          maxSegments: 1,
+          maxMeasuredTokens: MAX_REPAIR_MEASURED_TOKENS,
           timeoutMinutes: Math.min(agentPolicy.timeoutMinutes, 10),
         };
         const repairAgent = startImplementationAgent({
@@ -568,10 +616,12 @@ export async function processExecution(executionId, workerId) {
         let repairCompleted = false;
         try {
           const repairResult = await repairAgent.promise;
-          addMeasuredUsage(repairResult);
+          await recordMeasuredUsage(repairResult, "VALIDATION_REPAIR", repairAttempt);
           repairCompleted = true;
         } catch (repairError) {
-          if (repairError?.inputTokens != null && repairError?.outputTokens != null) addMeasuredUsage(repairError);
+          if (repairError?.inputTokens != null && repairError?.outputTokens != null) {
+            await recordMeasuredUsage(repairError, "VALIDATION_REPAIR", repairAttempt);
+          }
           await cleanValidationArtifacts(projectDirectory);
           await restoreImplementationSnapshot(workspace, implementationHead);
           await log(executionId, "validation", `A correção automática ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS} não foi concluída; o worker seguirá com o último estado válido`, "warn", {

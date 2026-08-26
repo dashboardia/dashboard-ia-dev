@@ -11,7 +11,11 @@ import { db } from "../../../../../lib/db";
 import { executionControlState } from "../../../../../lib/execution-control-state";
 import { clientInteractionRequeueData } from "../../../../../lib/executions";
 import { getGlobalSettings } from "../../../../../lib/global-settings";
-import { previewRepairConsentRequired, rawPreviewRepairError } from "../../../../../lib/preview-repair-consent";
+import {
+  previewRepairConsentRequired,
+  previewRepairLimitReached,
+  rawPreviewRepairError,
+} from "../../../../../lib/preview-repair-consent";
 import { redactSensitiveData } from "../../../../../lib/redaction";
 import { executionMessageInputSchema } from "../../../../../lib/validation";
 import { deletePrivateObject, putPrivateObject } from "../../../../../lib/visual-storage";
@@ -43,7 +47,12 @@ export async function POST(request, context) {
     const input = executionMessageInputSchema.parse({ content: String(formData.get("content") ?? "").trim() || fallbackContent });
     const execution = await db.execution.findUniqueOrThrow({
       where: { id: executionId },
-      include: { demand: true, pullRequest: true, previewEnvironment: true },
+      include: {
+        demand: true,
+        pullRequest: true,
+        previewEnvironment: true,
+        logs: { where: { scope: "preview" }, orderBy: { createdAt: "desc" }, select: { metadata: true } },
+      },
     });
     const { user } = await requireProjectRole(execution.demand.projectId, "MANAGER");
     const settings = await getGlobalSettings();
@@ -62,6 +71,14 @@ export async function POST(request, context) {
       throw new BillingAccessError("Não há saldo disponível para processar este ajuste. Adicione créditos e tente novamente.", 402, "INSUFFICIENT_CREDITS");
     }
 
+    const continuationDescription = recoveryDemandDescription(execution, input.content);
+    const grantsPreviewRepairConsent = execution.status === "AWAITING_CLIENT"
+      && execution.previewEnvironment?.status === "FAILED"
+      && previewRepairConsentRequired(execution.previewEnvironment.error);
+    if (grantsPreviewRepairConsent && previewRepairLimitReached(execution.logs)) {
+      return NextResponse.json({ error: "O limite global de três reparos com IA desta execução foi atingido. Novas confirmações não reiniciam o contador." }, { status: 409 });
+    }
+
     const storedAttachments = [];
     for (const attachment of preparedAttachments) {
       const storageKey = `execution-messages/${executionId}/${randomUUID()}/${attachment.name}`;
@@ -71,10 +88,6 @@ export async function POST(request, context) {
       storedAttachments.push({ name: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.sizeBytes, storageKey });
     }
 
-    const continuationDescription = recoveryDemandDescription(execution, input.content);
-    const grantsPreviewRepairConsent = execution.status === "AWAITING_CLIENT"
-      && execution.previewEnvironment?.status === "FAILED"
-      && previewRepairConsentRequired(execution.previewEnvironment.error);
     const result = await db.$transaction(async (transaction) => {
       const interactionAt = new Date();
       const message = await transaction.executionMessage.create({
@@ -103,19 +116,21 @@ export async function POST(request, context) {
         data: { status: "QUEUED", ...(continuationDescription ? { description: continuationDescription } : {}) },
       });
       if (grantsPreviewRepairConsent) {
+        const pendingRepairMetadata = execution.logs.find((entry) => entry.metadata?.consentRequired === true)?.metadata;
         await transaction.executionLog.create({
           data: {
             executionId,
             scope: "preview",
             level: "info",
-            message: "O cliente autorizou um novo ciclo de até três tentativas de correção do ambiente com IA.",
+            message: "O cliente autorizou uma tentativa de correção do ambiente com IA.",
             metadata: {
               automatic: false,
               aiInvoked: true,
               previewAiRepair: true,
               failureClass: "UNKNOWN",
+              failureSignature: pendingRepairMetadata?.failureSignature ?? null,
+              headSha: execution.headSha ?? null,
               previewRepairConsentGranted: true,
-              repairCycleAttempt: 1,
               technical: redactSensitiveData(rawPreviewRepairError(execution.previewEnvironment.error)).slice(-4_000),
             },
           },

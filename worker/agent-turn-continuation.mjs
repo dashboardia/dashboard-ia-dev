@@ -7,6 +7,7 @@ export function isAgentTurnLimitError(error) {
 }
 
 export function maxTurnSegmentsForPolicy(policy = {}) {
+  if (Number.isInteger(policy.maxSegments) && policy.maxSegments > 0) return policy.maxSegments;
   if (policy.powerMode === "MAXIMUM") return 4;
   if (policy.scope === "COMPLEX") return 4;
   return 3;

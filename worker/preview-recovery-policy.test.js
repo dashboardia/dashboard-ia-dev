@@ -80,23 +80,41 @@ test("mantém falha de aplicação classificável quando aguarda consentimento",
   assert.equal(classifyPreviewFailure("[PREVIEW_REPAIR_CONSENT] Cannot find module 'express'"), "APPLICATION");
 });
 
-test("faz três correções de código por ciclo e pede consentimento antes do próximo bloco", () => {
-  const repairLog = { metadata: { automatic: true, aiInvoked: true, failureClass: "APPLICATION" } };
+test("faz no máximo três correções de código em toda a execução", () => {
+  const repairLog = { metadata: { automatic: true, aiInvoked: true, previewAiRepair: true, failureClass: "APPLICATION" } };
   assert.deepEqual(applicationRepairDecision({ logs: [] }), {
     action: "AUTO_REPAIR",
     automaticRepairCount: 0,
-    repairCycleCount: 0,
+    repairAttemptCount: 0,
     repairNumber: 1,
     reason: "within-automatic-limit",
   });
   assert.equal(applicationRepairDecision({ logs: [repairLog] }).action, "AUTO_REPAIR");
   assert.equal(applicationRepairDecision({ logs: [repairLog, repairLog] }).action, "AUTO_REPAIR");
-  assert.equal(applicationRepairDecision({ logs: [repairLog, repairLog, repairLog] }).action, "REQUEST_CONSENT");
-  const consent = { createdAt: "2026-08-24T12:03:00.000Z", metadata: { aiInvoked: true, failureClass: "APPLICATION", previewRepairConsentGranted: true } };
-  const oldRepairs = [
-    { ...repairLog, createdAt: "2026-08-24T12:00:00.000Z" },
-    { ...repairLog, createdAt: "2026-08-24T12:01:00.000Z" },
-    { ...repairLog, createdAt: "2026-08-24T12:02:00.000Z" },
-  ];
-  assert.equal(applicationRepairDecision({ logs: [...oldRepairs, consent] }).repairNumber, 2);
+  assert.deepEqual(applicationRepairDecision({ logs: [repairLog, repairLog, repairLog] }), {
+    action: "STOP_REPAIR",
+    automaticRepairCount: 3,
+    repairAttemptCount: 3,
+    repairNumber: 4,
+    reason: "execution-repair-limit",
+  });
+});
+
+test("não chama a IA novamente para o mesmo erro no mesmo commit", () => {
+  const logs = [{
+    metadata: {
+      automatic: true,
+      aiInvoked: true,
+      previewAiRepair: true,
+      failureSignature: "same-error",
+      headSha: "same-head",
+    },
+  }];
+  assert.deepEqual(applicationRepairDecision({ logs, failureSignature: "same-error", headSha: "same-head" }), {
+    action: "STOP_REPAIR",
+    automaticRepairCount: 1,
+    repairAttemptCount: 1,
+    repairNumber: 2,
+    reason: "repeated-failure-without-code-change",
+  });
 });

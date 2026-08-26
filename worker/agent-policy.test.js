@@ -153,6 +153,6 @@ describe("agent policy", () => {
     expect(prompt).toContain("[DASHBOARDIA_CLARIFICATION_REQUIRED]");
     expect(prompt).toContain("primeira versão funcional");
     expect(prompt).toContain("executados obrigatoriamente pelo worker");
-    expect(prompt).toContain("não inclua no resumo declarações como 'não executei'");
+    expect(prompt).toMatch(/não inclua no resumo declarações como 'não executei'/i);
   });
 });
