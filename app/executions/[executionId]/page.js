@@ -71,10 +71,17 @@ export default async function ExecutionPage({ params }) {
   const showConversation = execution.demand.type !== "DOCUMENTATION";
   const conversationReady = Boolean(execution.pullRequest || execution.adjustmentCount > 0 || execution.status === "AWAITING_CLIENT");
   const initialControlState = executionControlState(execution);
+  const previewConsentMessageIds = execution.messages
+    .filter((message) => message.role === "SYSTEM"
+      && message.content?.startsWith("## O ambiente ainda precisa de uma correção"))
+    .map((message) => message.id);
+  const latestPreviewConsentMessageId = previewConsentMessageIds.at(-1) ?? null;
   const conversationMessages = execution.messages
-    .filter((message) => !(initialControlState.previewReady
-      && message.role === "SYSTEM"
-      && message.content?.startsWith("## O ambiente ainda precisa de uma correção")))
+    .filter((message) => {
+      const previewConsentMessage = previewConsentMessageIds.includes(message.id);
+      if (!previewConsentMessage) return true;
+      return !initialControlState.previewReady && message.id === latestPreviewConsentMessageId;
+    })
     .map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }));
   const displayLogs = [...execution.logs].reverse();
   const creditBlocked = isExecutionCreditBlocked(execution.error);

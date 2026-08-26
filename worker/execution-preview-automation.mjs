@@ -5,7 +5,7 @@ import { downloadGitHubArchive, getProjectGitHubAccessToken, verifyRepositoryBra
 import { getGlobalSettings } from "../lib/global-settings.js";
 import { createDashboardiaPreview, dashboardiaPreviewConfigured, deleteDashboardiaPreview, syncDashboardiaPreview } from "../lib/preview-host-client.js";
 import { queuePreviewEnvironment, transitionPreviewEnvironment } from "../lib/preview-environments.js";
-import { previewRepairAuthorized, previewRepairConsentError, previewRepairConsentRequired } from "../lib/preview-repair-consent.js";
+import { pendingPreviewRepairConsent, previewRepairAuthorized, previewRepairConsentError, previewRepairConsentRequired } from "../lib/preview-repair-consent.js";
 import { retireProjectEnvironments } from "../lib/project-environment-exclusivity.js";
 import { detectGitHubProjectRuntime, environmentRuntimeConfiguration, mavenBuildCommandInRepository } from "../lib/project-runtime.js";
 import { redactSensitiveData } from "../lib/redaction.js";
@@ -47,19 +47,6 @@ async function executionLog(database, executionId, message, level = "info", meta
   return database.executionLog.create({ data: { executionId, scope: "preview", message, level, metadata } });
 }
 
-function logMetadata(entry) {
-  return entry?.metadata && typeof entry.metadata === "object" && !Array.isArray(entry.metadata)
-    ? entry.metadata
-    : {};
-}
-
-function signatureSeen(logs, signature, predicate = () => true) {
-  return logs.some((entry) => {
-    const metadata = logMetadata(entry);
-    return metadata.failureSignature === signature && predicate(metadata, entry);
-  });
-}
-
 async function loadExecutionForRecovery(preview, database) {
   return database.execution.findUnique({
     where: { id: preview.executionId },
@@ -82,6 +69,13 @@ async function requestApplicationRepairConsent(preview, execution, database, {
 }) {
   const technical = redactSensitiveData(String(preview.error || "")).slice(-4_000);
   const markedError = previewRepairConsentError(preview.error);
+  if (pendingPreviewRepairConsent(execution.logs)) {
+    await database.previewEnvironment.updateMany({
+      where: { id: preview.id, status: "FAILED" },
+      data: { error: markedError },
+    });
+    return false;
+  }
   return database.$transaction(async (transaction) => {
     const updated = await transaction.previewEnvironment.updateMany({
       where: { id: preview.id, status: "FAILED", error: preview.error },
