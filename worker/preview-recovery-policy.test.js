@@ -11,6 +11,7 @@ import {
   isRetryableInfrastructureFailure,
   normalizePreviewFailure,
   previewFailureSignature,
+  shouldInvokePreviewRepairAi,
 } from "./preview-recovery-policy.mjs";
 
 test("classifica falha de archive/tar como infraestrutura retentável", () => {
@@ -30,6 +31,23 @@ test("só classifica como aplicação quando existe evidência de código/build/
   assert.equal(classifyPreviewFailure("[INFRASTRUCTURE] falha interna não detalhada"), "INFRASTRUCTURE");
   assert.equal(classifyPreviewFailure("[UNSUPPORTED] stack sem inicialização navegável"), "UNKNOWN");
   assert.equal(classifyPreviewFailure("falha desconhecida sem evidência causal"), "UNKNOWN");
+});
+
+test("não cobra correção por IA quando o log comprova respostas 2xx", () => {
+  const error = `[APPLICATION] O processo deixou de responder.\nGET / 200 in 9.1s (compile: 4.2s, render: 4.9s)\nÚltimos logs do container:\n✓ Ready`;
+  assert.equal(classifyPreviewFailure(error), "INFRASTRUCTURE");
+  assert.equal(isRetryableInfrastructureFailure(error), true);
+});
+
+test("mantém como aplicação um erro explícito mesmo com respostas anteriores", () => {
+  const error = `GET / 200 in 1.2s\nnpm ERR! Cannot find module './src/app'`;
+  assert.equal(classifyPreviewFailure(error), "APPLICATION");
+});
+
+test("autorização anterior nunca transforma infraestrutura em correção cobrada", () => {
+  assert.equal(shouldInvokePreviewRepairAi("INFRASTRUCTURE", true), false);
+  assert.equal(shouldInvokePreviewRepairAi("UNKNOWN", true), true);
+  assert.equal(shouldInvokePreviewRepairAi("APPLICATION", false), true);
 });
 
 test("assinatura ignora o id dinâmico do diretório de preview", () => {

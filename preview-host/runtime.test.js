@@ -7,6 +7,7 @@ import {
   isOpenApiDocumentPath,
   isPreviewReadyStatus,
   probePreviewHttp,
+  probePreviewTcp,
   railpackPrepareArguments,
   previewUpstreamHeaders,
   previewUpstreamPath,
@@ -356,6 +357,33 @@ test("sonda uma rota do preview com o loopback aceito pelos servidores de desenv
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("monitora um preview pronto pela porta sem renderizar a aplicação", async () => {
+  let requests = 0;
+  const server = http.createServer((_request, response) => {
+    requests += 1;
+    response.writeHead(200).end();
+  });
+  await new Promise((resolve) => server.listen(0, "localhost", resolve));
+  try {
+    assert.equal(await probePreviewTcp("localhost", server.address().port), true);
+    assert.equal(requests, 0);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("ignora hooks predev e publica o comando Node em todas as interfaces", () => {
+  const result = buildPreviewDockerfile({
+    runtime: "NODE",
+    installCommand: "npm ci",
+    buildCommand: "npm run build",
+    previewCommand: "npm run dev -- --hostname 127.0.0.1 --port $PORT",
+    port: 3000,
+  });
+
+  assert.match(result, /npm --ignore-scripts run dev -- --hostname 0\.0\.0\.0 --port \$PORT/);
 });
 
 test("mantém a autoridade loopback em todas as rotas internas do preview", async () => {

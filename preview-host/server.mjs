@@ -12,6 +12,7 @@ import {
   isTransientDockerError,
   isPreviewReadyStatus,
   probePreviewHttp,
+  probePreviewTcp,
   railpackPrepareArguments,
   previewUpstreamHeaders,
   previewUpstreamPath,
@@ -55,6 +56,7 @@ const failingReadyPreviews = new Set();
 const recoveringReadyPreviews = new Set();
 const readyFailureCounts = new Map();
 let activeBuilds = 0;
+let readyHealthCheckRunning = false;
 
 if (token.length < 32) throw new Error("PREVIEW_HOST_TOKEN precisa ter ao menos 32 caracteres");
 if (!/^[a-z0-9.-]+$/i.test(baseDomain)) throw new Error("PREVIEW_BASE_DOMAIN inválido");
@@ -259,8 +261,10 @@ async function checkReadyRuntime(id, state) {
     return false;
   }
   try {
-    const status = await probePreviewHttp(previewContainerName(id), state.port, state.entryPath || "/", 5_000);
-    if (!isPreviewReadyStatus(status)) throw new Error(`A aplicação respondeu HTTP ${status}`);
+    // A rota navegável já foi validada na publicação. O heartbeat confirma
+    // somente que o processo continua aceitando conexões, sem renderizar a
+    // página repetidamente e sobrecarregar servidores em modo de desenvolvimento.
+    await probePreviewTcp(previewContainerName(id), state.port, 5_000);
     await clearReadyFailure(id, "healthFailureCount");
     return true;
   } catch (error) {
@@ -394,7 +398,10 @@ async function waitUntilReady(id, previewPort, timeoutMs = 90_000) {
     }
     try {
       for (const candidatePath of candidatePaths) {
-        lastHttpStatus = await probePreviewHttp(hostname, previewPort, candidatePath);
+        // A primeira renderização de frameworks em modo dev pode compilar a
+        // rota e levar vários segundos. O prazo global continua em 90 s, mas
+        // cada tentativa precisa aguardar uma resposta navegável real.
+        lastHttpStatus = await probePreviewHttp(hostname, previewPort, candidatePath, 15_000);
         if (isPreviewReadyStatus(lastHttpStatus)) return candidatePath;
       }
     } catch {}
@@ -696,13 +703,19 @@ async function reconnectReadyPreviewNetworks() {
 }
 
 async function checkReadyPreviewHealth() {
-  const files = await readdir(stateDirectory).catch(() => []);
-  await Promise.all(files.filter((file) => file.endsWith(".json")).map(async (file) => {
-    const id = file.slice(0, -5);
-    const state = await readState(id).catch(() => null);
-    if (!state || state.status !== "READY" || new Date(state.expiresAt).getTime() <= Date.now()) return;
-    await checkReadyRuntime(id, state);
-  }));
+  if (readyHealthCheckRunning) return;
+  readyHealthCheckRunning = true;
+  try {
+    const files = await readdir(stateDirectory).catch(() => []);
+    await Promise.all(files.filter((file) => file.endsWith(".json")).map(async (file) => {
+      const id = file.slice(0, -5);
+      const state = await readState(id).catch(() => null);
+      if (!state || state.status !== "READY" || new Date(state.expiresAt).getTime() <= Date.now()) return;
+      await checkReadyRuntime(id, state);
+    }));
+  } finally {
+    readyHealthCheckRunning = false;
+  }
 }
 
 async function handleApi(request, response, url) {
@@ -712,11 +725,9 @@ async function handleApi(request, response, url) {
   const id = match[1];
 
   if (request.method === "GET") {
-    let state = await readState(id).catch(() => null);
-    if (state?.status === "READY") {
-      await checkReadyRuntime(id, state);
-      state = await readState(id).catch(() => state);
-    }
+    // O painel consulta este endpoint frequentemente. Ler o estado não pode
+    // disparar outra verificação contra a aplicação nem alterar o runtime.
+    const state = await readState(id).catch(() => null);
     return state ? sendJson(response, 200, state) : sendJson(response, 404, { error: "Preview não encontrado" });
   }
   if (request.method === "DELETE") {

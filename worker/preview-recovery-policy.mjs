@@ -60,9 +60,10 @@ const RETRYABLE_INFRASTRUCTURE_FAILURES = [
   /socket hang up/i,
   /request aborted/i,
   /host de previews reiniciou/i,
+  /\b(?:get|head)\s+\S+\s+2\d\d\s+in\b/i,
 ];
 
-const APPLICATION_FAILURES = [
+const EXPLICIT_APPLICATION_FAILURES = [
   /npm err!/i,
   /pnpm[^\n]*(?:err|error)/i,
   /yarn[^\n]*(?:err|error)/i,
@@ -83,12 +84,17 @@ const APPLICATION_FAILURES = [
   /migration[^\n]*(?:failed|error)/i,
   /constraint[^\n]*(?:failed|violation)/i,
   /relation [^\n]+ does not exist/i,
+];
+
+const APPLICATION_STARTUP_FAILURES = [
   /container encerrou antes de ficar pronto/i,
   /container não publicou uma rota navegável/i,
 ];
 
+const SUCCESSFUL_HTTP_RESPONSE = /\b(?:get|head)\s+\S+\s+2\d\d\s+in\b/i;
+
 function rawFailure(error) {
-  return String(error ?? "").replace(/^\[(?:PREVIEW_REPAIR_CONSENT|PREVIEW_CIRCUIT_OPEN|INFRASTRUCTURE|UNSUPPORTED)\]\s*/i, "").trim();
+  return String(error ?? "").replace(/^\[(?:PREVIEW_REPAIR_CONSENT|PREVIEW_CIRCUIT_OPEN|INFRASTRUCTURE|APPLICATION|UNSUPPORTED)\]\s*/i, "").trim();
 }
 
 export function normalizePreviewFailure(error) {
@@ -110,8 +116,14 @@ export function classifyPreviewFailure(error) {
   if (/^\[INFRASTRUCTURE\]/i.test(tagged)) return "INFRASTRUCTURE";
   if (/^\[UNSUPPORTED\]/i.test(tagged)) return "UNKNOWN";
   const value = rawFailure(error);
+  // Respostas 2xx do próprio container comprovam que build, processo e porta
+  // funcionaram. Sem uma exceção explícita, a falha pertence ao monitor ou à
+  // infraestrutura e não pode consumir uma correção por IA.
+  if (SUCCESSFUL_HTTP_RESPONSE.test(value)
+    && !EXPLICIT_APPLICATION_FAILURES.some((pattern) => pattern.test(value))) return "INFRASTRUCTURE";
+  if (/^\[APPLICATION\]/i.test(tagged)) return "APPLICATION";
   if (INFRASTRUCTURE_FAILURES.some((pattern) => pattern.test(value))) return "INFRASTRUCTURE";
-  if (APPLICATION_FAILURES.some((pattern) => pattern.test(value))) return "APPLICATION";
+  if ([...EXPLICIT_APPLICATION_FAILURES, ...APPLICATION_STARTUP_FAILURES].some((pattern) => pattern.test(value))) return "APPLICATION";
   return "UNKNOWN";
 }
 
@@ -119,6 +131,10 @@ export function isRetryableInfrastructureFailure(error) {
   const value = rawFailure(error);
   return classifyPreviewFailure(value) === "INFRASTRUCTURE"
     && RETRYABLE_INFRASTRUCTURE_FAILURES.some((pattern) => pattern.test(value));
+}
+
+export function shouldInvokePreviewRepairAi(failureClass, authorized = false) {
+  return failureClass === "APPLICATION" || (failureClass === "UNKNOWN" && authorized);
 }
 
 export function isPreviewCircuitOpen(error) {

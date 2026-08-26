@@ -1,4 +1,5 @@
 import http from "node:http";
+import net from "node:net";
 
 const RUNTIME_IMAGES = {
   NODE: "node:22-bookworm-slim",
@@ -205,6 +206,23 @@ export function probePreviewHttp(hostname, port, requestPath = "/", timeoutMs = 
   });
 }
 
+export function probePreviewTcp(hostname, port, timeoutMs = 3_000) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: hostname, port });
+    let settled = false;
+    const finish = (error = null) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      if (error) reject(error);
+      else resolve(true);
+    };
+    socket.setTimeout(timeoutMs, () => finish(new Error("Timeout ao verificar a porta do preview")));
+    socket.once("connect", () => finish());
+    socket.once("error", finish);
+  });
+}
+
 export function previewUpstreamPath(requestUrl, entryPath = "/") {
   const url = new URL(requestUrl || "/", "http://preview.internal");
   if (url.pathname !== "/" || entryPath === "/") return requestUrl || "/";
@@ -239,7 +257,11 @@ function shellInstruction(kind, command) {
 function normalizePreviewCommand(command) {
   return String(command)
     .replaceAll("127.0.0.1", "0.0.0.0")
-    .replaceAll("localhost", "0.0.0.0");
+    .replaceAll("localhost", "0.0.0.0")
+    // O preview já executou instalação e build. Ignorar somente os hooks
+    // predev/postdev impede que um script auxiliar mantenha um segundo
+    // servidor preso no loopback antes do comando navegável real.
+    .replace(/\bnpm((?:\s+--prefix\s+(?:"[^"]*"|'[^']*'|[^\s;&|]+))?)\s+run\s+dev\b/g, "npm --ignore-scripts$1 run dev");
 }
 
 function combinedPreviewCommand(primaryCommand, auxiliaryCommand, auxiliaryPort) {

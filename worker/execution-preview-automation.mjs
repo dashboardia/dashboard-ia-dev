@@ -18,6 +18,7 @@ import {
   classifyPreviewFailure,
   isPreviewCircuitOpen,
   isRetryableInfrastructureFailure,
+  shouldInvokePreviewRepairAi,
   previewCircuitOpenError,
   previewFailureSignature,
 } from "./preview-recovery-policy.mjs";
@@ -276,7 +277,7 @@ async function handleFailedPreview(preview, settings, database) {
     return false;
   }
 
-  if (failureClass === "APPLICATION" || previewRepairAuthorized(execution.logs)) {
+  if (shouldInvokePreviewRepairAi(failureClass, previewRepairAuthorized(execution.logs))) {
     return queueAutomaticCorrection(preview, settings, database, execution, failureSignature, failureClass);
   }
 
