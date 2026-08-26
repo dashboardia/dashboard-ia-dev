@@ -145,7 +145,7 @@ export default async function ExecutionPage({ params }) {
               <div className="execution-activity-grid">
                 <section className={`execution-live-progress ${livePresentation.tone}`}>
                   <header><span>{liveIcon}</span><div><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></div><em>{executionStageLabel(execution.stage)}</em></header>
-                  <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
+                  <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; const message = redactSensitiveData(entry.message); return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small title={message}>{message}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
                 </section>
                 <ExecutionEnvironmentActivity executionId={execution.id} showAction={false} />
               </div>
@@ -159,7 +159,7 @@ export default async function ExecutionPage({ params }) {
           <div className="execution-live-column">
             <section className={`execution-live-progress ${livePresentation.tone}`}>
               <header><span>{liveIcon}</span><div><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></div><em>{executionStageLabel(execution.stage)}</em></header>
-              <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small>{redactSensitiveData(entry.message)}</small></span></li>; })}</ol>
+              <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; const message = redactSensitiveData(entry.message); return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small title={message}>{message}</small></span></li>; })}</ol>
             </section>
           </div>
         </div>}

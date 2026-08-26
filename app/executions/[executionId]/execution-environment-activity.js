@@ -84,7 +84,7 @@ export default function ExecutionEnvironmentActivity({ executionId, showAction =
     <ol className={styles.timeline}>
       {latest.map((item) => <li className={item.status === "FAILED" ? styles.failed : item.status === "COMPLETED" ? styles.completed : styles.running} key={`${item.key}-${item.at ?? ""}`}>
         <StepIcon status={item.status} terminal={item.terminal} />
-        <span><strong>{item.message}</strong>{item.at && <small>{new Date(item.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</small>}</span>
+        <span><strong title={item.message}>{item.message}</strong>{item.at && <small>{new Date(item.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</small>}</span>
       </li>)}
     </ol>
     {showAction && data.state === "READY" && data.url && <a className={styles.open} href={data.url} target="_blank" rel="noreferrer"><ExternalLink size={15} />Abrir ambiente pronto</a>}
