@@ -136,13 +136,13 @@ export default async function ExecutionPage({ params }) {
               <ExecutionEnvironmentShortcut pathname={`/executions/${execution.id}`} />
             </div>}
             activity={<details className="execution-activity-disclosure" open>
-              <summary><span>{liveIcon}</span><span><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></span><em>Ver andamento</em><ChevronDown size={16} /></summary>
+              <summary><span>{liveIcon}</span><span><strong>Execução ao vivo</strong><small>{livePresentation.title}</small></span><em>Ver andamento</em><ChevronDown size={16} /></summary>
               <div className="execution-activity-grid">
                 <section className={`execution-live-progress ${livePresentation.tone}`}>
                   <header><span>{liveIcon}</span><div><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></div><em>{executionStageLabel(execution.stage)}</em></header>
                   <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; const message = redactSensitiveData(entry.message); return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small title={message}>{message}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
                 </section>
-                <ExecutionEnvironmentActivity executionId={execution.id} showAction={false} />
+                <ExecutionEnvironmentActivity executionId={execution.id} showAction={false} compact />
               </div>
             </details>}
             externalActions={(execution.pullRequest || shouldAutoOpenPullRequest || interrupted) ? <>

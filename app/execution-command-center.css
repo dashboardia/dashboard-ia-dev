@@ -111,6 +111,22 @@
   top: auto;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+
+.execution-command-layout > .execution-side-panel[open]::-webkit-scrollbar {
+  width: 8px;
+}
+
+.execution-command-layout > .execution-side-panel[open]::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--purple) 35%, var(--line));
+  background-clip: padding-box;
 }
 
 .execution-command-layout > .execution-side-panel:not([open]) {
@@ -131,6 +147,14 @@
   color: var(--ink);
   background: linear-gradient(120deg, color-mix(in srgb, var(--purple) 8%, var(--soft)), color-mix(in srgb, var(--blue) 3%, var(--soft)));
   transition: background .18s ease, color .18s ease;
+}
+
+.execution-command-layout > .execution-side-panel[open] > summary {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(14px);
 }
 
 .execution-command-layout > .execution-side-panel > summary::-webkit-details-marker {
@@ -204,19 +228,16 @@
 }
 
 .execution-command-layout > .execution-side-panel > .execution-detail-disclosure-content {
-  min-height: 0;
-  flex: 1;
+  min-height: max-content;
+  flex: 0 0 auto;
   box-sizing: border-box;
-  max-height: 100%;
+  max-height: none;
   padding: 8px;
   display: grid;
   align-content: start;
   gap: 6px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-  overscroll-behavior: contain;
-  border-top: 1px solid var(--line);
+  overflow: visible;
+  border-top: 0;
 }
 
 .execution-command-layout .execution-detail-accordion-item {
@@ -358,8 +379,8 @@
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  border-left: 1px solid color-mix(in srgb, var(--purple) 16%, var(--line));
-  background: color-mix(in srgb, var(--purple) 2%, var(--soft));
+  border-left: 1px solid color-mix(in srgb, var(--purple) 10%, var(--line));
+  background: transparent;
 }
 
 .execution-command-center .execution-chat-live-dock .execution-activity-disclosure {
@@ -372,15 +393,22 @@
 }
 
 .execution-command-center .execution-chat-live-dock .execution-activity-disclosure > summary {
-  min-height: 52px;
-  padding: 9px 11px;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  min-height: 44px;
+  padding: 7px 10px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
   border-bottom: 1px solid transparent;
-  background: color-mix(in srgb, var(--purple) 4%, transparent);
+  background: transparent;
+}
+
+.execution-command-center .execution-chat-live-dock .execution-activity-disclosure > summary > span:first-child {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--purple) 8%, transparent);
 }
 
 .execution-command-center .execution-chat-live-dock .execution-activity-disclosure[open] > summary {
-  border-bottom-color: color-mix(in srgb, var(--purple) 15%, var(--line));
+  border-bottom-color: color-mix(in srgb, var(--purple) 10%, var(--line));
 }
 
 .execution-command-center .execution-chat-live-dock .execution-activity-disclosure > summary em {
@@ -389,12 +417,13 @@
 
 .execution-command-center .execution-chat-live-dock .execution-activity-grid {
   grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
+  gap: 0;
   padding: 0 10px 10px;
+  border-top: 0;
 }
 
 .execution-command-center .execution-chat-live-dock .execution-activity-grid > * {
-  margin-top: 8px !important;
+  margin-top: 0 !important;
 }
 
 .execution-command-center .execution-chat-live-dock .execution-live-progress,
@@ -406,9 +435,13 @@
   box-shadow: none;
 }
 
+.execution-command-center .execution-chat-live-dock .execution-live-progress::before,
+.execution-command-center .execution-chat-live-dock .execution-live-progress::after {
+  display: none;
+}
+
 .execution-command-center .execution-chat-live-dock .execution-live-progress header {
-  padding: 8px 6px;
-  grid-template-columns: 28px minmax(0, 1fr);
+  display: none;
 }
 
 .execution-command-center .execution-chat-live-dock .execution-live-progress header em {
@@ -418,6 +451,8 @@
 
 .execution-command-center .execution-chat-live-dock .execution-live-progress ol {
   max-height: none;
+  margin: 0;
+  padding: 9px 4px 10px;
   overflow: visible;
 }
 

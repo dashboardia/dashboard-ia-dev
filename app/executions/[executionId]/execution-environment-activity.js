@@ -49,7 +49,7 @@ function stateBadge(state) {
   return "AUTOMÁTICO";
 }
 
-export default function ExecutionEnvironmentActivity({ executionId, showAction = true }) {
+export default function ExecutionEnvironmentActivity({ executionId, showAction = true, compact = false }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
@@ -75,7 +75,7 @@ export default function ExecutionEnvironmentActivity({ executionId, showAction =
   const activity = data.activity?.length ? data.activity : genericActivity(data.state);
   const latest = activity.slice(-6);
 
-  return <section className={`${styles.card} ${styles[data.state?.toLowerCase()] ?? ""}`}>
+  return <section className={`${styles.card} ${styles[data.state?.toLowerCase()] ?? ""}${compact ? ` ${styles.compact}` : ""}`}>
     <header className={styles.header}>
       <span className={styles.icon}>{data.state === "REPAIRING" ? <Wrench size={16} /> : <ServerCog size={16} />}</span>
       <div><strong>{stateLabel[data.state] ?? "Ambiente automático"}</strong><small>{data.state === "WAITING_IMPLEMENTATION" ? "A nova interação ainda está sendo implementada; esta versão será republicada depois." : "A própria execução publica, testa e corrige o ambiente."}</small></div>

@@ -128,6 +128,63 @@
 .repairing { border-color: color-mix(in srgb, var(--warning) 38%, var(--line)); }
 .failed { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
 
+.compact {
+  padding: 9px 10px 10px;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--purple) 12%, var(--line));
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.compact .header {
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.compact .icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--purple) 8%, transparent);
+}
+
+.compact .header strong {
+  font-size: 9.5px;
+}
+
+.compact .header small {
+  display: none;
+}
+
+.compact .header em {
+  padding: 3px 6px;
+  font-size: 7px;
+}
+
+.compact .timeline {
+  margin-top: 7px;
+  padding-top: 7px;
+  gap: 5px;
+}
+
+.compact .timeline strong {
+  font-size: 8.5px;
+}
+
+.compact .timeline small {
+  font-size: 7.5px;
+}
+
+.compact .note {
+  margin-top: 7px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
 @media (max-width:1180px) {
   .timeline strong { white-space: normal; }
 }

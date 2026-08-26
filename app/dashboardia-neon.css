@@ -521,7 +521,7 @@ html[data-theme="dark"] .resource-card:nth-child(3n+1),html[data-theme="gray"] .
 .execution-detail-disclosure-content { padding:14px; display:grid; gap:12px; border-top:1px solid var(--line); }
 .execution-detail-disclosure-content > .execution-review-grid { margin:0; }
 .execution-detail-disclosure-content > .form-card { margin:0; box-shadow:none; }
-.execution-detail-disclosure[open] .execution-collapsible-chevron { transform:rotate(180deg); }
+.execution-detail-disclosure[open] > summary .execution-collapsible-chevron { transform:rotate(180deg); }
 .execution-workbench .execution-live-progress.running::after {
   content:"";
   position:absolute;
