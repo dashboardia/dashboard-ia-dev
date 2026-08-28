@@ -1,10 +1,9 @@
-import { Activity, ArrowLeft, ChevronDown, CircleCheck, CircleDotDashed, CircleX, Clock3, Code2, Coins, Download, FileText, GitBranch, GitFork, TerminalSquare } from "lucide-react";
+import { Activity, ChevronDown, CircleCheck, CircleDotDashed, CircleX, Clock3, Code2, Coins, Download, ExternalLink, FileText, GitBranch, GitFork, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import AppShell from "../../../components/app-shell";
 import AutoRefresh from "../../../components/auto-refresh";
-import ExecutionEnvironmentShortcut from "../../../components/execution-environment-shortcut";
 import ExecutionFailureRecovery from "../../../components/execution-failure-recovery";
 import SectionHeader from "../../../components/section-header";
 import { getProjectRole } from "../../../lib/access";
@@ -64,7 +63,6 @@ export default async function ExecutionPage({ params }) {
   execution = await syncExecutionPreviewForPresentation(db, execution);
   const diff = execution.artifacts.find((artifact) => artifact.type === "diff");
   const shouldAutoOpenPullRequest = role === "MANAGER" && execution.status === "WAITING_APPROVAL" && !execution.pullRequest && !execution.cancelRequestedAt;
-  const interrupted = execution.status === "CANCELLED" || Boolean(execution.cancelRequestedAt);
   const explainedError = execution.error ? explainError(execution.error) : null;
   const progressLogs = executionProgressLogs(execution);
   const executionActive = activeExecutionStatuses.has(execution.status) && !execution.cancelRequestedAt;
@@ -97,6 +95,12 @@ export default async function ExecutionPage({ params }) {
   const continuationHref = canCreateDemand && execution.branchName && execution.headSha
     ? `/demands/new?projectId=${encodeURIComponent(execution.demand.projectId)}&branch=${encodeURIComponent(execution.branchName)}&sourceExecutionId=${encodeURIComponent(execution.id)}`
     : null;
+  const environmentHref = execution.previewEnvironment?.status === "READY"
+    ? execution.previewEnvironment.url
+    : null;
+  const showEnvironmentActivity = !execution.closedAt
+    && !execution.cancelRequestedAt
+    && !["CANCELLED", "SUCCEEDED"].includes(execution.status);
   const liveIcon = livePresentation.icon === "failed"
     ? <CircleX size={18} />
     : livePresentation.icon === "running"
@@ -137,7 +141,6 @@ export default async function ExecutionPage({ params }) {
             </section>}
             stateNotices={<div className="execution-chat-state-notices">
               <ExecutionFailureRecovery pathname={`/executions/${execution.id}`} />
-              <ExecutionEnvironmentShortcut pathname={`/executions/${execution.id}`} />
             </div>}
             activity={<details className="execution-activity-disclosure" open>
               <summary><span>{liveIcon}</span><span><strong>Execução ao vivo</strong><small>{livePresentation.title}</small></span><em>Ver andamento</em><ChevronDown size={16} /></summary>
@@ -146,13 +149,13 @@ export default async function ExecutionPage({ params }) {
                   <header><span>{liveIcon}</span><div><strong>{livePresentation.title}</strong><small>{livePresentation.subtitle}</small></div><em>{executionStageLabel(execution.stage)}</em></header>
                   <ol>{progressLogs.map((entry, index) => { const current = executionActive && index === progressLogs.length - 1; const message = redactSensitiveData(entry.message); return <li className={entry.level === "error" ? "failed" : current ? "running" : "completed"} key={entry.id}>{entry.level === "error" ? <CircleX size={14} /> : current ? <CircleDotDashed className="spin-slow" size={14} /> : <CircleCheck size={14} />}<span><strong>{logScopeLabels[entry.scope] ?? entry.scope}</strong><small title={message}>{message}</small></span></li>; })}{!progressLogs.length && <li className="running"><CircleDotDashed className="spin-slow" size={14} /><span><strong>Fila</strong><small>Aguardando o primeiro evento do worker.</small></span></li>}</ol>
                 </section>
-                <ExecutionEnvironmentActivity executionId={execution.id} showAction={false} compact />
+                {showEnvironmentActivity && <ExecutionEnvironmentActivity executionId={execution.id} showAction={false} compact />}
               </div>
             </details>}
-            externalActions={(execution.pullRequest || shouldAutoOpenPullRequest || interrupted || continuationHref) ? <>
+            externalActions={(execution.pullRequest || shouldAutoOpenPullRequest || environmentHref || continuationHref) ? <>
               {execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : null}
-              {continuationHref && <div className="execution-action"><Link href={continuationHref}><GitFork size={14} />Nova demanda desta branch</Link></div>}
-              {interrupted && <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar</Link></div>}
+              {environmentHref && <div className="execution-action"><a href={environmentHref} target="_blank" rel="noreferrer"><ExternalLink size={14} />Abrir ambiente</a></div>}
+              {continuationHref && <div className="execution-action"><Link href={continuationHref}><GitFork size={14} />Continuar esta branch em uma nova demanda</Link></div>}
             </> : null}
           />
         </div> : <div className="execution-workbench single">
