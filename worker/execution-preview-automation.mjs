@@ -97,10 +97,8 @@ async function requestApplicationRepairConsent(preview, execution, database, {
             : "A origem da falha não ficou clara. Mesmo assim, você pode pedir para a IA revisar o código, as dependências e a configuração de inicialização antes de uma nova publicação.",
           reason === "insufficient-credits"
             ? "A próxima correção não foi iniciada porque não há créditos disponíveis."
-            : reason === "execution-repair-limit"
-              ? `O limite global de ${MAX_AUTOMATIC_APPLICATION_REPAIRS} reparos com IA desta execução foi atingido. Novas confirmações não reiniciarão esse contador.`
-              : reason === "repeated-failure-without-code-change"
-                ? "O mesmo erro reapareceu sem qualquer alteração no commit da aplicação. A IA não será chamada novamente sem uma nova evidência técnica."
+            : reason === "repair-cycle-limit"
+              ? `As ${MAX_AUTOMATIC_APPLICATION_REPAIRS} tentativas automáticas deste ciclo foram utilizadas. Uma nova confirmação autoriza outro ciclo controlado de correção.`
               : "O Dashboardia interrompeu novas tentativas automáticas, mas deixou disponível a opção de enviar o erro completo para análise da IA.",
           "A branch, o Pull Request e todo o histórico permanecem preservados.",
         ].join("\n\n"),

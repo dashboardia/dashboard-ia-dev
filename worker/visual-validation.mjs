@@ -16,13 +16,17 @@ function safePath(route) {
   return route === "/" ? "home" : route.replace(/^\/+|\/+$/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-") || "home";
 }
 
-async function waitForServer(url, process, output, timeoutMs = 90_000) {
+async function waitForServer(url, process, output, timeoutMs = 90_000, signal = null) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
+    if (signal?.aborted) throw new Error("A validação funcional foi interrompida");
     if (process.exitCode !== null) throw new Error(`O comando de preview foi encerrado antes de iniciar a aplicação\n${output.stderr || output.stdout || `Código de saída: ${process.exitCode}`}`);
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
-      if (response.status < 500) return;
+      const requestSignal = signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(3000)])
+        : AbortSignal.timeout(3000);
+      const response = await fetch(url, { signal: requestSignal });
+      if (response.status >= 200 && response.status < 400) return response;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
@@ -68,14 +72,11 @@ async function stopPreview(preview) {
   }
 }
 
-async function captureImplementation({ execution, projectDirectory, log, includeProduction, routes, selectedViewports }) {
-  const project = execution.demand.project;
-  if (!project.previewCommand || !project.previewPort) throw new Error("O projeto não possui comando e porta de preview configurados");
-  const localUrl = `http://127.0.0.1:${project.previewPort}`;
+async function startPreviewProcess(projectDirectory, project, output) {
   const virtualEnvironment = path.join(projectDirectory, ".forgeboard-venv");
-  const output = { stdout: "", stderr: "" };
-  let virtualEnvironmentExists = true;
-  try { await access(path.join(virtualEnvironment, "bin", "python")); } catch { virtualEnvironmentExists = false; }
+  const virtualEnvironmentExists = await access(path.join(virtualEnvironment, "bin", "python"))
+    .then(() => true)
+    .catch(() => false);
   await mkdir(path.join(projectDirectory, ".tmp"), { recursive: true });
   const preview = spawn("/bin/bash", ["-c", project.previewCommand], {
     cwd: projectDirectory,
@@ -85,11 +86,41 @@ async function captureImplementation({ execution, projectDirectory, log, include
       ...safeChildEnvironment(projectDirectory),
       ...(virtualEnvironmentExists ? { PATH: `${path.join(virtualEnvironment, "bin")}:${process.env.PATH}`, VIRTUAL_ENV: virtualEnvironment } : {}),
       PORT: String(project.previewPort),
-      HOSTNAME: "127.0.0.1",
+      HOSTNAME: "0.0.0.0",
     },
   });
   preview.stdout.on("data", (chunk) => { output.stdout = (output.stdout + chunk.toString()).slice(-12_000); });
   preview.stderr.on("data", (chunk) => { output.stderr = (output.stderr + chunk.toString()).slice(-12_000); });
+  return preview;
+}
+
+export async function runApplicationSmokeTest({ execution, projectDirectory, log, signal = null }) {
+  const project = execution.demand.project;
+  if (!project.previewCommand || !project.previewPort) {
+    return { skipped: true, status: null, stdout: "", stderr: "" };
+  }
+  const localUrl = `http://127.0.0.1:${project.previewPort}`;
+  const output = { stdout: "", stderr: "" };
+  const preview = await startPreviewProcess(projectDirectory, project, output);
+  try {
+    await log("runtime", "Iniciando a aplicação para validação funcional");
+    const response = await waitForServer(localUrl, preview, output, 90_000, signal);
+    return { skipped: false, status: response.status, stdout: output.stdout, stderr: output.stderr };
+  } catch (error) {
+    error.stdout = output.stdout;
+    error.stderr = output.stderr;
+    throw error;
+  } finally {
+    await stopPreview(preview);
+  }
+}
+
+async function captureImplementation({ execution, projectDirectory, log, includeProduction, routes, selectedViewports }) {
+  const project = execution.demand.project;
+  if (!project.previewCommand || !project.previewPort) throw new Error("O projeto não possui comando e porta de preview configurados");
+  const localUrl = `http://127.0.0.1:${project.previewPort}`;
+  const output = { stdout: "", stderr: "" };
+  const preview = await startPreviewProcess(projectDirectory, project, output);
   let browser;
   try {
     await log("visual", "Aguardando o preview da implementação");

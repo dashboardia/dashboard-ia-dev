@@ -13,7 +13,6 @@ import { clientInteractionRequeueData } from "../../../../../lib/executions";
 import { getGlobalSettings } from "../../../../../lib/global-settings";
 import {
   previewRepairConsentRequired,
-  previewRepairLimitReached,
   rawPreviewRepairError,
 } from "../../../../../lib/preview-repair-consent";
 import { redactSensitiveData } from "../../../../../lib/redaction";
@@ -75,10 +74,6 @@ export async function POST(request, context) {
     const grantsPreviewRepairConsent = execution.status === "AWAITING_CLIENT"
       && execution.previewEnvironment?.status === "FAILED"
       && previewRepairConsentRequired(execution.previewEnvironment.error);
-    if (grantsPreviewRepairConsent && previewRepairLimitReached(execution.logs)) {
-      return NextResponse.json({ error: "O limite global de três reparos com IA desta execução foi atingido. Novas confirmações não reiniciam o contador." }, { status: 409 });
-    }
-
     const storedAttachments = [];
     for (const attachment of preparedAttachments) {
       const storageKey = `execution-messages/${executionId}/${randomUUID()}/${attachment.name}`;

@@ -10,6 +10,7 @@ import { isGitHubAuthorizationFailure } from "../../../../../lib/github-authoriz
 import { getGlobalSettings } from "../../../../../lib/global-settings";
 import {
   MAX_APPLICATION_REPAIR_ATTEMPTS_PER_EXECUTION,
+  applicationRepairCycleCount,
   applicationRepairAttemptCount,
   automaticApplicationRepairCount,
   previewRepairConsentRequired,
@@ -29,7 +30,8 @@ export async function GET(_request, context) {
         previewEnvironment: true,
         logs: {
           where: { scope: "preview" },
-          select: { metadata: true },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, metadata: true, createdAt: true },
         },
       },
     });
@@ -51,17 +53,15 @@ export async function GET(_request, context) {
         marginPercent: settings.creditBalanceSafetyMarginPercent,
       });
       const hasCredits = !creditBudget || creditBudget.hardLimitCredits > 0;
-      const repairAttemptCount = applicationRepairAttemptCount(execution.logs);
-      const repairLimitReached = repairAttemptCount >= MAX_APPLICATION_REPAIR_ATTEMPTS_PER_EXECUTION;
+      const repairAttemptCount = applicationRepairCycleCount(execution.logs);
+      const totalRepairAttemptCount = applicationRepairAttemptCount(execution.logs);
       const technical = redactSensitiveData(rawPreviewRepairError(previewEnvironment.error)).slice(-8_000);
       return NextResponse.json({
         required: true,
         kind: "PREVIEW_REPAIR_CONSENT",
         title: "O ambiente ainda precisa de uma correção",
         message: "A versão navegável ainda não ficou pronta. Você pode enviar o erro completo para a IA revisar o código, as dependências e a configuração de inicialização, mesmo quando a origem da falha não estiver clara.",
-        action: repairLimitReached
-          ? "O limite de segurança foi atingido; nenhuma nova chamada de IA será iniciada para esta execução."
-          : hasCredits
+        action: hasCredits
           ? "Deseja continuar tentando nesta mesma execução?"
           : "Adicione créditos para continuar esta mesma execução.",
         continuationPrompt: [
@@ -71,11 +71,12 @@ export async function GET(_request, context) {
           "Se houver uma correção possível no projeto, aplique-a e deixe a aplicação compatível com o ambiente de preview. Se a evidência apontar exclusivamente para infraestrutura externa, não invente alterações: explique isso objetivamente para o cliente.",
           `Erro mais recente do ambiente:\n${technical}`,
         ].join("\n\n"),
-        canContinue: hasCredits && !repairLimitReached,
-        blockedReason: repairLimitReached ? "REPAIR_LIMIT" : !hasCredits ? "CREDITS" : null,
+        canContinue: hasCredits,
+        blockedReason: !hasCredits ? "CREDITS" : null,
         billingUrl: `/billing?returnTo=${encodeURIComponent(`/executions/${executionId}`)}#credit-packs`,
         automaticRepairCount: automaticApplicationRepairCount(execution.logs),
         repairAttemptCount,
+        totalRepairAttemptCount,
         maxRepairAttempts: MAX_APPLICATION_REPAIR_ATTEMPTS_PER_EXECUTION,
         adjustmentCount: execution.adjustmentCount,
         maxAdjustments: settings.executionConversationMaxAdjustments,

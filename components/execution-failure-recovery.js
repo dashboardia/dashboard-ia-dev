@@ -80,6 +80,7 @@ export default function ExecutionFailureRecovery({ pathname }) {
       router.refresh();
     } catch (submitError) {
       setError(submitError.message);
+    } finally {
       setLoading(false);
     }
   }
@@ -118,14 +119,12 @@ export default function ExecutionFailureRecovery({ pathname }) {
         <small>{recovery.action} A branch, o Pull Request e todo o histórico estão preservados.</small>
       </div>
       <div className={styles.creditActions}>
-        {recovery.blockedReason === "REPAIR_LIMIT"
-          ? <small>Reparo automático encerrado para proteger o consumo desta execução.</small>
-          : recovery.canContinue
+        {recovery.canContinue
           ? <button type="button" disabled={loading} onClick={() => sendRecoveryMessage(recovery.continuationPrompt)}>{loading ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}{loading ? "Preparando nova tentativa..." : "Continuar tentando com IA"}</button>
           : <Link href={recovery.billingUrl}><CreditCard size={16} />Adicionar créditos e continuar</Link>}
-        {recovery.blockedReason !== "REPAIR_LIMIT" && <small>{recovery.canContinue
-          ? `Sua confirmação usa uma das ${recovery.maxRepairAttempts} tentativas máximas desta execução.`
-          : "Após a recarga, volte para esta execução e continue do mesmo ponto."}</small>}
+        <small>{recovery.canContinue
+          ? `Sua confirmação autoriza um novo ciclo de até ${recovery.maxRepairAttempts} tentativas automáticas.`
+          : "Após a recarga, volte para esta execução e continue do mesmo ponto."}</small>
         {error && <small className={styles.error}>{error}</small>}
       </div>
     </aside>;

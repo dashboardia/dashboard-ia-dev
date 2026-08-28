@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   MAX_APPLICATION_REPAIR_ATTEMPTS_PER_EXECUTION,
+  applicationRepairCycleCount,
   applicationRepairAttemptCount,
   automaticApplicationRepairCount,
 } from "../lib/preview-repair-consent.js";
@@ -151,24 +152,17 @@ export function previewCircuitOpenError(error) {
 
 export function applicationRepairDecision({ logs = [], failureSignature = null, headSha = null } = {}) {
   const automaticRepairCount = automaticApplicationRepairCount(logs);
-  const repairAttemptCount = applicationRepairAttemptCount(logs);
-  const repeatedWithoutCodeChange = Boolean(failureSignature && headSha && logs.some((entry) => {
-    const metadata = entry?.metadata;
-    return metadata?.aiInvoked === true
-      && metadata?.previewAiRepair === true
-      && metadata?.failureSignature === failureSignature
-      && metadata?.headSha === headSha;
-  }));
+  const totalRepairAttemptCount = applicationRepairAttemptCount(logs);
+  const repairAttemptCount = applicationRepairCycleCount(logs);
   const automaticRepairLimitReached = repairAttemptCount >= MAX_AUTOMATIC_APPLICATION_REPAIRS;
   return {
-    action: automaticRepairLimitReached || repeatedWithoutCodeChange ? "STOP_REPAIR" : "AUTO_REPAIR",
+    action: automaticRepairLimitReached ? "STOP_REPAIR" : "AUTO_REPAIR",
     automaticRepairCount,
     repairAttemptCount,
+    totalRepairAttemptCount,
     repairNumber: repairAttemptCount + 1,
-    reason: repeatedWithoutCodeChange
-      ? "repeated-failure-without-code-change"
-      : automaticRepairLimitReached
-        ? "execution-repair-limit"
+    reason: automaticRepairLimitReached
+        ? "repair-cycle-limit"
       : "within-automatic-limit",
   };
 }

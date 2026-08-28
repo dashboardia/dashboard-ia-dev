@@ -86,6 +86,7 @@ test("faz no máximo três correções de código em toda a execução", () => {
     action: "AUTO_REPAIR",
     automaticRepairCount: 0,
     repairAttemptCount: 0,
+    totalRepairAttemptCount: 0,
     repairNumber: 1,
     reason: "within-automatic-limit",
   });
@@ -95,12 +96,13 @@ test("faz no máximo três correções de código em toda a execução", () => {
     action: "STOP_REPAIR",
     automaticRepairCount: 3,
     repairAttemptCount: 3,
+    totalRepairAttemptCount: 3,
     repairNumber: 4,
-    reason: "execution-repair-limit",
+    reason: "repair-cycle-limit",
   });
 });
 
-test("não chama a IA novamente para o mesmo erro no mesmo commit", () => {
+test("usa as três tentativas preautorizadas mesmo quando o erro se repete no mesmo commit", () => {
   const logs = [{
     metadata: {
       automatic: true,
@@ -111,10 +113,34 @@ test("não chama a IA novamente para o mesmo erro no mesmo commit", () => {
     },
   }];
   assert.deepEqual(applicationRepairDecision({ logs, failureSignature: "same-error", headSha: "same-head" }), {
-    action: "STOP_REPAIR",
+    action: "AUTO_REPAIR",
     automaticRepairCount: 1,
     repairAttemptCount: 1,
+    totalRepairAttemptCount: 1,
     repairNumber: 2,
-    reason: "repeated-failure-without-code-change",
+    reason: "within-automatic-limit",
+  });
+});
+
+test("uma autorização inicia outro ciclo controlado de até três tentativas", () => {
+  const repair = (createdAt) => ({ createdAt, metadata: { automatic: true, aiInvoked: true, previewAiRepair: true, failureClass: "APPLICATION" } });
+  const consented = {
+    createdAt: "2026-08-24T12:03:00.000Z",
+    metadata: { automatic: false, aiInvoked: true, previewAiRepair: true, previewRepairConsentGranted: true },
+  };
+  const logs = [
+    repair("2026-08-24T12:00:00.000Z"),
+    repair("2026-08-24T12:01:00.000Z"),
+    repair("2026-08-24T12:02:00.000Z"),
+    consented,
+  ];
+
+  assert.deepEqual(applicationRepairDecision({ logs }), {
+    action: "AUTO_REPAIR",
+    automaticRepairCount: 3,
+    repairAttemptCount: 1,
+    totalRepairAttemptCount: 4,
+    repairNumber: 2,
+    reason: "within-automatic-limit",
   });
 });

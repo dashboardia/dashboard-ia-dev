@@ -17,7 +17,7 @@ import {
   runConfiguredCommand,
   runProcess,
 } from "./sandbox.mjs";
-import { runImplementationPreview, runVisualValidation } from "./visual-validation.mjs";
+import { runApplicationSmokeTest, runImplementationPreview, runVisualValidation } from "./visual-validation.mjs";
 import { DEFAULT_AI_MODEL } from "../lib/ai-models.js";
 import { auditData } from "../lib/audit.js";
 import { calculateLiveUsageCredits, saveFinancialSnapshot } from "../lib/financial-shadow.js";
@@ -29,10 +29,12 @@ import { buildAgentPrompt, resolveAgentRunPolicy } from "./agent-policy.mjs";
 import { parseAgentOutcome } from "./agent-outcome.mjs";
 import { buildExecutionAgentContext, isAutomaticPreviewRepairMessage } from "./execution-agent-context.mjs";
 import { remoteFetchRefspec, remoteTrackingRef } from "./git-refs.mjs";
+import { MAX_APPLICATION_REPAIR_ATTEMPTS_PER_CYCLE } from "../lib/preview-repair-consent.js";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 const MAX_AUTOMATIC_VALIDATION_REPAIRS = 3;
 const MAX_REPAIR_MEASURED_TOKENS = 120_000;
+const MAX_REPAIR_TOKENS_PER_ATTEMPT = Math.floor(MAX_REPAIR_MEASURED_TOKENS / MAX_APPLICATION_REPAIR_ATTEMPTS_PER_CYCLE);
 
 class ExecutionCancelledError extends Error {
   constructor() {
@@ -141,12 +143,13 @@ function startImplementationAgent({ projectDirectory, prompt, attachments = [], 
   };
 }
 
-async function runValidations(execution, projectDirectory, settings, scopes = ["install", "lint", "test", "build"], warnIfEmpty = true) {
+async function runValidations(execution, projectDirectory, settings, scopes = ["install", "lint", "test", "build", "runtime"], warnIfEmpty = true) {
   const commands = [
     ["install", execution.demand.project.installCommand],
     ["lint", execution.demand.project.lintCommand],
     ["test", execution.demand.project.testCommand],
     ["build", execution.demand.project.buildCommand],
+    ["runtime", execution.demand.project.previewCommand && execution.demand.project.previewPort ? "Validação real de inicialização e resposta HTTP" : null],
   ].filter(([scope, command]) => scopes.includes(scope) && command?.trim());
 
   if (!commands.length) {
@@ -170,10 +173,18 @@ async function runValidations(execution, projectDirectory, settings, scopes = ["
     cancellationTimer.unref();
 
     try {
-      const result = await runConfiguredCommand(command, projectDirectory, settings.commandTimeoutMinutes * 60_000, commandController.signal, settings.nodeMemoryMb);
+      const result = scope === "runtime"
+        ? await runApplicationSmokeTest({
+            execution,
+            projectDirectory,
+            signal: commandController.signal,
+            log: (runtimeScope, message, level, metadata) => log(execution.id, runtimeScope, message, level, metadata),
+          })
+        : await runConfiguredCommand(command, projectDirectory, settings.commandTimeoutMinutes * 60_000, commandController.signal, settings.nodeMemoryMb);
       await log(execution.id, scope, `${scope} concluído`, "info", {
-        stdout: result.stdout.slice(-12_000),
-        stderr: result.stderr.slice(-6_000),
+        stdout: String(result.stdout ?? "").slice(-12_000),
+        stderr: String(result.stderr ?? "").slice(-6_000),
+        ...(scope === "runtime" ? { httpStatus: result.status } : {}),
       });
     } catch (error) {
       const current = await db.execution.findUnique({ where: { id: execution.id }, select: { stopRequestedAt: true } }).catch(() => null);
@@ -392,28 +403,37 @@ export async function processExecution(executionId, workerId) {
             `Contexto recente e compactado desta execução:\n${conversationContext}`,
           ].join("\n\n")
       : buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions);
-    const createImplementationAgent = () => {
-      const remainingRepairTokens = previewRepairRun
-        ? MAX_REPAIR_MEASURED_TOKENS - runInputTokens - runOutputTokens
-        : null;
-      if (remainingRepairTokens != null && remainingRepairTokens <= 0) {
-        const error = new Error(`O reparo atingiu o limite de segurança de ${MAX_REPAIR_MEASURED_TOKENS} tokens medidos.`);
-        error.name = "AgentUsageLimitExceededError";
-        error.code = "AGENT_USAGE_LIMIT_EXCEEDED";
+    const createImplementationAgent = (attempt = 1) => {
+      const consumedBeforeAttempt = creditCostPolicy
+        ? calculateLiveUsageCredits({ ...creditCostPolicy, inputTokens: runInputTokens, outputTokens: runOutputTokens })
+        : 0;
+      const remainingCreditBudget = creditBudget == null ? null : Math.max(0, creditBudget - consumedBeforeAttempt);
+      if (remainingCreditBudget != null && remainingCreditBudget <= 0) {
+        const error = new Error("Os créditos disponíveis foram consumidos antes da próxima tentativa automática.");
+        error.name = "CreditBudgetExceededError";
+        error.code = "CREDIT_BUDGET_EXCEEDED";
         throw error;
       }
+      const attemptPrompt = previewRepairRun && attempt > 1
+        ? [
+            `Continue a correção automática na tentativa ${attempt}/${MAX_APPLICATION_REPAIR_ATTEMPTS_PER_CYCLE}.`,
+            "A tentativa anterior atingiu o limite individual de contexto. Todas as alterações locais já aplicadas foram preservadas.",
+            "Inspecione primeiro o estado atual do código, não repita análises concluídas e finalize uma solução executável dentro desta tentativa.",
+            agentPrompt,
+          ].join("\n\n")
+        : agentPrompt;
       return startImplementationAgent({
         projectDirectory,
-        prompt: agentPrompt,
+        prompt: attemptPrompt,
         attachments: agentAttachments,
         model: selectedModel,
-        policy: remainingRepairTokens == null ? agentPolicy : { ...agentPolicy, maxMeasuredTokens: remainingRepairTokens },
-        creditBudget,
+        policy: previewRepairRun ? { ...agentPolicy, maxMeasuredTokens: MAX_REPAIR_TOKENS_PER_ATTEMPT } : agentPolicy,
+        creditBudget: remainingCreditBudget,
         creditBudgetContext,
         creditCostPolicy,
       });
     };
-    let implementationAgent = createImplementationAgent();
+    let implementationAgent = createImplementationAgent(1);
     const cancellationTimer = setInterval(async () => {
       const current = await db.execution.findUnique({
         where: { id: executionId },
@@ -440,7 +460,7 @@ export async function processExecution(executionId, workerId) {
     let summary;
     let agentOutcome = { clarificationRequired: false, message: "" };
     try {
-      const maxAgentAttempts = 3;
+      const maxAgentAttempts = MAX_APPLICATION_REPAIR_ATTEMPTS_PER_CYCLE;
       for (let attempt = 1; attempt <= maxAgentAttempts; attempt += 1) {
         try {
           const result = await implementationAgent.promise;
@@ -457,21 +477,31 @@ export async function processExecution(executionId, workerId) {
           if (abortReason === "timeout") {
             throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${agentPolicy.timeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
           }
-          if (attempt >= maxAgentAttempts || !isTransientAgentError(error)) throw error;
+          const usageLimitContinuation = previewRepairRun && error?.code === "AGENT_USAGE_LIMIT_EXCEEDED";
+          if (usageLimitContinuation && attempt >= maxAgentAttempts) {
+            const cycleError = new Error(`As ${maxAgentAttempts} tentativas automáticas atingiram o limite total de segurança de ${MAX_REPAIR_MEASURED_TOKENS} tokens medidos. O cliente precisa autorizar um novo ciclo para continuar.`);
+            cycleError.name = "AgentRepairCycleLimitError";
+            cycleError.code = "AGENT_REPAIR_CYCLE_LIMIT_EXCEEDED";
+            throw cycleError;
+          }
+          if (attempt >= maxAgentAttempts || (!usageLimitContinuation && !isTransientAgentError(error))) throw error;
 
-          const retryDelayMs = attempt === 1 ? 3_000 : 10_000;
-          await log(executionId, "agent", `Falha temporária no provedor de IA; nova tentativa automática ${attempt + 1}/${maxAgentAttempts}`, "warn", {
+          const retryDelayMs = usageLimitContinuation ? 0 : attempt === 1 ? 3_000 : 10_000;
+          await log(executionId, "agent", usageLimitContinuation
+            ? `A tentativa ${attempt}/${maxAgentAttempts} atingiu o limite individual; o código foi preservado e a IA continuará automaticamente`
+            : `Falha temporária no provedor de IA; nova tentativa automática ${attempt + 1}/${maxAgentAttempts}`, "warn", {
             retryInSeconds: retryDelayMs / 1_000,
+            reason: usageLimitContinuation ? "context-checkpoint" : "provider-transient-error",
             technical: error instanceof Error ? error.message : String(error),
           });
-          await wait(retryDelayMs);
+          if (retryDelayMs) await wait(retryDelayMs);
           if (abortReason === "stopped") throw new ExecutionStoppedError();
           if (abortReason === "cancelled") throw new ExecutionCancelledError();
           if (abortReason === "timeout") {
             throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${agentPolicy.timeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
           }
           await assertExecutionActive(executionId);
-          implementationAgent = createImplementationAgent();
+          implementationAgent = createImplementationAgent(attempt + 1);
         }
       }
     } finally {
@@ -600,7 +630,7 @@ export async function processExecution(executionId, workerId) {
           prompt: [
             `Esta é a tentativa automática ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS}. A implementação abaixo já foi realizada, mas a validação automática falhou.`,
             "Inspecione os arquivos relacionados ao erro e aplique somente as correções necessárias para a validação passar, sem remover funcionalidades nem alterar o escopo aprovado.",
-            "Use exclusivamente apply_patch. O worker repetirá build, lint, instalação e testes após a correção. No resumo, descreva somente a correção aplicada e não diga ao cliente que essas etapas não foram executadas.",
+            "Use exclusivamente apply_patch. O worker repetirá instalação, lint, testes, build, inicialização real e verificação HTTP após a correção. No resumo, descreva somente a correção aplicada e não diga ao cliente que essas etapas não foram executadas.",
             `Etapa que falhou: ${validationResult.failedScope}`,
             `Saída técnica da validação:\n${validationResult.technical}`,
             `Demanda original:\n${buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions)}`,
