@@ -6,7 +6,7 @@ import { calculateLiveUsageCredits } from "../lib/financial-shadow.js";
 import { RepositoryReadShell } from "./repository-read-shell.mjs";
 import { WorkspaceEditor } from "./sandbox.mjs";
 import { continuationPrompt, isAgentTurnLimitError, maxTurnSegmentsForPolicy } from "./agent-turn-continuation.mjs";
-import { prepareWorkspaceAttachments, workspaceAttachmentInstructions } from "./workspace-attachments.mjs";
+import { materializeProjectAttachments, prepareWorkspaceAttachments, workspaceAttachmentInstructions } from "./workspace-attachments.mjs";
 
 let controller;
 let running = false;
@@ -104,6 +104,9 @@ process.on("message", async (message) => {
   try {
     const rawAttachments = Array.isArray(message.attachments) ? message.attachments : [];
     preparedWorkspaceAttachments = await prepareWorkspaceAttachments(rawAttachments);
+    const importedProjectAttachments = message.attachmentImportTarget
+      ? await materializeProjectAttachments(preparedWorkspaceAttachments.items, message.projectDirectory, message.attachmentImportTarget)
+      : [];
     const agentAttachments = rawAttachments.map((attachment) => attachmentInputItem({
       name: attachment.name,
       mimeType: attachment.mimeType,
@@ -155,7 +158,10 @@ process.on("message", async (message) => {
     const visualContext = groundedInput.visualContext
       ? `\n\n## Leitura visual dos anexos do cliente\n${groundedInput.visualContext}\n\nUse esta leitura como evidência da solicitação do cliente. Confirme no código o que precisa ser alterado antes de editar.`
       : "";
-    const attachmentContext = workspaceAttachmentInstructions(preparedWorkspaceAttachments.items);
+    const attachmentContext = workspaceAttachmentInstructions(
+      preparedWorkspaceAttachments.items,
+      importedProjectAttachments.length ? importedProjectAttachments : message.projectAttachments,
+    );
 
     const maxSegments = maxTurnSegmentsForPolicy(message.policy);
     for (let segment = 1; segment <= maxSegments; segment += 1) {

@@ -1,5 +1,5 @@
 import { fork } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -30,6 +30,7 @@ import { parseAgentOutcome } from "./agent-outcome.mjs";
 import { buildExecutionAgentContext, isAutomaticPreviewRepairMessage } from "./execution-agent-context.mjs";
 import { remoteFetchRefspec, remoteTrackingRef } from "./git-refs.mjs";
 import { MAX_APPLICATION_REPAIR_ATTEMPTS_PER_CYCLE } from "../lib/preview-repair-consent.js";
+import { projectAssetTarget, projectAttachmentLocations, projectAttachmentsReferenced, requestUsesAttachmentsAsProjectAssets, selectExecutionAttachments } from "./workspace-attachments.mjs";
 
 const workspaceRoot = path.join(os.tmpdir(), "forgeboard-workspaces");
 const MAX_AUTOMATIC_VALIDATION_REPAIRS = 3;
@@ -102,7 +103,7 @@ async function assertExecutionActive(executionId) {
   if (current?.cancelRequestedAt) throw new ExecutionCancelledError();
 }
 
-function startImplementationAgent({ projectDirectory, prompt, attachments = [], model, policy, creditBudget, creditBudgetContext, creditCostPolicy }) {
+function startImplementationAgent({ projectDirectory, prompt, attachments = [], attachmentImportTarget = null, projectAttachments = [], model, policy, creditBudget, creditBudgetContext, creditCostPolicy }) {
   const child = fork(new URL("./implementation-runner.mjs", import.meta.url), [], {
     env: process.env,
     stdio: ["ignore", "ignore", "pipe", "ipc"],
@@ -129,7 +130,7 @@ function startImplementationAgent({ projectDirectory, prompt, attachments = [], 
       clearTimeout(forceKillTimer);
       if (!settled) reject(new Error(stderr || `O subprocesso do agente foi encerrado (${signal || code})`));
     });
-    child.send({ type: "run", projectDirectory, prompt, attachments, model, policy, creditBudget, creditBudgetContext, creditCostPolicy });
+    child.send({ type: "run", projectDirectory, prompt, attachments, attachmentImportTarget, projectAttachments, model, policy, creditBudget, creditBudgetContext, creditCostPolicy });
   });
 
   return {
@@ -267,7 +268,7 @@ export async function processExecution(executionId, workerId) {
     const authenticationArgs = gitAuthenticationArgs(token);
     const userMessageCount = execution.messages.filter((message) => message.role === "USER").length;
     const hasAgentConversation = execution.messages.some((message) => message.role === "AGENT");
-    const isFollowUp = Boolean(execution.pullRequest && execution.branchName && userMessageCount > 0);
+    const isFollowUp = Boolean(execution.branchName && execution.headSha && userMessageCount > 0);
     const isClarificationFollowUp = !isFollowUp && hasAgentConversation && userMessageCount > 1;
     const sourceBranch = isFollowUp ? execution.branchName : execution.demand.baseBranch;
     await runProcess("git", [
@@ -305,7 +306,52 @@ export async function processExecution(executionId, workerId) {
     const agentLabel = documentationOnly ? "Agente de documentação" : "Agente de implementação";
     if (!isFollowUp) await runProcess("git", ["checkout", "-b", branchName], { cwd: workspace });
     await runProcess("git", [...authenticationArgs, "fetch", "origin", remoteFetchRefspec(execution.demand.baseBranch)], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
+    const base = (await runProcess("git", ["rev-parse", remoteTrackingRef(execution.demand.baseBranch)], { cwd: workspace })).stdout.trim();
     const projectDirectory = resolveWorkspacePath(workspace, initialRuntimeConfiguration.workingDirectory ?? ".");
+    const persistWorkspaceCheckpoint = async (commitMessage, reason) => {
+      const checkpointStatus = await runProcess("git", ["status", "--porcelain"], { cwd: workspace });
+      if (checkpointStatus.stdout.trim()) {
+        await runProcess("git", ["add", "-A"], { cwd: workspace });
+        await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "-m", commitMessage], { cwd: workspace });
+      }
+      const checkpointHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+      await runProcess("git", [...authenticationArgs, "push", "-u", "origin", branchName], { cwd: workspace, timeout: 5 * 60_000, secrets: [token, authenticationArgs[1]] });
+      await db.execution.update({ where: { id: executionId }, data: { branchName, baseSha: base, headSha: checkpointHead } });
+      const checkpointDiff = await runProcess("git", ["diff", "--binary", base, checkpointHead], { cwd: workspace });
+      await saveReviewDiff(db, executionId, checkpointDiff.stdout);
+      await log(executionId, "publish", "Checkpoint da branch salvo para permitir continuidade em outra demanda", "info", {
+        branchName,
+        headSha: checkpointHead,
+        reason,
+      });
+      return checkpointHead;
+    };
+    const persistInterruptedCheckpoint = async (reason) => {
+      if (documentationOnly) return;
+      const labels = {
+        stopped: { commit: "forgeboard: checkpoint antes da pausa", log: "pausa" },
+        cancelled: { commit: "forgeboard: checkpoint antes do cancelamento", log: "cancelamento" },
+        timeout: { commit: "forgeboard: checkpoint antes do timeout", log: "timeout" },
+      };
+      const selected = labels[reason] ?? labels.cancelled;
+      await persistWorkspaceCheckpoint(selected.commit, reason).catch((checkpointError) => log(
+        executionId,
+        "publish",
+        `Não foi possível salvar o checkpoint antes do ${selected.log}`,
+        "error",
+        { technical: checkpointError instanceof Error ? checkpointError.message : String(checkpointError) },
+      ));
+    };
+    const assertActiveWithCheckpoint = async () => {
+      try {
+        await assertExecutionActive(executionId);
+      } catch (error) {
+        if (error instanceof ExecutionStoppedError) await persistInterruptedCheckpoint("stopped");
+        if (error instanceof ExecutionCancelledError) await persistInterruptedCheckpoint("cancelled");
+        throw error;
+      }
+    };
+    await persistWorkspaceCheckpoint("forgeboard: prepara branch da demanda", "branch-ready");
     const selectedModel = execution.model ?? env.OPENAI_MODEL ?? DEFAULT_AI_MODEL;
     execution.model = selectedModel;
     const approvedKnowledge = await getBusinessKnowledgeContext(db, {
@@ -376,8 +422,17 @@ export async function processExecution(executionId, workerId) {
         previewRepairRun,
       });
     }
-    const agentAttachments = latestUserMessage?.attachments.length
-      ? await Promise.all(latestUserMessage.attachments.map(async (attachment) => {
+    const projectAssetRequest = requestUsesAttachmentsAsProjectAssets(latestUserMessage?.content);
+    const selectedStoredAttachments = latestUserMessage?.attachments.length
+      ? latestUserMessage.attachments
+      : projectAssetRequest
+        ? selectExecutionAttachments(execution.messages)
+        : [];
+    const attachmentImportTarget = projectAssetRequest && selectedStoredAttachments.length
+      ? projectAssetTarget(initialDetectedRuntime.runtime, initialRuntimeConfiguration.previewCommand)
+      : null;
+    const agentAttachments = selectedStoredAttachments.length
+      ? await Promise.all(selectedStoredAttachments.map(async (attachment) => {
           const object = await getPrivateObject(attachment.storageKey);
           const data = await object.Body.transformToByteArray();
           return {
@@ -387,6 +442,15 @@ export async function processExecution(executionId, workerId) {
           };
         }))
       : [];
+    const projectAttachments = attachmentImportTarget
+      ? projectAttachmentLocations(agentAttachments, attachmentImportTarget)
+      : [];
+    if (attachmentImportTarget) {
+      await log(executionId, "agent", `${agentAttachments.length} anexo(s) serão copiados automaticamente para o projeto`, "info", {
+        directory: attachmentImportTarget.directory,
+        source: latestUserMessage?.attachments.length ? "current-message" : "conversation-history",
+      });
+    }
     const agentPrompt = isFollowUp
       ? [
           "Continue a execução já entregue na branch atual e no mesmo Pull Request.",
@@ -403,7 +467,22 @@ export async function processExecution(executionId, workerId) {
             `Contexto recente e compactado desta execução:\n${conversationContext}`,
           ].join("\n\n")
       : buildAgentPrompt(execution.demand, agentPolicy.scope, promptOptions);
-    const createImplementationAgent = (attempt = 1) => {
+    const projectAssetsIntegrated = async () => {
+      if (!attachmentImportTarget) return true;
+      const status = await runProcess("git", ["status", "--porcelain"], { cwd: workspace });
+      const projectRelativePath = path.relative(workspace, projectDirectory).replaceAll(path.sep, "/");
+      const assetPrefix = [projectRelativePath, attachmentImportTarget.directory.replace(/\/+$/, "")]
+        .filter(Boolean)
+        .join("/") + "/";
+      const changedCodeFiles = status.stdout
+        .split(/\r?\n/)
+        .map((line) => line.slice(3).trim().replace(/^"|"$/g, ""))
+        .filter(Boolean)
+        .filter((file) => !file.startsWith(assetPrefix));
+      const changedContents = await Promise.all(changedCodeFiles.map((file) => readFile(resolveWorkspacePath(workspace, file), "utf8").catch(() => "")));
+      return projectAttachmentsReferenced(changedContents, projectAttachments);
+    };
+    const createImplementationAgent = (attempt = 1, continuationReason = "") => {
       const consumedBeforeAttempt = creditCostPolicy
         ? calculateLiveUsageCredits({ ...creditCostPolicy, inputTokens: runInputTokens, outputTokens: runOutputTokens })
         : 0;
@@ -414,7 +493,14 @@ export async function processExecution(executionId, workerId) {
         error.code = "CREDIT_BUDGET_EXCEEDED";
         throw error;
       }
-      const attemptPrompt = previewRepairRun && attempt > 1
+      const attemptPrompt = continuationReason
+        ? [
+            `Continue a implementação na tentativa automática ${attempt}/${MAX_APPLICATION_REPAIR_ATTEMPTS_PER_CYCLE}.`,
+            continuationReason,
+            "Os anexos já estão dentro do projeto. Inspecione o estado atual, altere os arquivos de código ou dados necessários e não conclua antes de vinculá-los ao produto.",
+            agentPrompt,
+          ].join("\n\n")
+        : previewRepairRun && attempt > 1
         ? [
             `Continue a correção automática na tentativa ${attempt}/${MAX_APPLICATION_REPAIR_ATTEMPTS_PER_CYCLE}.`,
             "A tentativa anterior atingiu o limite individual de contexto. Todas as alterações locais já aplicadas foram preservadas.",
@@ -425,7 +511,9 @@ export async function processExecution(executionId, workerId) {
       return startImplementationAgent({
         projectDirectory,
         prompt: attemptPrompt,
-        attachments: agentAttachments,
+        attachments: attempt === 1 ? agentAttachments : [],
+        attachmentImportTarget: attempt === 1 ? attachmentImportTarget : null,
+        projectAttachments,
         model: selectedModel,
         policy: previewRepairRun ? { ...agentPolicy, maxMeasuredTokens: MAX_REPAIR_TOKENS_PER_ATTEMPT } : agentPolicy,
         creditBudget: remainingCreditBudget,
@@ -467,14 +555,34 @@ export async function processExecution(executionId, workerId) {
           agentOutcome = parseAgentOutcome(result.summary);
           summary = agentOutcome.message;
           await recordMeasuredUsage(result, previewRepairRun ? "PREVIEW_REPAIR" : "IMPLEMENTATION", attempt);
+          if (attachmentImportTarget && !agentOutcome.clarificationRequired && !await projectAssetsIntegrated()) {
+            if (attempt >= maxAgentAttempts) {
+              const assetError = new Error("A IA recebeu e copiou os anexos para o projeto, mas não os vinculou ao código após três tentativas automáticas.");
+              assetError.code = "PROJECT_ASSETS_NOT_INTEGRATED";
+              throw assetError;
+            }
+            await log(executionId, "agent", `A tentativa ${attempt}/${maxAgentAttempts} copiou os anexos, mas não os vinculou ao produto; a IA continuará automaticamente`, "warn", {
+              directory: attachmentImportTarget.directory,
+              reason: "project-assets-not-integrated",
+            });
+            implementationAgent = createImplementationAgent(attempt + 1, "A tentativa anterior terminou sem referenciar no código as imagens que o cliente pediu para usar. Corrija isso agora usando os arquivos já copiados e seus caminhos informados no contexto de anexos.");
+            continue;
+          }
           break;
         } catch (error) {
           if (error?.inputTokens != null && error?.outputTokens != null) {
             await recordMeasuredUsage(error, previewRepairRun ? "PREVIEW_REPAIR" : "IMPLEMENTATION", attempt);
           }
-          if (abortReason === "stopped") throw new ExecutionStoppedError();
-          if (abortReason === "cancelled") throw new ExecutionCancelledError();
+          if (abortReason === "stopped") {
+            await persistInterruptedCheckpoint("stopped");
+            throw new ExecutionStoppedError();
+          }
+          if (abortReason === "cancelled") {
+            await persistInterruptedCheckpoint("cancelled");
+            throw new ExecutionCancelledError();
+          }
           if (abortReason === "timeout") {
+            await persistInterruptedCheckpoint("timeout");
             throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${agentPolicy.timeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
           }
           const usageLimitContinuation = previewRepairRun && error?.code === "AGENT_USAGE_LIMIT_EXCEEDED";
@@ -495,12 +603,19 @@ export async function processExecution(executionId, workerId) {
             technical: error instanceof Error ? error.message : String(error),
           });
           if (retryDelayMs) await wait(retryDelayMs);
-          if (abortReason === "stopped") throw new ExecutionStoppedError();
-          if (abortReason === "cancelled") throw new ExecutionCancelledError();
+          if (abortReason === "stopped") {
+            await persistInterruptedCheckpoint("stopped");
+            throw new ExecutionStoppedError();
+          }
+          if (abortReason === "cancelled") {
+            await persistInterruptedCheckpoint("cancelled");
+            throw new ExecutionCancelledError();
+          }
           if (abortReason === "timeout") {
+            await persistInterruptedCheckpoint("timeout");
             throw new Error(`${documentationOnly ? "A documentação" : "A implementação"} excedeu o limite de ${agentPolicy.timeoutMinutes} minutos. Revise o escopo da demanda ou tente novamente.`);
           }
-          await assertExecutionActive(executionId);
+          await assertActiveWithCheckpoint();
           implementationAgent = createImplementationAgent(attempt + 1);
         }
       }
@@ -510,7 +625,7 @@ export async function processExecution(executionId, workerId) {
     }
 
     await log(executionId, "agent", agentOutcome.clarificationRequired ? "A IA precisa de informações do cliente antes de implementar" : `${agentLabel} concluído`);
-    await assertExecutionActive(executionId);
+    await assertActiveWithCheckpoint();
 
     const statusResult = await runProcess("git", ["status", "--porcelain"], { cwd: workspace });
     if (agentOutcome.clarificationRequired && !statusResult.stdout.trim()) {
@@ -572,10 +687,7 @@ export async function processExecution(executionId, workerId) {
 
     // Congele somente o trabalho do agente antes que install/test/build/preview
     // possam alterar arquivos versionados ou criar artefatos no repositório.
-    await runProcess("git", ["add", "-A"], { cwd: workspace });
-    await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "-m", `forgeboard: ${execution.demand.title.slice(0, 120)}`], { cwd: workspace });
-    let implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
-    const base = (await runProcess("git", ["rev-parse", remoteTrackingRef(execution.demand.baseBranch)], { cwd: workspace })).stdout.trim();
+    let implementationHead = await persistWorkspaceCheckpoint(`forgeboard: ${execution.demand.title.slice(0, 120)}`, "implementation-complete");
 
     await db.execution.update({ where: { id: executionId }, data: { status: "VALIDATING", stage: "VALIDATION" } });
 
@@ -666,9 +778,7 @@ export async function processExecution(executionId, workerId) {
           ? await runProcess("git", ["status", "--porcelain"], { cwd: workspace })
           : { stdout: "" };
         if (repairCompleted && repairStatus.stdout.trim()) {
-          await runProcess("git", ["add", "-A"], { cwd: workspace });
-          await runProcess("git", ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@users.noreply.github.com", "commit", "--amend", "--no-edit"], { cwd: workspace });
-          implementationHead = (await runProcess("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+          implementationHead = await persistWorkspaceCheckpoint(`forgeboard: corrige validação ${repairAttempt}`, `validation-repair-${repairAttempt}`);
           await log(executionId, "validation", `Correção automática ${repairAttempt}/${MAX_AUTOMATIC_VALIDATION_REPAIRS} aplicada; executando a validação novamente`);
           validationResult = await runValidations(execution, workspace, settings);
         } else if (repairCompleted) {

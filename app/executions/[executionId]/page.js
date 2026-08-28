@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, ChevronDown, CircleCheck, CircleDotDashed, CircleX, Clock3, Code2, Coins, Download, FileText, GitBranch, TerminalSquare } from "lucide-react";
+import { Activity, ArrowLeft, ChevronDown, CircleCheck, CircleDotDashed, CircleX, Clock3, Code2, Coins, Download, FileText, GitBranch, GitFork, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -93,6 +93,10 @@ export default async function ExecutionPage({ params }) {
     outputTokens: execution.outputTokens,
     settings,
   });
+  const canCreateDemand = role === "MANAGER" || role === "DEVELOPER";
+  const continuationHref = canCreateDemand && execution.branchName && execution.headSha
+    ? `/demands/new?projectId=${encodeURIComponent(execution.demand.projectId)}&branch=${encodeURIComponent(execution.branchName)}&sourceExecutionId=${encodeURIComponent(execution.id)}`
+    : null;
   const liveIcon = livePresentation.icon === "failed"
     ? <CircleX size={18} />
     : livePresentation.icon === "running"
@@ -145,8 +149,9 @@ export default async function ExecutionPage({ params }) {
                 <ExecutionEnvironmentActivity executionId={execution.id} showAction={false} compact />
               </div>
             </details>}
-            externalActions={(execution.pullRequest || shouldAutoOpenPullRequest || interrupted) ? <>
+            externalActions={(execution.pullRequest || shouldAutoOpenPullRequest || interrupted || continuationHref) ? <>
               {execution.pullRequest ? <OpenPullRequestButton executionId={execution.id} pullRequest={execution.pullRequest} /> : shouldAutoOpenPullRequest ? <AutoOpenPullRequest executionId={execution.id} /> : null}
+              {continuationHref && <div className="execution-action"><Link href={continuationHref}><GitFork size={14} />Nova demanda desta branch</Link></div>}
               {interrupted && <div className="execution-action"><Link href={`/demands/${execution.demandId}`}><ArrowLeft size={14} />Voltar e reprocessar</Link></div>}
             </> : null}
           />

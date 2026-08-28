@@ -26,14 +26,15 @@ function fileKey(file) {
   return `${file.name}:${file.size}:${file.lastModified}`;
 }
 
-export default function DemandForm({ projects, initialProjectId }) {
+export default function DemandForm({ projects, initialProjectId, initialBranch = "", sourceExecutionId = "" }) {
   const { locale } = usePreferences();
   const copy = getDemandCopy(locale);
   const router = useRouter();
   const initialProject = projects.find((project) => project.id === initialProjectId) ?? (projects.length === 1 ? projects[0] : null);
+  const resolvedInitialBranch = initialBranch || initialProject?.defaultBranch || "main";
   const [context, setContext] = useState({
     projectId: initialProject?.id ?? "",
-    baseBranch: initialProject?.defaultBranch ?? "main",
+    baseBranch: resolvedInitialBranch,
     type: "FEATURE",
     aiModel: initialProject?.lunaOnly ? FREE_PLAN_AI_MODEL : DEFAULT_AI_MODEL,
   });
@@ -42,10 +43,12 @@ export default function DemandForm({ projects, initialProjectId }) {
   const [error, setError] = useState("");
   const [billingUrl, setBillingUrl] = useState("");
   const [saving, setSaving] = useState(false);
-  const [branches, setBranches] = useState(initialProject ? [{ name: initialProject.defaultBranch }] : []);
+  const [branches, setBranches] = useState(initialProject ? [{ name: resolvedInitialBranch }] : []);
   const [branchesLoading, setBranchesLoading] = useState(Boolean(initialProject));
   const [branchError, setBranchError] = useState("");
-  const [recoveryNotice, setRecoveryNotice] = useState("");
+  const [recoveryNotice, setRecoveryNotice] = useState(sourceExecutionId && initialBranch
+    ? `Nova demanda preparada a partir da branch ${initialBranch}. Todo o código já salvo nela será preservado.`
+    : "");
   const fileInputRef = useRef(null);
   const previewUrlsRef = useRef(new Set());
   const selectedProject = projects.find((project) => project.id === context.projectId);

@@ -39,7 +39,12 @@ export default async function NewDemandPage({ searchParams }) {
           <h1>Comece pela ideia</h1>
           <p>Escolha onde a IA deve trabalhar e descreva o resultado em linguagem natural.</p>
         </header>
-        <DemandForm projects={projectsWithModelAccess} initialProjectId={params?.projectId ?? ""} />
+        <DemandForm
+          projects={projectsWithModelAccess}
+          initialProjectId={params?.projectId ?? ""}
+          initialBranch={params?.branch ?? ""}
+          sourceExecutionId={params?.sourceExecutionId ?? ""}
+        />
       </div>
     </AppShell>
   );
